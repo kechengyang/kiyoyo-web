@@ -1,0 +1,110 @@
+# 04 · API 设计
+
+基础路径：`/v1`；JSON；UTF-8。认证使用 Identity Platform JWT，Admin API 同时校验角色和门店范围。
+
+## 约定
+
+- 请求头：`Authorization: Bearer …`、`X-Request-Id`、`Accept-Language: en|zh`。
+- 创建订单、支付、核销使用 `Idempotency-Key`。
+- 分页：cursor，不用易漂移的 offset；返回 `next_cursor`。
+- 错误格式：`{ "error": { "code", "message", "request_id", "details" } }`。
+- 常见状态：400 参数、401 未登录、403 越权、404 不存在、409 状态冲突/重复核销、422 业务规则、429 限流。
+
+## Public / Customer API
+
+### 配置与门店
+
+- `GET /v1/app-config?locale=en`
+- `GET /v1/stores?lat=-1.28&lng=36.81` — 可选服务端排序；浏览器也可本地排序。
+- `GET /v1/stores/{storeId}`
+- `GET /v1/stores/{storeId}/menu?kind=DRINK&category=milk-tea`
+
+### 商品
+
+- `GET /v1/products?kind=GOODS&category=fashion&cursor=...`
+- `GET /v1/products/{slug}`
+- `GET /v1/search?q=matcha&store_id=...`
+
+### 收藏与账户
+
+- `GET /v1/me`、`PATCH /v1/me`
+- `GET /v1/me/favorites`
+- `PUT /v1/me/favorites/{productId}`、`DELETE /v1/me/favorites/{productId}`
+- `GET /v1/me/loyalty`
+- `GET /v1/me/coupons`
+- `GET /v1/me/orders?cursor=...`
+
+### Cart 与报价
+
+- `POST /v1/carts` — 建立 guest/member cart。
+- `PUT /v1/carts/{cartId}/store` — 切换店并返回不可售项。
+- `POST /v1/carts/{cartId}/items`
+- `PATCH /v1/carts/{cartId}/items/{itemId}`
+- `DELETE /v1/carts/{cartId}/items/{itemId}`
+- `POST /v1/carts/{cartId}/quote` — 服务端重算价格、优惠、配送费和过期时间。
+
+### Checkout
+
+`POST /v1/checkouts`
+
+```json
+{
+  "cart_id": "uuid",
+  "quote_id": "uuid",
+  "fulfillment": {
+    "drink": { "type": "PICKUP", "store_id": "uuid" },
+    "goods": { "type": "SHIPPING", "address_id": "uuid" }
+  },
+  "coupon_code": "HAPPY20",
+  "payment_method": { "provider": "MOCK", "token": "test_ok" }
+}
+```
+
+响应返回订单、支付状态、分组履约状态。只有自取组返回 `pickup_qr_payload`；二维码不暴露数据库 ID。
+
+- `GET /v1/orders/{orderNumber}`
+- `POST /v1/orders/{orderNumber}/cancel`
+
+## Admin API
+
+- `GET /v1/admin/orders?store_id=...&status=READY&cursor=...`
+- `GET /v1/admin/orders/{orderNumber}`
+- `POST /v1/admin/fulfillments/{id}/transition` body `{ "to": "PREPARING" }`
+- `POST /v1/admin/pickups/verify` — 只验证，不改变状态；可选。
+- `POST /v1/admin/pickups/redeem` — 原子核销。
+- `GET /v1/admin/customers?query=...`
+- `GET /v1/admin/customers/{id}`
+- `POST /v1/admin/loyalty/adjustments` — 管理员，强制 reason。
+- `GET /v1/admin/stores`、`PATCH /v1/admin/stores/{id}`
+- `GET /v1/admin/audit-logs?...` — 管理员只读。
+
+核销请求：
+
+```json
+{
+  "token": "opaque-one-time-token",
+  "store_id": "uuid",
+  "device_time": "2026-08-04T14:03:22+03:00"
+}
+```
+
+服务端以数据库时间和员工 token 内的门店权限为准，不信任 `device_time` 或客户端状态。
+
+## Payment Provider Interface
+
+```ts
+interface PaymentProvider {
+  authorize(input: AuthorizeInput): Promise<PaymentResult>;
+  capture(input: CaptureInput): Promise<PaymentResult>;
+  refund(input: RefundInput): Promise<PaymentResult>;
+  verifyWebhook(headers: Headers, rawBody: Buffer): ProviderEvent;
+}
+```
+
+`MockPaymentProvider` 接受明确测试 token：`test_ok`、`test_declined`、`test_timeout`，让 QA 覆盖成功、拒绝和超时。真实 M-Pesa/银行卡适配器只替换 provider，不改变订单服务。
+
+## OpenAPI 与契约
+
+- 后端生成 `/openapi.json`，前端通过 CI 生成 typed client。
+- CI 检测 breaking change；兼容变更只能新增可选字段。
+- 对 Checkout、状态机、核销和权限做 consumer contract tests。
