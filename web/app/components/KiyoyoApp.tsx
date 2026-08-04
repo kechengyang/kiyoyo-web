@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { haversineKm, money, products, stores } from "../data";
-import type { CartItem, Lang, Order, Product, Tab } from "../types";
+import type { Address, AuthProvider, AuthSession, CartItem, Lang, Order, Product, Tab, UserProfile } from "../types";
 
 const copy = {
   en: {
@@ -63,6 +63,38 @@ const copy = {
     admin: "Open Admin",
     memberHello: "Hey, Nairobi!",
     noOrders: "Your first KIYOYO order will appear here.",
+    signIn: "Sign in",
+    createAccount: "Create account",
+    authTitle: "Welcome to your happy place",
+    authSub: "Sign in to save your shelf, earn points and check out faster.",
+    email: "Email address",
+    password: "Password",
+    continueGoogle: "Continue with Google",
+    continueFacebook: "Continue with Facebook",
+    or: "or continue with email",
+    testAuth: "Local MVP demo — social buttons do not contact Google or Facebook yet.",
+    profile: "Your profile",
+    editProfile: "Edit profile",
+    nickname: "Nickname",
+    gender: "Gender",
+    age: "Age",
+    addressBook: "Delivery addresses",
+    addAddress: "Add address",
+    editAddress: "Edit",
+    defaultAddress: "Default",
+    signOut: "Sign out",
+    completeProfile: "Tell us a little about you",
+    save: "Save",
+    recipient: "Recipient name",
+    phone: "Phone number",
+    area: "Area / neighbourhood",
+    addressLine: "Building, street and apartment",
+    instructions: "Delivery instructions (optional)",
+    addressLabel: "Label, e.g. Home",
+    makeDefault: "Use as default address",
+    chooseAddress: "Choose delivery address",
+    changeAddress: "Change address",
+    placeOrder: "Place test order",
   },
   zh: {
     nav: { home: "首页", shop: "商城", collection: "收藏", cart: "购物车", account: "我的" },
@@ -121,10 +153,44 @@ const copy = {
     admin: "进入管理后台",
     memberHello: "你好，内罗毕！",
     noOrders: "你的第一笔 KIYOYO 订单会显示在这里。",
+    signIn: "登录",
+    createAccount: "创建账号",
+    authTitle: "欢迎来到你的快乐据点",
+    authSub: "登录后可同步收藏、赚取积分并更快结账。",
+    email: "邮箱地址",
+    password: "密码",
+    continueGoogle: "使用 Google 继续",
+    continueFacebook: "使用 Facebook 继续",
+    or: "或使用邮箱继续",
+    testAuth: "本地 MVP 演示——Google 和 Facebook 按钮暂不会连接真实平台。",
+    profile: "个人资料",
+    editProfile: "编辑资料",
+    nickname: "昵称",
+    gender: "性别",
+    age: "年龄",
+    addressBook: "配送地址",
+    addAddress: "新增地址",
+    editAddress: "编辑",
+    defaultAddress: "默认",
+    signOut: "退出登录",
+    completeProfile: "让我们认识一下你",
+    save: "保存",
+    recipient: "收件人姓名",
+    phone: "电话号码",
+    area: "区域 / 社区",
+    addressLine: "楼宇、街道和门牌号",
+    instructions: "配送说明（选填）",
+    addressLabel: "地址标签，例如：家",
+    makeDefault: "设为默认地址",
+    chooseAddress: "选择配送地址",
+    changeAddress: "更改地址",
+    placeOrder: "提交测试订单",
   },
 };
 
 const navIcons: Record<Tab, string> = { home: "⌂", shop: "◉", collection: "♡", cart: "▱", account: "☺" };
+const emptyProfile: UserProfile = { nickname: "", gender: "", age: "", addresses: [] };
+const emptyAddress: Address = { id: "", label: "Home", recipient: "", phone: "", area: "", line1: "", instructions: "", isDefault: false };
 
 function useStoredState<T>(key: string, initial: T) {
   const [value, setValue] = useState<T>(initial);
@@ -176,6 +242,8 @@ export default function KiyoyoApp() {
   const [cart, setCart] = useStoredState<CartItem[]>("kiyoyo-cart", []);
   const [saved, setSaved] = useStoredState<string[]>("kiyoyo-saved", ["g1", "d6"]);
   const [orders, setOrders] = useStoredState<Order[]>("kiyoyo-orders", []);
+  const [session, setSession] = useStoredState<AuthSession | null>("kiyoyo-session", null);
+  const [profile, setProfile] = useStoredState<UserProfile>("kiyoyo-profile", emptyProfile);
   const [modalProduct, setModalProduct] = useState<Product | null>(null);
   const [storeModal, setStoreModal] = useState(false);
   const [checkout, setCheckout] = useState(false);
@@ -186,6 +254,18 @@ export default function KiyoyoApp() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [custom, setCustom] = useState({ size: "Regular", sugar: "50%", ice: "Less ice", toppings: [] as string[] });
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
+  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const [profileModal, setProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({ nickname: "", gender: "" as UserProfile["gender"], age: "" });
+  const [addressModal, setAddressModal] = useState(false);
+  const [addressForm, setAddressForm] = useState<Address>(emptyAddress);
+  const [addressError, setAddressError] = useState("");
+  const [checkoutChannel, setCheckoutChannel] = useState<Order["channel"] | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [pendingCheckout, setPendingCheckout] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const t = copy[lang];
   const selectedStore = stores.find(s => s.id === storeId) || stores[0];
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -216,6 +296,72 @@ export default function KiyoyoApp() {
   const toggleSave = (id: string) => setSaved(saved.includes(id) ? saved.filter(x => x !== id) : [...saved, id]);
   const updateQty = (key: string, delta: number) => setCart(cart.map(item => item.key === key ? { ...item, quantity: item.quantity + delta } : item).filter(item => item.quantity > 0));
 
+  const openAuth = (mode: "signin" | "signup", afterCheckout = false) => {
+    setAuthMode(mode); setAuthError(""); setPendingCheckout(afterCheckout);
+  };
+
+  const completeAuth = (provider: AuthProvider) => {
+    const email = provider === "password" ? authForm.email.trim().toLowerCase() : `${provider}.demo@kiyoyo.local`;
+    if (provider === "password" && (!email.includes("@") || authForm.password.length < 6)) {
+      setAuthError(lang === "zh" ? "请输入有效邮箱，密码至少 6 位。" : "Enter a valid email and a password of at least 6 characters."); return;
+    }
+    const nextSession = { id: `demo-${provider}-${email}`, email, provider } as AuthSession;
+    setSession(nextSession); setAuthMode(null); setAuthForm({ email: "", password: "" });
+    if (!profile.nickname) {
+      const suggested = email.split("@")[0].replace(/[._-]/g, " ");
+      setProfileForm({ nickname: suggested.charAt(0).toUpperCase() + suggested.slice(1), gender: "", age: "" });
+      setProfileModal(true);
+    } else if (pendingCheckout) {
+      setCheckout(true); setCheckoutChannel(null);
+      setPendingCheckout(false);
+    } else {
+      setPendingCheckout(false);
+    }
+  };
+
+  const openProfile = () => {
+    setProfileForm({ nickname: profile.nickname, gender: profile.gender, age: profile.age }); setProfileModal(true);
+  };
+
+  const saveProfile = () => {
+    if (!profileForm.nickname.trim() || !profileForm.age || Number(profileForm.age) < 13 || Number(profileForm.age) > 120) return;
+    setProfile({ ...profile, ...profileForm, nickname: profileForm.nickname.trim() }); setProfileModal(false);
+    if (pendingCheckout) { setCheckout(true); setCheckoutChannel(null); setPendingCheckout(false); }
+  };
+
+  const openAddress = (address?: Address) => {
+    setAddressForm(address ? { ...address } : { ...emptyAddress, id: `addr-${Date.now()}`, isDefault: profile.addresses.length === 0 });
+    setAddressError(""); setAddressModal(true);
+  };
+
+  const saveAddress = () => {
+    if (!addressForm.label.trim() || !addressForm.recipient.trim() || !addressForm.phone.trim() || !addressForm.area.trim() || !addressForm.line1.trim()) {
+      setAddressError(lang === "zh" ? "请填写所有必填地址信息。" : "Complete all required address fields."); return;
+    }
+    const normalized = profile.addresses.map(a => addressForm.isDefault ? { ...a, isDefault: false } : a);
+    const exists = normalized.some(a => a.id === addressForm.id);
+    const addresses = exists ? normalized.map(a => a.id === addressForm.id ? addressForm : a) : [...normalized, addressForm];
+    setProfile({ ...profile, addresses }); setSelectedAddressId(addressForm.id); setAddressModal(false);
+    if (editingOrderId) {
+      setOrders(orders.map(order => order.id === editingOrderId ? { ...order, addressId: addressForm.id } : order));
+      setEditingOrderId(null);
+    }
+  };
+
+  const setDefaultAddress = (id: string) => setProfile({ ...profile, addresses: profile.addresses.map(a => ({ ...a, isDefault: a.id === id })) });
+
+  const beginCheckout = () => {
+    if (!session) { openAuth("signin", true); return; }
+    setSelectedAddressId(profile.addresses.find(a => a.isDefault)?.id || profile.addresses[0]?.id || "");
+    setCheckoutChannel(null); setCheckout(true);
+  };
+
+  const changeOrderAddress = (addressId: string) => {
+    if (!editingOrderId) return;
+    setOrders(orders.map(order => order.id === editingOrderId ? { ...order, addressId } : order));
+    setEditingOrderId(null);
+  };
+
   const locate = () => {
     setLocating(true); setLocationError(false);
     if (!navigator.geolocation) { setLocationError(true); setLocating(false); return; }
@@ -228,14 +374,16 @@ export default function KiyoyoApp() {
   };
 
   const placeOrder = (channel: Order["channel"]) => {
+    if (channel !== "Pickup" && !selectedAddressId) return;
     const now = new Date();
     const timeToken = now.getTime().toString(36).toUpperCase();
     const order: Order = {
       id: `KYO-${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getTime()).slice(-4)}`,
       createdAt: now.toISOString(), status: "Placed", channel, storeId, total: subtotal, items: cart,
       pickupCode: timeToken.slice(-8).padStart(8, "K"),
+      addressId: channel === "Pickup" ? undefined : selectedAddressId,
     };
-    setOrders([order, ...orders]); setCart([]); setCheckout(false); setSuccess(order);
+    setOrders([order, ...orders]); setCart([]); setCheckout(false); setCheckoutChannel(null); setSuccess(order);
   };
 
   const go = (next: Tab) => { setTab(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
@@ -272,9 +420,9 @@ export default function KiyoyoApp() {
 
         {tab === "collection" && <section className="content-section collection-page"><div className="page-heading"><span className="sticker">♡ YOURS</span><h1>{t.collectionTitle}</h1><p>{t.collectionSub}</p></div>{saved.length ? <div className="product-grid">{products.filter(p => saved.includes(p.id)).map(p => <ProductCard key={p.id} product={p} lang={lang} saved onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div> : <div className="empty-state"><span>♡</span><p>{t.emptySaved}</p><button className="primary" onClick={() => go("shop")}>{t.explore}</button></div>}</section>}
 
-        {tab === "cart" && <section className="content-section cart-page"><div className="page-heading"><span className="sticker">{cartCount} ITEMS</span><h1>{t.cartTitle}</h1></div>{!cart.length ? <div className="empty-state"><span>▱</span><p>{t.emptyCart}</p><button className="primary" onClick={() => go("shop")}>{t.explore}</button></div> : <div className="cart-layout"><div className="cart-list">{detailedCart.map(item => <article className="cart-row" key={item.key}><img src={item.product.image} alt={item.product.name} /><div className="cart-name"><span className="eyebrow">{item.product.kind === "drink" ? t.drinks : t.merch}</span><h3>{lang === "zh" ? item.product.nameZh : item.product.name}</h3>{item.product.kind === "drink" && <small>{item.size} · {item.sugar} · {item.ice}{item.toppings?.length ? ` · ${item.toppings.join(", ")}` : ""}</small>}<strong>{money(item.product.price + (item.toppings?.length || 0) * 50)}</strong></div><div className="qty"><button onClick={() => updateQty(item.key, -1)}>−</button><span>{item.quantity}</span><button onClick={() => updateQty(item.key, 1)}>+</button></div></article>)}</div><aside className="cart-summary"><h2>{lang === "zh" ? "订单概要" : "Order summary"}</h2><div><span>{t.subtotal}</span><strong>{money(subtotal)}</strong></div><div><span>{lang === "zh" ? "配送费" : "Delivery"}</span><span>{lang === "zh" ? "结账时计算" : "Calculated next"}</span></div><button className="primary full" onClick={() => setCheckout(true)}>{t.checkout} →</button><small>{t.mockNotice}</small></aside></div>}</section>}
+        {tab === "cart" && <section className="content-section cart-page"><div className="page-heading"><span className="sticker">{cartCount} ITEMS</span><h1>{t.cartTitle}</h1></div>{!cart.length ? <div className="empty-state"><span>▱</span><p>{t.emptyCart}</p><button className="primary" onClick={() => go("shop")}>{t.explore}</button></div> : <div className="cart-layout"><div className="cart-list">{detailedCart.map(item => <article className="cart-row" key={item.key}><img src={item.product.image} alt={item.product.name} /><div className="cart-name"><span className="eyebrow">{item.product.kind === "drink" ? t.drinks : t.merch}</span><h3>{lang === "zh" ? item.product.nameZh : item.product.name}</h3>{item.product.kind === "drink" && <small>{item.size} · {item.sugar} · {item.ice}{item.toppings?.length ? ` · ${item.toppings.join(", ")}` : ""}</small>}<strong>{money(item.product.price + (item.toppings?.length || 0) * 50)}</strong></div><div className="qty"><button onClick={() => updateQty(item.key, -1)}>−</button><span>{item.quantity}</span><button onClick={() => updateQty(item.key, 1)}>+</button></div></article>)}</div><aside className="cart-summary"><h2>{lang === "zh" ? "订单概要" : "Order summary"}</h2><div><span>{t.subtotal}</span><strong>{money(subtotal)}</strong></div><div><span>{lang === "zh" ? "配送费" : "Delivery"}</span><span>{lang === "zh" ? "结账时计算" : "Calculated next"}</span></div><button className="primary full" onClick={beginCheckout}>{t.checkout} →</button><small>{session ? t.mockNotice : (lang === "zh" ? "结账前需要登录。" : "Sign in is required at checkout.")}</small></aside></div>}</section>}
 
-        {tab === "account" && <section className="account-page content-section"><div className="member-card"><div><span>{t.member}</span><h1>{t.memberHello}</h1><small>{t.points}</small><strong>2,480</strong></div><Logo /><i>VIP</i></div><div className="account-tabs"><button className="active">{t.coupons}</button><button>{t.rewards}</button><button>{t.history}</button></div><div className="coupon-grid"><article><b>20%</b><div><strong>ALL DRINKS</strong><span>MIN. SPEND KSh 800</span></div><button>USE</button></article><article className="gold"><b>2×</b><div><strong>DOUBLE POINTS</strong><span>FRIDAY AFTER 4PM</span></div><button>USE</button></article><article className="dark"><b>FREE</b><div><strong>SIZE UPGRADE</strong><span>MEMBER TREAT</span></div><button>USE</button></article></div><SectionHead title={t.history} />{orders.length ? <div className="order-history">{orders.map(o => <article key={o.id}><div><strong>{o.id}</strong><span>{new Date(o.createdAt).toLocaleString(lang === "zh" ? "zh-CN" : "en-KE", { dateStyle: "medium", timeStyle: "short" })}</span></div><div><span className="status">{o.status}</span><strong>{money(o.total)}</strong></div></article>)}</div> : <div className="order-empty">{t.noOrders}</div>}<a className="admin-link" href="/admin">⚙ {t.admin} →</a></section>}
+        {tab === "account" && <section className="account-page content-section">{!session ? <div className="account-auth"><div><span className="sticker">KIYOYO MEMBERS</span><h1>{t.authTitle}</h1><p>{t.authSub}</p><div><button className="primary" onClick={() => openAuth("signup")}>{t.createAccount} →</button><button className="text-button" onClick={() => openAuth("signin")}>{t.signIn}</button></div></div><aside><b>♡</b><strong>{lang === "zh" ? "同步收藏" : "Save your favourites"}</strong><span>{lang === "zh" ? "换设备也不会丢失" : "Keep them across devices"}</span><b>✦</b><strong>{lang === "zh" ? "积分与奖励" : "Points & rewards"}</strong><span>{lang === "zh" ? "每次快乐都有回报" : "Get more from every order"}</span><b>▤</b><strong>{lang === "zh" ? "订单与地址" : "Orders & addresses"}</strong><span>{lang === "zh" ? "快速结账、随时修改" : "Check out and update faster"}</span></aside></div> : <><div className="member-card"><div><span>{t.member}</span><h1>{profile.nickname || t.memberHello}</h1><small>{t.points}</small><strong>2,480</strong></div><Logo /><i>VIP</i></div><section className="profile-panel"><div className="profile-head"><div><span className="eyebrow">{t.profile}</span><h2>{profile.nickname}</h2><p>{session.email} · {session.provider}</p></div><button onClick={openProfile}>{t.editProfile} →</button></div><div className="profile-facts"><div><span>{t.gender}</span><strong>{profile.gender || "—"}</strong></div><div><span>{t.age}</span><strong>{profile.age || "—"}</strong></div><div><span>{lang === "zh" ? "登录方式" : "Sign-in method"}</span><strong>{session.provider}</strong></div></div><div className="address-head"><h3>{t.addressBook}</h3><button onClick={() => openAddress()}>+ {t.addAddress}</button></div>{profile.addresses.length ? <div className="address-grid">{profile.addresses.map(address => <article key={address.id} className={address.isDefault ? "default" : ""}><div><strong>{address.label}</strong>{address.isDefault && <em>{t.defaultAddress}</em>}</div><p>{address.recipient} · {address.phone}</p><span>{address.line1}, {address.area}</span><div><button onClick={() => openAddress(address)}>{t.editAddress}</button>{!address.isDefault && <button onClick={() => setDefaultAddress(address.id)}>{lang === "zh" ? "设为默认" : "Make default"}</button>}</div></article>)}</div> : <button className="empty-address" onClick={() => openAddress()}>⌖ <span>{lang === "zh" ? "添加默认配送地址，让下次结账更快。" : "Add a default delivery address for faster checkout."}</span></button>}</section><div className="account-tabs"><button className="active">{t.coupons}</button><button>{t.rewards}</button><button>{t.history}</button></div><div className="coupon-grid"><article><b>20%</b><div><strong>ALL DRINKS</strong><span>MIN. SPEND KSh 800</span></div><button>USE</button></article><article className="gold"><b>2×</b><div><strong>DOUBLE POINTS</strong><span>FRIDAY AFTER 4PM</span></div><button>USE</button></article><article className="dark"><b>FREE</b><div><strong>SIZE UPGRADE</strong><span>MEMBER TREAT</span></div><button>USE</button></article></div><SectionHead title={t.history} />{orders.length ? <div className="order-history">{orders.map(o => { const orderAddress = profile.addresses.find(a => a.id === o.addressId); return <article key={o.id}><div><strong>{o.id}</strong><span>{new Date(o.createdAt).toLocaleString(lang === "zh" ? "zh-CN" : "en-KE", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Nairobi" })}</span>{o.channel !== "Pickup" && <small>{orderAddress ? `${orderAddress.label} · ${orderAddress.line1}` : (lang === "zh" ? "未设置配送地址" : "No delivery address")}</small>}</div><div><span className="status">{o.status}</span><strong>{money(o.total)}</strong>{o.channel !== "Pickup" && o.status === "Placed" && <button className="order-address-edit" onClick={() => setEditingOrderId(o.id)}>{t.changeAddress}</button>}</div></article>})}</div> : <div className="order-empty">{t.noOrders}</div>}<div className="account-links"><a className="admin-link" href="/admin">⚙ {t.admin} →</a><button onClick={() => { setSession(null); go("home"); }}>{t.signOut}</button></div></>}</section>}
       </main>
 
       <nav className="mobile-nav">{(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => go(item)}><i>{navIcons[item]}</i><span>{t.nav[item]}</span>{item === "cart" && cartCount > 0 && <b>{cartCount}</b>}</button>)}</nav>
@@ -283,9 +431,17 @@ export default function KiyoyoApp() {
 
       {storeModal && <div className="modal-backdrop" onMouseDown={e => e.currentTarget === e.target && setStoreModal(false)}><div className="store-modal"><button className="modal-close" onClick={() => setStoreModal(false)}>×</button><span className="sticker">6 NAIROBI STORES</span><h2>{t.storeTitle}</h2><p>{t.storeSub}</p><button className="locate-button" onClick={locate} disabled={locating}>⌖ {locating ? "Locating…" : t.useLocation}</button>{locationError && <small className="error">{t.locationDenied}</small>}<div className="store-list">{stores.map((store, index) => <button key={store.id} disabled={!store.lat} className={store.id === storeId ? "selected" : ""} onClick={() => { setStoreId(store.id); setStoreModal(false); }}><span className="store-index">0{index + 1}</span><span><strong>{store.name}</strong><small>{store.address}</small><em>{store.verified ? store.phone : t.unverified}</em></span>{distances[store.id] !== undefined && <b>{distances[store.id].toFixed(1)} km{Object.values(distances).sort((a, b) => a - b)[0] === distances[store.id] ? ` · ${t.closest}` : ""}</b>}</button>)}</div></div></div>}
 
-      {checkout && <div className="modal-backdrop"><div className="checkout-modal"><button className="modal-close" onClick={() => setCheckout(false)}>×</button><span className="sticker">TEST CHECKOUT</span><h2>{t.checkoutTitle}</h2><p>{selectedStore.name} · {money(subtotal)}</p><div className="fulfilment-cards"><button onClick={() => placeOrder("Pickup")}><i>⌂</i><strong>{t.pickup}</strong><span>{t.pickupNote}</span></button><button onClick={() => placeOrder("Delivery")}><i>⌁</i><strong>{t.delivery}</strong><span>{t.deliveryNote}</span></button>{detailedCart.some(x => x.product.kind === "goods") && <button onClick={() => placeOrder("Shipping")}><i>▧</i><strong>{t.shipping}</strong><span>Nairobi shipping demo</span></button>}</div><small className="mock-note">ⓘ {t.mockNotice}</small></div></div>}
+      {checkout && <div className="modal-backdrop"><div className="checkout-modal"><button className="modal-close" onClick={() => { setCheckout(false); setCheckoutChannel(null); }}>×</button><span className="sticker">TEST CHECKOUT</span><h2>{t.checkoutTitle}</h2><p>{selectedStore.name} · {money(subtotal)}</p><div className="fulfilment-cards"><button className={checkoutChannel === "Pickup" ? "selected" : ""} onClick={() => setCheckoutChannel("Pickup")}><i>⌂</i><strong>{t.pickup}</strong><span>{t.pickupNote}</span></button><button className={checkoutChannel === "Delivery" ? "selected" : ""} onClick={() => setCheckoutChannel("Delivery")}><i>⌁</i><strong>{t.delivery}</strong><span>{t.deliveryNote}</span></button>{detailedCart.some(x => x.product.kind === "goods") && <button className={checkoutChannel === "Shipping" ? "selected" : ""} onClick={() => setCheckoutChannel("Shipping")}><i>▧</i><strong>{t.shipping}</strong><span>Nairobi shipping demo</span></button>}</div>{checkoutChannel && checkoutChannel !== "Pickup" && <section className="checkout-address"><div><h3>{t.chooseAddress}</h3><button onClick={() => openAddress()}>+ {t.addAddress}</button></div>{profile.addresses.length ? profile.addresses.map(address => <label key={address.id} className={selectedAddressId === address.id ? "selected" : ""}><input type="radio" name="checkout-address" checked={selectedAddressId === address.id} onChange={() => setSelectedAddressId(address.id)} /><span><strong>{address.label}{address.isDefault ? ` · ${t.defaultAddress}` : ""}</strong><small>{address.recipient} · {address.phone}<br />{address.line1}, {address.area}</small></span><button type="button" onClick={() => openAddress(address)}>{t.editAddress}</button></label>) : <button className="empty-address compact" onClick={() => openAddress()}>+ {t.addAddress}</button>}</section>}{checkoutChannel && <button className="primary full checkout-submit" disabled={checkoutChannel !== "Pickup" && !selectedAddressId} onClick={() => placeOrder(checkoutChannel)}>{t.placeOrder} · {money(subtotal)}</button>}<small className="mock-note">ⓘ {t.mockNotice}</small></div></div>}
 
-      {success && <div className="modal-backdrop"><div className="success-modal"><span className="success-pop">✓</span><h2>{t.success}</h2><strong className="order-number">{success.id}</strong><PseudoQR code={success.pickupCode} /><code>{success.pickupCode}</code><p>{success.channel === "Pickup" ? t.qrHelp : `${success.channel} · ${selectedStore.name}`}</p><button className="primary full" onClick={() => { setSuccess(null); go("home"); }}>{t.done}</button></div></div>}
+      {authMode && <div className="modal-backdrop"><div className="auth-modal"><button className="modal-close" onClick={() => { setAuthMode(null); setPendingCheckout(false); }}>×</button><Logo /><span className="auth-kicker">{authMode === "signup" ? t.createAccount : t.signIn}</span><h2>{t.authTitle}</h2><p>{t.authSub}</p><button className="social google" onClick={() => completeAuth("google")}><b>G</b>{t.continueGoogle}</button><button className="social facebook" onClick={() => completeAuth("facebook")}><b>f</b>{t.continueFacebook}</button><div className="auth-divider"><span>{t.or}</span></div><label className="form-field"><span>{t.email}</span><input type="email" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} placeholder="you@example.com" autoComplete="email" /></label><label className="form-field"><span>{t.password}</span><input type="password" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} placeholder="6+ characters" autoComplete={authMode === "signup" ? "new-password" : "current-password"} /></label>{authError && <div className="form-error">{authError}</div>}<button className="primary full" onClick={() => completeAuth("password")}>{authMode === "signup" ? t.createAccount : t.signIn} →</button><button className="auth-switch" onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setAuthError(""); }}>{authMode === "signup" ? (lang === "zh" ? "已有账号？登录" : "Already a member? Sign in") : (lang === "zh" ? "还没有账号？注册" : "New here? Create account")}</button><small className="auth-test">ⓘ {t.testAuth}</small></div></div>}
+
+      {profileModal && <div className="modal-backdrop"><div className="profile-modal"><button className="modal-close" onClick={() => { setProfileModal(false); setPendingCheckout(false); }}>×</button><span className="sticker">MEMBER PROFILE</span><h2>{profile.nickname ? t.editProfile : t.completeProfile}</h2><p>{session?.email}</p><label className="form-field"><span>{t.nickname}</span><input value={profileForm.nickname} onChange={e => setProfileForm({ ...profileForm, nickname: e.target.value })} placeholder={lang === "zh" ? "大家怎么称呼你？" : "What should we call you?"} /></label><div className="form-split"><label className="form-field"><span>{t.gender}</span><select value={profileForm.gender} onChange={e => setProfileForm({ ...profileForm, gender: e.target.value as UserProfile["gender"] })}><option value="">—</option><option>Female</option><option>Male</option><option>Non-binary</option><option>Prefer not to say</option></select></label><label className="form-field"><span>{t.age}</span><input type="number" min="13" max="120" value={profileForm.age} onChange={e => setProfileForm({ ...profileForm, age: e.target.value })} placeholder="18+" /></label></div><small className="profile-privacy">{lang === "zh" ? "年龄与性别用于会员分析和更合适的推荐，不会公开展示。" : "Age and gender help with member insights and recommendations. They are never shown publicly."}</small><button className="primary full" disabled={!profileForm.nickname.trim() || Number(profileForm.age) < 13} onClick={saveProfile}>{t.save} →</button></div></div>}
+
+      {addressModal && <div className="modal-backdrop"><div className="address-modal"><button className="modal-close" onClick={() => setAddressModal(false)}>×</button><span className="sticker">NAIROBI DELIVERY</span><h2>{addressForm.id && profile.addresses.some(a => a.id === addressForm.id) ? t.editAddress : t.addAddress}</h2><div className="form-split"><label className="form-field"><span>{t.addressLabel}</span><input value={addressForm.label} onChange={e => setAddressForm({ ...addressForm, label: e.target.value })} /></label><label className="form-field"><span>{t.recipient}</span><input value={addressForm.recipient} onChange={e => setAddressForm({ ...addressForm, recipient: e.target.value })} /></label></div><label className="form-field"><span>{t.phone}</span><input type="tel" value={addressForm.phone} onChange={e => setAddressForm({ ...addressForm, phone: e.target.value })} placeholder="+254 7•• ••• •••" /></label><label className="form-field"><span>{t.area}</span><input value={addressForm.area} onChange={e => setAddressForm({ ...addressForm, area: e.target.value })} placeholder="Kilimani, Westlands, CBD…" /></label><label className="form-field"><span>{t.addressLine}</span><input value={addressForm.line1} onChange={e => setAddressForm({ ...addressForm, line1: e.target.value })} /></label><label className="form-field"><span>{t.instructions}</span><textarea value={addressForm.instructions} onChange={e => setAddressForm({ ...addressForm, instructions: e.target.value })} /></label><label className="default-check"><input type="checkbox" checked={addressForm.isDefault} onChange={e => setAddressForm({ ...addressForm, isDefault: e.target.checked })} /><span>{t.makeDefault}</span></label>{addressError && <div className="form-error">{addressError}</div>}<button className="primary full" onClick={saveAddress}>{t.save} →</button></div></div>}
+
+      {editingOrderId && !addressModal && <div className="modal-backdrop"><div className="order-address-modal"><button className="modal-close" onClick={() => setEditingOrderId(null)}>×</button><span className="sticker">ACTIVE ORDER</span><h2>{t.changeAddress}</h2><p>{editingOrderId}</p>{profile.addresses.map(address => <button key={address.id} onClick={() => changeOrderAddress(address.id)}><strong>{address.label}{address.isDefault ? ` · ${t.defaultAddress}` : ""}</strong><span>{address.recipient} · {address.line1}, {address.area}</span></button>)}<button className="add-order-address" onClick={() => openAddress()}>+ {t.addAddress}</button></div></div>}
+
+      {success && <div className="modal-backdrop"><div className="success-modal"><span className="success-pop">✓</span><h2>{t.success}</h2><strong className="order-number">{success.id}</strong>{success.channel === "Pickup" ? <><PseudoQR code={success.pickupCode} /><code>{success.pickupCode}</code><p>{t.qrHelp}</p></> : <><div className="delivery-success">⌁</div><p>{success.channel} · {profile.addresses.find(a => a.id === success.addressId)?.line1}</p></>}<button className="primary full" onClick={() => { setSuccess(null); go("home"); }}>{t.done}</button></div></div>}
     </div>
   );
 }

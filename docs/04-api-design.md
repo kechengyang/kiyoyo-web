@@ -27,7 +27,13 @@
 
 ### 收藏与账户
 
+- `POST /v1/auth/bootstrap` — 客户端完成 Identity Platform 登录后，用 ID token 创建/加载 KIYOYO 用户。
 - `GET /v1/me`、`PATCH /v1/me`
+- `GET /v1/me/addresses`
+- `POST /v1/me/addresses`
+- `PATCH /v1/me/addresses/{addressId}`
+- `DELETE /v1/me/addresses/{addressId}`
+- `PUT /v1/me/addresses/{addressId}/default`
 - `GET /v1/me/favorites`
 - `PUT /v1/me/favorites/{productId}`、`DELETE /v1/me/favorites/{productId}`
 - `GET /v1/me/loyalty`
@@ -64,6 +70,9 @@
 
 - `GET /v1/orders/{orderNumber}`
 - `POST /v1/orders/{orderNumber}/cancel`
+- `PATCH /v1/orders/{orderNumber}/delivery-address` — 仅允许可编辑状态，服务端重新校验配送范围并写地址变更事件。
+
+地址请求不接受 `is_default` 作为无条件覆盖；设置默认地址要在事务中确保每个用户最多一个默认项。订单使用独立地址快照，修改地址簿不会改写已有订单。
 
 ## Admin API
 

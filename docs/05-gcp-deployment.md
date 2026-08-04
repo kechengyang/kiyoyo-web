@@ -34,6 +34,14 @@
 - 连接池严格限制，按 Cloud Run 最大实例数预算总连接数。初始可设 API concurrency 40、max instances 5、每实例 pool 5，再按指标调优。
 - Admin API 与 Customer API 可先共用服务，但路由强制 RBAC；规模扩大后再拆。
 
+## Identity Platform 配置
+
+- 启用 Email/Password、Google、Facebook provider；邮箱登录启用邮箱验证和重置密码邮件模板。
+- Google OAuth 配置 consent screen、正式域名和 dev/staging/prod 回调地址。
+- Facebook 创建 KIYOYO Meta App，Secret 存 Secret Manager，完成隐私政策、数据删除 URL 和上线审核。
+- 客户前端只使用公开 Web config；provider secret 仅存在 GCP/Identity Platform。Commerce API 验证 Identity Platform ID token 后才读写个人资料和地址。
+- 本地开发使用 emulator 或明确标记的 mock adapter；正式 build 中禁止自动回退到 mock auth。
+
 ## CI/CD
 
 ```mermaid

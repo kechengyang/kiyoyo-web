@@ -8,6 +8,15 @@
 - Admin 强制 MFA、短 session、空闲超时和敏感操作重新认证。
 - 每个管理写操作记录 actor、请求 ID、实体、前后状态、门店和时间。
 
+## 客户认证
+
+- Identity Platform 负责邮箱密码、Google 与 Facebook OAuth；KIYOYO 服务绝不接收或保存用户密码。
+- 邮箱注册启用邮箱验证、找回密码、弱密码策略与登录限流。
+- Google/Facebook token 只在官方 SDK/后端验证流程中使用，不写日志或 localStorage。
+- OAuth state、nonce、PKCE 和 redirect URI 必须由官方 SDK/配置管理；不同环境使用不同 OAuth 应用或严格的回调域名列表。
+- 客户资料中的昵称、性别、年龄和地址均为个人信息；编辑、导出、删除和保留期限纳入隐私流程。
+- Facebook 登录上线前需要 Meta App Review、隐私政策 URL 与数据删除回调；Google 需要配置 OAuth consent screen 和正式域名。
+
 ## 取餐二维码
 
 二维码内容使用高熵不透明 token 或签名 payload，不直接放订单号、用户 ID、手机号或可预测序列。数据库只保存 token 的 SHA-256 hash。

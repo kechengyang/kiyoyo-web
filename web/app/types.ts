@@ -45,4 +45,31 @@ export type Order = {
   total: number;
   items: CartItem[];
   pickupCode: string;
+  addressId?: string;
+};
+
+export type AuthProvider = "password" | "google" | "facebook";
+
+export type AuthSession = {
+  id: string;
+  email: string;
+  provider: AuthProvider;
+};
+
+export type Address = {
+  id: string;
+  label: string;
+  recipient: string;
+  phone: string;
+  area: string;
+  line1: string;
+  instructions?: string;
+  isDefault: boolean;
+};
+
+export type UserProfile = {
+  nickname: string;
+  gender: "Female" | "Male" | "Non-binary" | "Prefer not to say" | "";
+  age: string;
+  addresses: Address[];
 };

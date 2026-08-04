@@ -25,8 +25,9 @@ erDiagram
 
 ### 用户与权限
 
-- `users(id, external_auth_id, phone_e164, email, display_name, locale, status, created_at)`
-- `addresses(id, user_id, label, contact_name, phone_e164, line1, area, city, lat, lng, is_default)`
+- `users(id, external_auth_id, auth_provider, phone_e164, email, nickname, gender, birth_year nullable, locale, status, created_at)`
+- `user_identities(id, user_id, provider, provider_subject, verified_email nullable, linked_at)`；唯一 `(provider, provider_subject)`。
+- `addresses(id, user_id, label, contact_name, phone_e164, line1, area, city, lat, lng, delivery_instructions, is_default)`
 - `roles(id, code)`、`user_roles(user_id, role_id, store_id nullable)`
 - 门店员工角色必须带 `store_id`，总部角色可为空。
 
@@ -51,8 +52,9 @@ erDiagram
 
 - `orders(id, order_number unique, user_id, currency, subtotal, discount, delivery_fee, total, payment_status, is_test, created_at)`
 - `order_items(id, order_id, fulfillment_group_id, product_id, variant_id, kind, name_snapshot, sku_snapshot, unit_price, quantity, customization_json, line_total)`
-- `fulfillment_groups(id, order_id, type PICKUP|DELIVERY|SHIPPING, store_id nullable, address_snapshot_json nullable, status, promised_at)`
+- `fulfillment_groups(id, order_id, type PICKUP|DELIVERY|SHIPPING, store_id nullable, address_id nullable, address_snapshot_json nullable, status, promised_at)`
 - `status_events(id, fulfillment_group_id, from_status, to_status, actor_id, reason, created_at)`
+- `fulfillment_address_events(id, fulfillment_group_id, old_address_snapshot_json, new_address_snapshot_json, actor_id, reason, created_at)`
 - `pickup_tokens(id, fulfillment_group_id unique, token_hash unique, expires_at, redeemed_at, redeemed_by, redeemed_store_id)`
 
 ### 支付、积分和审计

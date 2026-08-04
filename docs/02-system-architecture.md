@@ -46,6 +46,12 @@ MVP 不建议一开始拆微服务。一个 Cloud Run 服务内按领域隔离�
 
 ## 关键业务流
 
+### 注册与登录
+
+客户前端使用 Identity Platform Web SDK 完成邮箱密码、Google 和 Facebook 登录，取得 ID token 后调用 Commerce API。API 验证 token 的签名、issuer、audience 和过期时间，以 `sub` 作为稳定外部身份键，再加载 `users`、`profiles`、`addresses` 与授权。前端传来的 email/provider 只用于展示，不用于授权判断。
+
+OAuth redirect URI、Facebook App ID/Secret 和允许域名按 dev/staging/prod 隔离。当前 localhost 版本只模拟 UI 与本地 session，不连接真实身份提供商。
+
 ### 创建订单
 
 ```mermaid
