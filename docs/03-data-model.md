@@ -35,7 +35,9 @@ erDiagram
 
 - `stores(id, code, name, address, phone, lat, lng, timezone, status, pickup_enabled, delivery_enabled, opening_hours_json)`
 - `categories(id, kind, slug, name_en, name_zh, sort_order, active)`
-- `products(id, kind DRINK|GOODS, slug, name_en, name_zh, description_en, description_zh, image_key, active)`
+- `products(id, kind DRINK|GOODS, slug, name_en, name_zh, description_en, description_zh, image_key, base_price, discount_percent, active, catalog_version, updated_at, updated_by)`
+- `product_media(id, product_id, object_key, content_type, width, height, bytes, status PROCESSING|READY|REJECTED, created_at)`
+- `product_change_logs(id, product_id, actor_id, before_json, after_json, created_at)`
 - `product_variants(id, product_id, sku, option_json, base_price, stock_tracked, active)`
 - `store_products(store_id, variant_id, price, available, stock_on_hand, stock_reserved, updated_at)`
 - 商品快照必须复制到 `order_items`，避免改名/改价影响历史订单。
@@ -69,6 +71,7 @@ erDiagram
 
 - `orders.order_number`、`pickup_tokens.token_hash`、`payments.idempotency_key` 唯一。
 - `store_products` 唯一 `(store_id, variant_id)`。
+- `discount_percent BETWEEN 0 AND 90`；折后价由定价模块计算，不单独接受前端写入。
 - `order_items.quantity > 0`；所有金额 `>= 0`。
 - `pickup_tokens.redeemed_at` 通过单事务原子设置。
 - 常用索引：

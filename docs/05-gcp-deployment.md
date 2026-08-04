@@ -64,6 +64,7 @@ flowchart LR
 - Cloud Run：`min-instances=0`、限制 `max-instances`，静态图片不经 API。
 - Cloud SQL：MVP 单区 shared-core；上线前确认规格支持 SLA 和负载。HA 等稳定营收后启用。
 - Storage/CDN：上传时生成多尺寸 WebP/AVIF；immutable 缓存一年。
+- 商品图片使用不可变 object key（含内容 hash/version），不要覆盖同名文件；更新数据库引用即可让 CDN 安全切换，旧图按生命周期策略清理。
 - Maps：限制 API key 的网站域名/API；只开放需要的 API；设置配额。
 - Logging：过滤健康检查和低价值访问日志，设置 30 天保留。
 - Budget：设置月预算和 50/80/100% 告警。注意预算告警不会自动停止资源。

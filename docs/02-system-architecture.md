@@ -94,6 +94,10 @@ sequenceDiagram
 - 幂等：结账、支付回调、核销、退款都必须有唯一幂等键或 provider event ID。
 - 超时：外部调用必须设置短超时、有限重试和死信/人工处理队列。
 
+### 商品发布与前端同步
+
+Admin 调用 Catalog API 写入 PostgreSQL，并递增 `catalog_version`。图片通过签名上传直接进入 Cloud Storage 临时区，后台校验 MIME、大小和内容后生成 WebP/AVIF 多尺寸版本，再把 object key 绑定到产品。成功事务写出 `PRODUCT_UPDATED` 事件；前端使用短 TTL/CDN revalidation 或版本号重新获取目录。下单 API 永远按数据库当前价格、折扣、上架状态和门店库存重新校验，不信任前端缓存。
+
 ## 环境
 
 - `local`：前端 localStorage + mock 数据。

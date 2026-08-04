@@ -85,7 +85,13 @@
 - `GET /v1/admin/customers/{id}`
 - `POST /v1/admin/loyalty/adjustments` — 管理员，强制 reason。
 - `GET /v1/admin/stores`、`PATCH /v1/admin/stores/{id}`
+- `GET /v1/admin/products?kind=DRINK&status=ACTIVE&query=...`
+- `PATCH /v1/admin/products/{id}` — 名称、基础价、折扣和上架状态；要求 `If-Match`/version 防止覆盖他人修改。
+- `POST /v1/admin/products/{id}/media-upload` — 返回 Cloud Storage 短期 signed upload URL。
+- `POST /v1/admin/products/{id}/media-confirm` — 确认上传并启动校验/缩略图处理。
 - `GET /v1/admin/audit-logs?...` — 管理员只读。
+
+商品更新响应返回新的 `catalog_version`、`effective_price` 和媒体状态。前端目录接口返回 `ETag`；客户端版本过期时重新获取。`active=false` 或媒体仍在 PROCESSING 的产品不可进入新订单。
 
 核销请求：
 

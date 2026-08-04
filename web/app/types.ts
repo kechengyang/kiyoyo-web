@@ -13,6 +13,9 @@ export type Product = {
   price: number;
   image: string;
   badge?: string;
+  active?: boolean;
+  discountPercent?: number;
+  updatedAt?: string;
 };
 
 export type Store = {

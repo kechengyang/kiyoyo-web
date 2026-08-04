@@ -26,6 +26,7 @@ npm run dev
 - `kiyoyo-orders`：本地下单记录，Admin 会读取。
 - `kiyoyo-session`：本地模拟登录 session，不是真实安全认证。
 - `kiyoyo-profile`：昵称、性别、年龄和本地地址簿。
+- `kiyoyo-catalog`：本地商品目录，Admin 和客户商城跨标签页同步价格、折扣、上下架和图片。
 - 订单和 QR 是浏览器模拟，不可用于真实营业。
 - Admin 自带示例订单；Ready 示例码 `P7LW9X3A` 可演示首次成功、再次失败。
 
@@ -56,6 +57,8 @@ web/
 8. 用 Terraform 创建 dev/staging/prod，接 CI/CD。
 
 当前 Google/Facebook 按钮只建立清晰标记的本地演示 session，不访问第三方网站、不取得真实 token。生产启用顺序：创建 OAuth 应用 → 配置 Identity Platform provider → 限制授权域名/回调 → API 验证 ID token → 邮箱验证和找回密码 → staging E2E → 生产开关。
+
+商品图片上传在 localhost 会把小于 1.5MB 的 JPG/PNG/WebP 暂存为浏览器 Data URL，只用于流程演示。生产环境必须改为 Cloud Storage signed upload，并保存媒体 object key，不能把图片二进制或 Data URL 写进 PostgreSQL/localStorage。
 
 推荐 monorepo：
 
