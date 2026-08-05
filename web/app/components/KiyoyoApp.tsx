@@ -257,7 +257,8 @@ export default function KiyoyoApp() {
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [distances, setDistances] = useState<Record<string, number>>({});
-  const [search, setSearch] = useState("");
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalQuery, setGlobalQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const [shopMode, setShopMode] = useState<"drinks" | "goods">("drinks");
   const [bannerIndex, setBannerIndex] = useState(0);
@@ -289,17 +290,31 @@ export default function KiyoyoApp() {
     return () => window.clearInterval(timer);
   }, [bannerPaused]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (event.key === "/" && !isTyping) {
+        event.preventDefault();
+        setGlobalSearchOpen(true);
+      }
+      if (event.key === "Escape") setGlobalSearchOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const detailedCart = cart.map(item => ({ ...item, product: catalog.find(p => p.id === item.productId)! })).filter(x => x.product);
   const hasUnavailable = detailedCart.some(item => item.product.active === false);
   const subtotal = detailedCart.filter(item => item.product.active !== false).reduce((sum, item) => sum + salePrice(item.product) * item.quantity + (item.toppings?.length || 0) * 50 * item.quantity, 0);
 
   const filteredProducts = products.filter(p => {
-    const query = search.toLowerCase();
-    const matchesText = !query || `${p.name} ${p.nameZh} ${p.category}`.toLowerCase().includes(query);
     const matchesMode = shopMode === "drinks" ? p.kind === "drink" : p.kind === "goods";
     const matchesFilter = ["All", "Drinks", "Goods"].includes(filter) || p.category === filter;
-    return matchesText && matchesMode && matchesFilter;
+    return matchesMode && matchesFilter;
   });
+  const normalizedGlobalQuery = globalQuery.trim().toLowerCase();
+  const globalResults = normalizedGlobalQuery ? products.filter(product => `${product.name} ${product.nameZh} ${product.category} ${product.description} ${product.descriptionZh}`.toLowerCase().includes(normalizedGlobalQuery)).slice(0, 10) : [];
 
   const openProduct = (product: Product) => {
     setModalProduct(product);
@@ -412,7 +427,6 @@ export default function KiyoyoApp() {
   const openShop = (mode: "drinks" | "goods", nextFilter?: string) => {
     setShopMode(mode);
     setFilter(nextFilter || (mode === "drinks" ? "Drinks" : "Goods"));
-    setSearch("");
     go("shop");
   };
   const campaigns = [
@@ -429,7 +443,7 @@ export default function KiyoyoApp() {
       <header className="site-header">
         <button className="store-button" onClick={() => setStoreModal(true)}><span>⌖</span><span><small>{t.location}</small><strong>{selectedStore.area}⌄</strong></span></button>
         <button className="brand-button" onClick={() => go("home")}><Logo /></button>
-        <div className="header-actions"><button className="lang" onClick={() => setLang(lang === "en" ? "zh" : "en")}>{lang === "en" ? "中文" : "EN"}</button><button className="desktop-cart" onClick={() => go("cart")}>BAG <b>{cartCount}</b></button></div>
+        <div className="header-actions"><button className="global-search-trigger" onClick={() => setGlobalSearchOpen(true)} aria-label={t.search}><span className="search-mark" aria-hidden="true" /><strong>{lang === "zh" ? "搜索" : "Search"}</strong><kbd>/</kbd></button><button className="lang" onClick={() => setLang(lang === "en" ? "zh" : "en")}>{lang === "en" ? "中文" : "EN"}</button><button className="desktop-cart" onClick={() => go("cart")}>BAG <b>{cartCount}</b></button></div>
       </header>
       <nav className="desktop-nav">
         {(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => item === "shop" ? openShop("drinks") : go(item)}>{t.nav[item]}{item === "cart" && cartCount > 0 && <sup>{cartCount}</sup>}</button>)}
@@ -451,16 +465,15 @@ export default function KiyoyoApp() {
         </>}
 
         {tab === "shop" && <section className="shop-page content-section">
-          <div className="shop-mode-switch"><button className={shopMode === "drinks" ? "active" : ""} onClick={() => openShop("drinks")}><NavIcon item="shop" /><span><strong>{lang === "zh" ? "饮品点单" : "Drink studio"}</strong><small>{lang === "zh" ? "现点现做 · 可定制" : "Made fresh · Your way"}</small></span></button><button className={shopMode === "goods" ? "active" : ""} onClick={() => openShop("goods")}><span className="goods-mode-icon">◇</span><span><strong>{lang === "zh" ? "IP 商品" : "KIYOYO goods"}</strong><small>{lang === "zh" ? "穿搭 · 家居 · 收藏" : "Wear · Live · Collect"}</small></span></button></div>
+          <div className="shop-mode-switch" role="tablist" aria-label={lang === "zh" ? "商城模式" : "Shop mode"}><button role="tab" aria-selected={shopMode === "drinks"} className={shopMode === "drinks" ? "active" : ""} onClick={() => openShop("drinks")}>{lang === "zh" ? "饮品" : "Drinks"}</button><button role="tab" aria-selected={shopMode === "goods"} className={shopMode === "goods" ? "active" : ""} onClick={() => openShop("goods")}>{lang === "zh" ? "好物" : "Goods"}</button></div>
           {shopMode === "drinks" ? <>
-            <div className="drink-studio-hero"><div><span className="drink-kicker">KIYOYO DRINK STUDIO / {selectedStore.area}</span><h1>{lang === "zh" ? "先选心情，\n再定制一杯。" : "Pick a mood.\nMake it yours."}</h1><p>{lang === "zh" ? "从茶底到甜度、冰量和加料，每一杯都按你的方式现做。" : "Choose a flavour, then tune the size, sweetness, ice and toppings to you."}</p><button className="store-status" onClick={() => setStoreModal(true)}><i />{selectedStore.area} · {lang === "zh" ? "预计 15–20 分钟" : "Ready in 15–20 min"}<b>Change →</b></button></div><div className="drink-flow"><span><b>01</b>{lang === "zh" ? "选口味" : "Pick"}</span><span><b>02</b>{lang === "zh" ? "做定制" : "Tune"}</span><span><b>03</b>{lang === "zh" ? "自取或外送" : "Get it"}</span></div></div>
-            <div className="mood-picker"><button onClick={() => setFilter("Milk Tea")} className={filter === "Milk Tea" ? "active creamy" : "creamy"}><i>●</i><strong>{lang === "zh" ? "浓郁奶香" : "Creamy"}</strong><small>Milk Tea</small></button><button onClick={() => setFilter("Fruit Tea")} className={filter === "Fruit Tea" ? "active bright" : "bright"}><i>✦</i><strong>{lang === "zh" ? "清爽果香" : "Bright & fresh"}</strong><small>Fruit Tea</small></button><button onClick={() => setFilter("Coffee")} className={filter === "Coffee" ? "active energy" : "energy"}><i>↯</i><strong>{lang === "zh" ? "能量加满" : "Energy"}</strong><small>Coffee</small></button><button onClick={() => setFilter("Dessert")} className={filter === "Dessert" ? "active treat" : "treat"}><i>♡</i><strong>{lang === "zh" ? "奖励一下" : "Treat mode"}</strong><small>Dessert</small></button></div>
-            <div className="shop-tools drink-tools"><label className="search-box"><span>⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder={lang === "zh" ? "搜索饮品" : "Search the drink menu"} /></label><div className="filters">{["Drinks", "Milk Tea", "Fruit Tea", "Coffee", "Jelly Tea", "Dessert"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "Drinks" ? (lang === "zh" ? "全部饮品" : "All drinks") : f}</button>)}</div></div>
+            <div className="drink-studio-hero"><img src="/images/events/drink-studio-real-lively-v1.jpg" alt="Three KIYOYO fruit drinks with mango, passion fruit, grapes, peach and strawberries" /><div className="drink-studio-copy"><div className="drink-brand-lockup"><Logo /><b>DROP 01</b></div><span>{lang === "zh" ? "内罗毕饮品定制" : "DRINK STUDIO · NAIROBI"}</span><h1>{lang === "zh" ? "新鲜现做，自在定制。" : "Made fresh. Made yours."}</h1><div><button className="drink-hero-cta" onClick={() => document.getElementById("drink-menu")?.scrollIntoView({ behavior: "smooth" })}>{lang === "zh" ? "选择饮品" : "Choose a drink"} →</button><button className="store-status" onClick={() => setStoreModal(true)}><i />{selectedStore.area} · {lang === "zh" ? "15–20 分钟" : "15–20 min"}<b>{lang === "zh" ? "更换" : "Change"}</b></button></div></div></div>
+            <div id="drink-menu" className="shop-tools drink-tools"><div className="filters">{["Drinks", "Milk Tea", "Fruit Tea", "Coffee", "Jelly Tea", "Dessert"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "Drinks" ? (lang === "zh" ? "全部饮品" : "All drinks") : f}</button>)}</div></div>
             <div className="drink-catalog-head"><div><span>{lang === "zh" ? "本店菜单" : "YOUR STORE MENU"}</span><h2>{filter === "Drinks" || filter === "All" ? (lang === "zh" ? "全部饮品" : "All drinks") : filter}</h2></div><strong>{filteredProducts.length} {lang === "zh" ? "款可选" : "choices"}</strong></div>
             <div className="product-grid drink-grid">{filteredProducts.map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} drinkShop />)}</div>
           </> : <>
             <div className="goods-shop-heading"><span className="sticker">KIYOYO MARKET</span><h1>{lang === "zh" ? "把快乐带回家。" : "Keep the good mood."}</h1><p>{lang === "zh" ? "服饰、家居与可以收藏的小东西。" : "Wear it, live with it, collect it."}</p></div>
-            <div className="shop-tools"><label className="search-box"><span>⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder={lang === "zh" ? "搜索 KIYOYO 商品" : "Search KIYOYO goods"} /></label><div className="filters">{["Goods", "Fashion", "Home", "Outdoor", "Pets", "Accessories", "Collectibles"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "Goods" ? (lang === "zh" ? "全部商品" : "All goods") : f}</button>)}</div></div>
+            <div className="shop-tools"><div className="filters">{["Goods", "Fashion", "Home", "Outdoor", "Pets", "Accessories", "Collectibles"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "Goods" ? (lang === "zh" ? "全部商品" : "All goods") : f}</button>)}</div></div>
             <div className="product-grid">{filteredProducts.map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div>
           </>}
         </section>}
@@ -471,6 +484,8 @@ export default function KiyoyoApp() {
 
         {tab === "account" && <section className="account-page content-section">{!session ? <div className="account-auth"><div><span className="sticker">KIYOYO MEMBERS</span><h1>{t.authTitle}</h1><p>{t.authSub}</p><div><button className="primary" onClick={() => openAuth("signup")}>{t.createAccount} →</button><button className="text-button" onClick={() => openAuth("signin")}>{t.signIn}</button></div></div><aside><b>♡</b><strong>{lang === "zh" ? "同步收藏" : "Save your favourites"}</strong><span>{lang === "zh" ? "换设备也不会丢失" : "Keep them across devices"}</span><b>✦</b><strong>{lang === "zh" ? "积分与奖励" : "Points & rewards"}</strong><span>{lang === "zh" ? "每次快乐都有回报" : "Get more from every order"}</span><b>▤</b><strong>{lang === "zh" ? "订单与地址" : "Orders & addresses"}</strong><span>{lang === "zh" ? "快速结账、随时修改" : "Check out and update faster"}</span></aside></div> : <><div className="member-card"><div><span>{t.member}</span><h1>{profile.nickname || t.memberHello}</h1><small>{t.points}</small><strong>2,480</strong></div><Logo /><i>VIP</i></div><section className="profile-panel"><div className="profile-head"><div><span className="eyebrow">{t.profile}</span><h2>{profile.nickname}</h2><p>{session.email} · {session.provider}</p></div><button onClick={openProfile}>{t.editProfile} →</button></div><div className="profile-facts"><div><span>{t.gender}</span><strong>{profile.gender || "—"}</strong></div><div><span>{t.age}</span><strong>{profile.age || "—"}</strong></div><div><span>{lang === "zh" ? "登录方式" : "Sign-in method"}</span><strong>{session.provider}</strong></div></div><div className="address-head"><h3>{t.addressBook}</h3><button onClick={() => openAddress()}>+ {t.addAddress}</button></div>{profile.addresses.length ? <div className="address-grid">{profile.addresses.map(address => <article key={address.id} className={address.isDefault ? "default" : ""}><div><strong>{address.label}</strong>{address.isDefault && <em>{t.defaultAddress}</em>}</div><p>{address.recipient} · {address.phone}</p><span>{address.line1}, {address.area}</span><div><button onClick={() => openAddress(address)}>{t.editAddress}</button>{!address.isDefault && <button onClick={() => setDefaultAddress(address.id)}>{lang === "zh" ? "设为默认" : "Make default"}</button>}</div></article>)}</div> : <button className="empty-address" onClick={() => openAddress()}>⌖ <span>{lang === "zh" ? "添加默认配送地址，让下次结账更快。" : "Add a default delivery address for faster checkout."}</span></button>}</section><div className="account-tabs"><button className="active">{t.coupons}</button><button>{t.rewards}</button><button>{t.history}</button></div><div className="coupon-grid"><article><b>20%</b><div><strong>ALL DRINKS</strong><span>MIN. SPEND KSh 800</span></div><button>USE</button></article><article className="gold"><b>2×</b><div><strong>DOUBLE POINTS</strong><span>FRIDAY AFTER 4PM</span></div><button>USE</button></article><article className="dark"><b>FREE</b><div><strong>SIZE UPGRADE</strong><span>MEMBER TREAT</span></div><button>USE</button></article></div><SectionHead title={t.history} />{orders.length ? <div className="order-history">{orders.map(o => { const orderAddress = profile.addresses.find(a => a.id === o.addressId); return <article key={o.id}><div><strong>{o.id}</strong><span>{new Date(o.createdAt).toLocaleString(lang === "zh" ? "zh-CN" : "en-KE", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Nairobi" })}</span>{o.channel !== "Pickup" && <small>{orderAddress ? `${orderAddress.label} · ${orderAddress.line1}` : (lang === "zh" ? "未设置配送地址" : "No delivery address")}</small>}</div><div><span className="status">{o.status}</span><strong>{money(o.total)}</strong>{o.channel !== "Pickup" && o.status === "Placed" && <button className="order-address-edit" onClick={() => setEditingOrderId(o.id)}>{t.changeAddress}</button>}</div></article>})}</div> : <div className="order-empty">{t.noOrders}</div>}<div className="account-links"><a className="admin-link" href="/admin">⚙ {t.admin} →</a><button onClick={() => { setSession(null); go("home"); }}>{t.signOut}</button></div></>}</section>}
       </main>
+
+      {globalSearchOpen && <div className="global-search-overlay" onMouseDown={event => event.currentTarget === event.target && setGlobalSearchOpen(false)}><section className="global-search-panel" role="dialog" aria-modal="true" aria-labelledby="global-search-title"><div className="global-search-head"><div><Logo /><span id="global-search-title">{lang === "zh" ? "搜索全部 KIYOYO" : "Search all KIYOYO"}</span></div><button onClick={() => setGlobalSearchOpen(false)} aria-label={lang === "zh" ? "关闭搜索" : "Close search"}>×</button></div><label className="global-search-input"><span className="search-mark" aria-hidden="true" /><input autoFocus value={globalQuery} onChange={event => setGlobalQuery(event.target.value)} placeholder={t.search} /><kbd>ESC</kbd></label>{!normalizedGlobalQuery ? <div className="search-suggestions"><span>{lang === "zh" ? "热门搜索" : "Popular searches"}</span><div>{["Fruit Tea", "Milk Tea", "Fashion", "Accessories"].map(term => <button key={term} onClick={() => setGlobalQuery(term)}>{term}</button>)}</div></div> : globalResults.length ? <div className="global-search-results"><div className="search-result-count"><span>{lang === "zh" ? "搜索结果" : "Results"}</span><strong>{globalResults.length}</strong></div>{globalResults.map(product => <button key={product.id} onClick={() => { setGlobalSearchOpen(false); setGlobalQuery(""); openProduct(product); }}><img src={product.image} alt="" /><span><small>{product.kind === "drink" ? (lang === "zh" ? "饮品" : "Drink") : (lang === "zh" ? "商品" : "Goods")} · {product.category}</small><strong>{lang === "zh" ? product.nameZh : product.name}</strong></span><b>{money(salePrice(product))}</b></button>)}</div> : <div className="global-search-empty"><strong>{lang === "zh" ? "没有找到相关内容" : "No matches found"}</strong><span>{lang === "zh" ? "试试饮品名称、品类或商品名称。" : "Try a drink, category, or product name."}</span></div>}</section></div>}
 
       <nav className="mobile-nav">{(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={`${tab === item ? "active" : ""} ${item === "shop" ? "drink-entry" : ""}`} onClick={() => item === "shop" ? openShop("drinks") : go(item)}><NavIcon item={item} /><span>{item === "shop" ? (lang === "zh" ? "点饮品" : "DRINK") : t.nav[item]}</span>{item === "cart" && cartCount > 0 && <b>{cartCount}</b>}</button>)}</nav>
 

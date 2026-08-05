@@ -1,0 +1,4 @@
+interface:
+  display_name: "KIYOYO UI/UX"
+  short_description: "Unify KIYOYO commerce UI and interactions"
+  default_prompt: "Use $kiyoyo-uiux to design or review this KIYOYO interface consistently."
