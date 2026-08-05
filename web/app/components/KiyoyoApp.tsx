@@ -210,7 +210,7 @@ function Logo() {
 
 function ProductCard({ product, lang, saved, onSave, onOpen }: { product: Product; lang: Lang; saved: boolean; onSave: () => void; onOpen: () => void }) {
   return (
-    <article className="product-card">
+    <article className={`product-card ${product.kind === "drink" ? "drink-product" : "goods-product"}`}>
       <button className="product-image" onClick={onOpen} aria-label={`Open ${product.name}`}>
         <img src={product.image} alt={lang === "zh" ? product.nameZh : product.name} />
         {(product.discountPercent || 0) > 0 ? <span className="badge sale-badge">−{product.discountPercent}%</span> : product.badge && <span className="badge">{product.badge}</span>}

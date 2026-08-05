@@ -22,6 +22,7 @@ test("server-renders the KIYOYO customer storefront", async () => {
   assert.match(html, /Order a drink/);
   assert.match(html, /Assam Boba Milk Tea/);
   assert.match(html, /KSh 420/);
+  assert.match(html, /product-card drink-product/);
 });
 
 test("server-renders the Nairobi operations admin", async () => {
