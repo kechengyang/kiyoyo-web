@@ -12,6 +12,7 @@ export type ProductTag = {
 
 export type Product = {
   id: string;
+  apiId?: string;
   kind: ProductKind;
   category: string;
   name: string;
@@ -26,10 +27,12 @@ export type Product = {
   active?: boolean;
   discountPercent?: number;
   updatedAt?: string;
+  catalogVersion?: number;
 };
 
 export type Store = {
   id: string;
+  apiId?: string;
   name: string;
   area: string;
   address: string;
@@ -51,6 +54,7 @@ export type CartItem = {
 
 export type Order = {
   id: string;
+  fulfillmentId?: string;
   createdAt: string;
   status: "Placed" | "Preparing" | "Ready" | "Completed";
   channel: "Pickup" | "Delivery" | "Shipping";

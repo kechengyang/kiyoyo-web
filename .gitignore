@@ -12,3 +12,9 @@ coverage/
 photo/
 web/.open-next/
 web/.vinext/
+.firebase/
+.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.*
+web/out/

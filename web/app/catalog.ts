@@ -3,21 +3,50 @@
 import { useEffect, useState } from "react";
 import { products as seedProducts } from "./data";
 import type { Product, ProductTag } from "./types";
+import { fetchCatalog, fetchProductTags } from "./platform";
 
 export const CATALOG_STORAGE_KEY = "kiyoyo-catalog";
 export const PRODUCT_TAGS_STORAGE_KEY = "kiyoyo-product-tags";
 
 export const defaultProductTags: ProductTag[] = [
-  { id: "tag-new", label: "NEW", tone: "red", createdAt: "2026-08-05T00:00:00.000Z" },
-  { id: "tag-hot", label: "HOT", tone: "yellow", createdAt: "2026-08-05T00:00:00.000Z" },
-  { id: "tag-no1", label: "NO.1", tone: "black", createdAt: "2026-08-05T00:00:00.000Z" },
-  { id: "tag-fresh", label: "FRESH", tone: "green", createdAt: "2026-08-05T00:00:00.000Z" },
-  { id: "tag-chef", label: "CHEF PICK", tone: "red", createdAt: "2026-08-05T00:00:00.000Z" },
+  {
+    id: "tag-new",
+    label: "NEW",
+    tone: "red",
+    createdAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "tag-hot",
+    label: "HOT",
+    tone: "yellow",
+    createdAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "tag-no1",
+    label: "NO.1",
+    tone: "black",
+    createdAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "tag-fresh",
+    label: "FRESH",
+    tone: "green",
+    createdAt: "2026-08-05T00:00:00.000Z",
+  },
+  {
+    id: "tag-chef",
+    label: "CHEF PICK",
+    tone: "red",
+    createdAt: "2026-08-05T00:00:00.000Z",
+  },
 ];
 
 export const resolveProductTag = (product: Product, tags: ProductTag[]) => {
-  if (product.tagId) return tags.find(tag => tag.id === product.tagId);
-  if (product.badge) return tags.find(tag => tag.label.toLowerCase() === product.badge?.toLowerCase());
+  if (product.tagId) return tags.find((tag) => tag.id === product.tagId);
+  if (product.badge)
+    return tags.find(
+      (tag) => tag.label.toLowerCase() === product.badge?.toLowerCase(),
+    );
   return undefined;
 };
 
@@ -36,20 +65,35 @@ export function useCatalog() {
       // Hydrate the local MVP catalog after server rendering.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (stored) setCatalog(JSON.parse(stored));
-    } catch { /* keep seeded catalog */ }
+    } catch {
+      /* keep seeded catalog */
+    }
     // Prevent the seeded server-render value from overwriting a saved catalog.
     setReady(true);
+    fetchCatalog()
+      .then(setCatalog)
+      .catch(() => {
+        /* retain offline seed catalog */
+      });
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    try { localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalog)); } catch { /* local demo storage may be full */ }
+    try {
+      localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalog));
+    } catch {
+      /* local demo storage may be full */
+    }
   }, [catalog, ready]);
 
   useEffect(() => {
     const syncAcrossTabs = (event: StorageEvent) => {
       if (event.key !== CATALOG_STORAGE_KEY || !event.newValue) return;
-      try { setCatalog(JSON.parse(event.newValue)); } catch { /* ignore invalid external value */ }
+      try {
+        setCatalog(JSON.parse(event.newValue));
+      } catch {
+        /* ignore invalid external value */
+      }
     };
     window.addEventListener("storage", syncAcrossTabs);
     return () => window.removeEventListener("storage", syncAcrossTabs);
@@ -67,19 +111,34 @@ export function useProductTags() {
       const stored = localStorage.getItem(PRODUCT_TAGS_STORAGE_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (stored) setTags(JSON.parse(stored));
-    } catch { /* keep default tags */ }
+    } catch {
+      /* keep default tags */
+    }
     setReady(true);
+    fetchProductTags()
+      .then(setTags)
+      .catch(() => {
+        /* retain offline tag set */
+      });
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    try { localStorage.setItem(PRODUCT_TAGS_STORAGE_KEY, JSON.stringify(tags)); } catch { /* local demo storage may be full */ }
+    try {
+      localStorage.setItem(PRODUCT_TAGS_STORAGE_KEY, JSON.stringify(tags));
+    } catch {
+      /* local demo storage may be full */
+    }
   }, [ready, tags]);
 
   useEffect(() => {
     const syncAcrossTabs = (event: StorageEvent) => {
       if (event.key !== PRODUCT_TAGS_STORAGE_KEY || !event.newValue) return;
-      try { setTags(JSON.parse(event.newValue)); } catch { /* ignore invalid external value */ }
+      try {
+        setTags(JSON.parse(event.newValue));
+      } catch {
+        /* ignore invalid external value */
+      }
     };
     window.addEventListener("storage", syncAcrossTabs);
     return () => window.removeEventListener("storage", syncAcrossTabs);

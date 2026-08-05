@@ -1,5 +1,35 @@
 # 05 · GCP 部署、区域与成本
 
+## 当前 `kiyoyo-dev` 状态（2026-08-05）
+
+本环境已经部署到 GCP 项目 `kiyoyo`，统一资源前缀为
+`kiyoyo-dev`，主区域为 `europe-west1`。
+
+| 能力 | 已部署资源 | 当前状态 |
+|---|---|---|
+| 顾客 Web / Admin | Firebase Hosting `kiyoyo-dev` | https://kiyoyo-dev.web.app |
+| Commerce API | Cloud Run `kiyoyo-dev-api` | min 0、max 5、1 vCPU / 512 MiB |
+| PostgreSQL | Cloud SQL `kiyoyo-dev-db` | PostgreSQL 16、`db-f1-micro`、20GB SSD、单区 |
+| 数据库 | `kiyoyo_dev` / `kiyoyo_dev_api` | Migration 与 seed 已完成 |
+| 商品图片 | `gs://kiyoyo-dev-media` | 私有、PAP、统一访问、CORS 与生命周期规则 |
+| 容器镜像 | Artifact Registry `kiyoyo-dev` | API 镜像按不可变版本部署 |
+| 异步任务 | `kiyoyo-dev-order-events`、`kiyoyo-dev-media-processing` | Cloud Tasks 队列已创建 |
+| 认证 | Identity Platform | Email/Password 已启用；Google/Facebook 等待 OAuth 凭据 |
+| 地图 | Maps JavaScript API / Routes API | Browser key 已限定域名和 API |
+| 密钥 | Secret Manager | DB 密码与自取签名密钥；不进入 Terraform state |
+| IaC 状态 | `gs://kiyoyo-dev-tfstate` | 版本控制、统一 bucket 访问 |
+
+前后端是分离部署：Firebase Hosting 只承载静态前端，所有用户、地址、商品、订单、
+优惠、标签、图片与核销操作都通过 Cloud Run API 进入 Cloud SQL / Cloud Storage。
+
+### 已验证链路
+
+- 线上 Hosting、API `/readyz`、12 杯饮品、6 家门店与最近门店排序均正常。
+- Email/Password 注册、用户资料、默认配送地址、模拟支付与订单历史均通过。
+- 自取订单会生成签名二维码；重复提交会命中 Idempotency-Key，不会生成重复订单。
+- 普通用户访问 Admin API 返回 403；Admin 路由实施服务端 RBAC。
+- Web production build、ESLint 与 production dependency audit 均通过。
+
 ## 最省钱且少运维的 MVP 组合
 
 | 能力 | GCP 服务 | MVP 配置 |
@@ -36,7 +66,9 @@
 
 ## Identity Platform 配置
 
-- 启用 Email/Password、Google、Facebook provider；邮箱登录启用邮箱验证和重置密码邮件模板。
+- Email/Password 已启用；Google、Facebook 前端入口已完成，但 provider 需要真实 OAuth
+  Client ID / Client Secret 后才能启用。不得使用伪造或共享凭据。
+- 上生产前启用邮箱验证和重置密码邮件模板。
 - Google OAuth 配置 consent screen、正式域名和 dev/staging/prod 回调地址。
 - Facebook 创建 KIYOYO Meta App，Secret 存 Secret Manager，完成隐私政策、数据删除 URL 和上线审核。
 - 客户前端只使用公开 Web config；provider secret 仅存在 GCP/Identity Platform。Commerce API 验证 Identity Platform ID token 后才读写个人资料和地址。
@@ -70,6 +102,20 @@ flowchart LR
 - Budget：设置月预算和 50/80/100% 告警。注意预算告警不会自动停止资源。
 - 每周查看账单按 SKU 拆分；为 dev 设置夜间清理和数据库停机策略。
 
+### 当前 dev 月成本预期
+
+低流量开发期可按 **USD 12–30 / 月** 做规划预算，实际以 GCP Billing 为准：
+
+- 主要固定成本是 `db-f1-micro` Cloud SQL、20GB SSD 与备份。
+- Cloud Run 使用 request-based billing 且 min instances 为 0，低流量通常落在免费额度或接近 0。
+- Firebase Hosting 在免费存储与流量额度内通常为 0；超额后按量计费。
+- Artifact Registry、Secret Manager、Cloud Tasks 和少量日志通常只占少量零碎费用。
+- Maps、外网流量和大量图片下载是主要变量，必须设置 API 配额与账单告警。
+
+这一估算不是报价。Cloud Run 按使用量与区域计价；Firebase Blaze 仍保留产品免费额度。
+价格参考：[Cloud Run pricing](https://cloud.google.com/run/pricing)、
+[Firebase pricing](https://firebase.google.com/pricing)。
+
 ## 初始容量与扩容触发
 
 - 目标 API p95 < 500ms（不含第三方支付），错误率 < 1%。
@@ -77,12 +123,23 @@ flowchart LR
 - Cloud Run 冷启动若明显影响结账，再把生产 min instances 从 0 调到 1；不要预先付闲置成本。
 - 当单个模块独立吞吐或发布节奏成为瓶颈，再拆服务，而不是按组织图提前拆。
 
-## 当前 GCP 阻塞项
+## 回滚手册
 
-本机当前 gcloud 活跃账号为 `kechengyang234@gmail.com`，配置项目是 `ephemeral-1d9a4`；该账号查询项目 ID `kiyoyo` 返回无权限或项目不存在。继续部署前需要完成其一：
+1. **前端**：Firebase Console → Hosting → Release history，选择前一个成功版本并回滚。
+2. **API**：当前 revision 是 `kiyoyo-dev-api-00003-vqt`；需要回滚时把 100% 流量切回已验证的前一 revision，例如：
 
-1. `gcloud auth login` 切换到创建 `kiyoyo` 的账号；或
-2. 在项目 IAM 中为当前账号授予合适角色；或
-3. 确认控制台显示的真实 Project ID（项目名称可以叫 KIYOYO，但 ID 可能不同）。
+   ```sh
+   gcloud run services update-traffic kiyoyo-dev-api \
+     --region=europe-west1 --project=kiyoyo \
+     --to-revisions=kiyoyo-dev-api-00002-gmj=100
+   ```
 
-不要为了绕过权限把项目凭据、service-account JSON 或数据库密码提交到仓库。
+3. **数据库**：不要用向下 migration 删除数据。先从最近成功备份或 PITR 创建恢复实例，
+   验证后再切换连接；当前已确认存在成功备份。
+4. **基础设施**：先运行 Terraform plan。若出现 destroy 或数据库替换，停止并人工评审；
+   不用 `terraform destroy` 作为普通回滚方法。
+5. **密钥**：若怀疑泄漏，增加 `secret_version` 轮换，并重新部署 API。Maps browser key
+   只允许 dev Hosting / localhost referrer 和指定 Maps API。
+
+所有发布都应使用短期身份或 Workload Identity Federation。当前手工部署产生的临时
+service-account key 已在发布结束后删除，deployer 账户没有 USER_MANAGED key。

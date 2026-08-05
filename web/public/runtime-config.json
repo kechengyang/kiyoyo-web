@@ -1,0 +1,5 @@
+{
+  "environment": "dev",
+  "apiBaseUrl": "https://kiyoyo-dev-api-kwlb74l7uq-ew.a.run.app",
+  "firebaseHostingUrl": "https://kiyoyo-dev.web.app"
+}
