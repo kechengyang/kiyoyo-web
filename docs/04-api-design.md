@@ -87,6 +87,9 @@
 - `GET /v1/admin/stores`、`PATCH /v1/admin/stores/{id}`
 - `GET /v1/admin/products?kind=DRINK&status=ACTIVE&query=...`
 - `PATCH /v1/admin/products/{id}` — 名称、基础价、折扣和上架状态；要求 `If-Match`/version 防止覆盖他人修改。
+- `GET /v1/admin/product-tags`、`POST /v1/admin/product-tags` — 查询或创建可复用商品标签。
+- `PATCH /v1/admin/product-tags/{id}`、`DELETE /v1/admin/product-tags/{id}` — 修改或归档标签；归档时事务性解除商品关联。
+- `PATCH /v1/admin/products/{id}` 可提交 `tag_id`；服务端验证标签仍为 active，客户端不能提交任意标签文字或颜色。
 - `POST /v1/admin/products/{id}/media-upload` — 返回 Cloud Storage 短期 signed upload URL。
 - `POST /v1/admin/products/{id}/media-confirm` — 确认上传并启动校验/缩略图处理。
 - `GET /v1/admin/audit-logs?...` — 管理员只读。

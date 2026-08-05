@@ -11,6 +11,7 @@ erDiagram
   users ||--o{ favorites : saves
   users ||--o{ loyalty_ledger : earns
   stores ||--o{ store_products : offers
+  product_tags ||--o{ products : labels
   products ||--o{ product_variants : has
   products ||--o{ store_products : listed
   orders ||--|{ fulfillment_groups : splits
@@ -35,7 +36,8 @@ erDiagram
 
 - `stores(id, code, name, address, phone, lat, lng, timezone, status, pickup_enabled, delivery_enabled, opening_hours_json)`
 - `categories(id, kind, slug, name_en, name_zh, sort_order, active)`
-- `products(id, kind DRINK|GOODS, slug, name_en, name_zh, description_en, description_zh, image_key, base_price, discount_percent, active, catalog_version, updated_at, updated_by)`
+- `products(id, kind DRINK|GOODS, slug, name_en, name_zh, description_en, description_zh, image_key, tag_id nullable, base_price, discount_percent, active, catalog_version, updated_at, updated_by)`
+- `product_tags(id, label, tone RED|YELLOW|BLACK|GREEN, active, created_at, created_by, updated_at)`；`label` 大小写不敏感唯一，生产环境优先归档而非硬删除。
 - `product_media(id, product_id, object_key, content_type, width, height, bytes, status PROCESSING|READY|REJECTED, created_at)`
 - `product_change_logs(id, product_id, actor_id, before_json, after_json, created_at)`
 - `product_variants(id, product_id, sku, option_json, base_price, stock_tracked, active)`

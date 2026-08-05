@@ -1,6 +1,14 @@
 export type Lang = "en" | "zh";
 export type Tab = "home" | "shop" | "collection" | "cart" | "account";
 export type ProductKind = "drink" | "goods";
+export type ProductTagTone = "red" | "yellow" | "black" | "green";
+
+export type ProductTag = {
+  id: string;
+  label: string;
+  tone: ProductTagTone;
+  createdAt: string;
+};
 
 export type Product = {
   id: string;
@@ -13,6 +21,8 @@ export type Product = {
   price: number;
   image: string;
   badge?: string;
+  badgeTone?: ProductTagTone;
+  tagId?: string;
   active?: boolean;
   discountPercent?: number;
   updatedAt?: string;

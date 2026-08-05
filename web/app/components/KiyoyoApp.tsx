@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { haversineKm, money, stores } from "../data";
-import { salePrice, useCatalog } from "../catalog";
+import { resolveProductTag, salePrice, useCatalog, useProductTags } from "../catalog";
 import type { Address, AuthProvider, AuthSession, CartItem, Lang, Order, Product, Tab, UserProfile } from "../types";
 
 const copy = {
@@ -216,7 +216,7 @@ function ProductCard({ product, lang, saved, onSave, onOpen, drinkShop = false }
     <article className={`product-card ${product.kind === "drink" ? "drink-product" : "goods-product"}`}>
       <button className="product-image" onClick={onOpen} aria-label={`Open ${product.name}`}>
         <img src={product.image} alt={lang === "zh" ? product.nameZh : product.name} />
-        {(product.discountPercent || 0) > 0 ? <span className="badge sale-badge">−{product.discountPercent}%</span> : product.badge && <span className="badge">{product.badge}</span>}
+        {(product.discountPercent || 0) > 0 ? <span className="badge sale-badge">−{product.discountPercent}%</span> : product.badge && <span className="badge" data-tone={product.badgeTone || "red"}>{product.badge}</span>}
       </button>
       <div className="product-info">
         <div>
@@ -242,6 +242,7 @@ function PseudoQR({ code }: { code: string }) {
 export default function KiyoyoApp() {
   const [lang, setLang] = useStoredState<Lang>("kiyoyo-lang", "en");
   const [catalog] = useCatalog();
+  const [productTags] = useProductTags();
   const [tab, setTab] = useState<Tab>("home");
   const [storeId, setStoreId] = useStoredState("kiyoyo-store", "kilimani");
   const [cart, setCart] = useStoredState<CartItem[]>("kiyoyo-cart", []);
@@ -274,7 +275,10 @@ export default function KiyoyoApp() {
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [pendingCheckout, setPendingCheckout] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const products = catalog.filter(product => product.active !== false);
+  const products = catalog.filter(product => product.active !== false).map(product => {
+    const tag = resolveProductTag(product, productTags);
+    return { ...product, badge: tag?.label ?? (product.tagId ? undefined : product.badge), badgeTone: tag?.tone };
+  });
   const t = copy[lang];
   const selectedStore = stores.find(s => s.id === storeId) || stores[0];
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -470,7 +474,7 @@ export default function KiyoyoApp() {
 
       <nav className="mobile-nav">{(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={`${tab === item ? "active" : ""} ${item === "shop" ? "drink-entry" : ""}`} onClick={() => item === "shop" ? openShop("drinks") : go(item)}><NavIcon item={item} /><span>{item === "shop" ? (lang === "zh" ? "点饮品" : "DRINK") : t.nav[item]}</span>{item === "cart" && cartCount > 0 && <b>{cartCount}</b>}</button>)}</nav>
 
-      {modalProduct && <div className="modal-backdrop" onMouseDown={e => e.currentTarget === e.target && setModalProduct(null)}><div className="product-modal"><button className="modal-close" onClick={() => setModalProduct(null)}>×</button><div className="modal-image"><img src={modalProduct.image} alt={modalProduct.name} />{(modalProduct.discountPercent || 0) > 0 ? <span className="badge sale-badge">−{modalProduct.discountPercent}%</span> : modalProduct.badge && <span className="badge">{modalProduct.badge}</span>}</div><div className="modal-copy"><span className="eyebrow">{modalProduct.category}</span><h2>{lang === "zh" ? modalProduct.nameZh : modalProduct.name}</h2><p>{lang === "zh" ? modalProduct.descriptionZh : modalProduct.description}</p><div className="modal-sale-price"><strong className="modal-price">{money(salePrice(modalProduct))}</strong>{(modalProduct.discountPercent || 0) > 0 && <del>{money(modalProduct.price)}</del>}</div>{modalProduct.kind === "drink" && <div className="custom-options"><Option title={t.size} options={["Regular", "Large +80"]} value={custom.size} onChange={size => setCustom({ ...custom, size })} /><Option title={t.sugar} options={["0%", "30%", "50%", "100%"]} value={custom.sugar} onChange={sugar => setCustom({ ...custom, sugar })} /><Option title={t.ice} options={["No ice", "Less ice", "Regular"]} value={custom.ice} onChange={ice => setCustom({ ...custom, ice })} /><div className="option-group"><b>{t.toppings} <small>+ KSh 50</small></b><div>{["Boba", "Coconut jelly", "Milk cap"].map(top => <button key={top} className={custom.toppings.includes(top) ? "active" : ""} onClick={() => setCustom({ ...custom, toppings: custom.toppings.includes(top) ? custom.toppings.filter(x => x !== top) : [...custom.toppings, top] })}>{top}</button>)}</div></div></div>}<button className="primary full" onClick={addProduct}>{t.addCart} · {money(salePrice(modalProduct) + custom.toppings.length * 50)}</button></div></div></div>}
+      {modalProduct && <div className="modal-backdrop" onMouseDown={e => e.currentTarget === e.target && setModalProduct(null)}><div className="product-modal"><button className="modal-close" onClick={() => setModalProduct(null)}>×</button><div className="modal-image"><img src={modalProduct.image} alt={modalProduct.name} />{(modalProduct.discountPercent || 0) > 0 ? <span className="badge sale-badge">−{modalProduct.discountPercent}%</span> : modalProduct.badge && <span className="badge" data-tone={modalProduct.badgeTone || "red"}>{modalProduct.badge}</span>}</div><div className="modal-copy"><span className="eyebrow">{modalProduct.category}</span><h2>{lang === "zh" ? modalProduct.nameZh : modalProduct.name}</h2><p>{lang === "zh" ? modalProduct.descriptionZh : modalProduct.description}</p><div className="modal-sale-price"><strong className="modal-price">{money(salePrice(modalProduct))}</strong>{(modalProduct.discountPercent || 0) > 0 && <del>{money(modalProduct.price)}</del>}</div>{modalProduct.kind === "drink" && <div className="custom-options"><Option title={t.size} options={["Regular", "Large +80"]} value={custom.size} onChange={size => setCustom({ ...custom, size })} /><Option title={t.sugar} options={["0%", "30%", "50%", "100%"]} value={custom.sugar} onChange={sugar => setCustom({ ...custom, sugar })} /><Option title={t.ice} options={["No ice", "Less ice", "Regular"]} value={custom.ice} onChange={ice => setCustom({ ...custom, ice })} /><div className="option-group"><b>{t.toppings} <small>+ KSh 50</small></b><div>{["Boba", "Coconut jelly", "Milk cap"].map(top => <button key={top} className={custom.toppings.includes(top) ? "active" : ""} onClick={() => setCustom({ ...custom, toppings: custom.toppings.includes(top) ? custom.toppings.filter(x => x !== top) : [...custom.toppings, top] })}>{top}</button>)}</div></div></div>}<button className="primary full" onClick={addProduct}>{t.addCart} · {money(salePrice(modalProduct) + custom.toppings.length * 50)}</button></div></div></div>}
 
       {storeModal && <div className="modal-backdrop" onMouseDown={e => e.currentTarget === e.target && setStoreModal(false)}><div className="store-modal"><button className="modal-close" onClick={() => setStoreModal(false)}>×</button><span className="sticker">6 NAIROBI STORES</span><h2>{t.storeTitle}</h2><p>{t.storeSub}</p><button className="locate-button" onClick={locate} disabled={locating}>⌖ {locating ? "Locating…" : t.useLocation}</button>{locationError && <small className="error">{t.locationDenied}</small>}<div className="store-list">{stores.map((store, index) => <button key={store.id} disabled={!store.lat} className={store.id === storeId ? "selected" : ""} onClick={() => { setStoreId(store.id); setStoreModal(false); }}><span className="store-index">0{index + 1}</span><span><strong>{store.name}</strong><small>{store.address}</small><em>{store.verified ? store.phone : t.unverified}</em></span>{distances[store.id] !== undefined && <b>{distances[store.id].toFixed(1)} km{Object.values(distances).sort((a, b) => a - b)[0] === distances[store.id] ? ` · ${t.closest}` : ""}</b>}</button>)}</div></div></div>}
 
