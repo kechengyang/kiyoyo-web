@@ -18,8 +18,10 @@ test("server-renders the KIYOYO customer storefront", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>KIYOYO — Tea, treats &amp; happy things<\/title>/i);
-  assert.match(html, /Sip bright/);
-  assert.match(html, /Order a drink/);
+  assert.match(html, /Fruit Rush/);
+  assert.match(html, /fruit-tea-campaign-v2\.jpg/);
+  assert.match(html, /KIYOYO campaigns/);
+  assert.match(html, />DRINK</);
   assert.match(html, /Assam Boba Milk Tea/);
   assert.match(html, /KSh 420/);
   assert.match(html, /product-card drink-product/);

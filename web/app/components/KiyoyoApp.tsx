@@ -189,7 +189,6 @@ const copy = {
   },
 };
 
-const navIcons: Record<Tab, string> = { home: "⌂", shop: "◉", collection: "♡", cart: "▱", account: "☺" };
 const emptyProfile: UserProfile = { nickname: "", gender: "", age: "", addresses: [] };
 const emptyAddress: Address = { id: "", label: "Home", recipient: "", phone: "", area: "", line1: "", instructions: "", isDefault: false };
 
@@ -208,7 +207,11 @@ function Logo() {
   return <span className="logo">KIYOYO</span>;
 }
 
-function ProductCard({ product, lang, saved, onSave, onOpen }: { product: Product; lang: Lang; saved: boolean; onSave: () => void; onOpen: () => void }) {
+function NavIcon({ item }: { item: Tab }) {
+  return <span className={`nav-mark nav-${item}`} aria-hidden="true"><i /><em /></span>;
+}
+
+function ProductCard({ product, lang, saved, onSave, onOpen, drinkShop = false }: { product: Product; lang: Lang; saved: boolean; onSave: () => void; onOpen: () => void; drinkShop?: boolean }) {
   return (
     <article className={`product-card ${product.kind === "drink" ? "drink-product" : "goods-product"}`}>
       <button className="product-image" onClick={onOpen} aria-label={`Open ${product.name}`}>
@@ -222,7 +225,7 @@ function ProductCard({ product, lang, saved, onSave, onOpen }: { product: Produc
         </div>
         <button className={`heart ${saved ? "saved" : ""}`} onClick={onSave} aria-label="Save product">{saved ? "♥" : "♡"}</button>
       </div>
-      <div className="product-bottom"><span className="card-price"><strong>{money(salePrice(product))}</strong>{(product.discountPercent || 0) > 0 && <del>{money(product.price)}</del>}</span><button className="round-add" onClick={onOpen}>+</button></div>
+      <div className="product-bottom"><span className="card-price"><strong>{money(salePrice(product))}</strong>{(product.discountPercent || 0) > 0 && <del>{money(product.price)}</del>}</span><button className={drinkShop ? "customise-card" : "round-add"} onClick={onOpen}>{drinkShop ? (lang === "zh" ? "定制 →" : "Customise →") : "+"}</button></div>
     </article>
   );
 }
@@ -255,6 +258,9 @@ export default function KiyoyoApp() {
   const [distances, setDistances] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [shopMode, setShopMode] = useState<"drinks" | "goods">("drinks");
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const [bannerPaused, setBannerPaused] = useState(false);
   const [custom, setCustom] = useState({ size: "Regular", sugar: "50%", ice: "Less ice", toppings: [] as string[] });
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
@@ -273,6 +279,12 @@ export default function KiyoyoApp() {
   const selectedStore = stores.find(s => s.id === storeId) || stores[0];
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  useEffect(() => {
+    if (bannerPaused) return;
+    const timer = window.setInterval(() => setBannerIndex(index => (index + 1) % 3), 6000);
+    return () => window.clearInterval(timer);
+  }, [bannerPaused]);
+
   const detailedCart = cart.map(item => ({ ...item, product: catalog.find(p => p.id === item.productId)! })).filter(x => x.product);
   const hasUnavailable = detailedCart.some(item => item.product.active === false);
   const subtotal = detailedCart.filter(item => item.product.active !== false).reduce((sum, item) => sum + salePrice(item.product) * item.quantity + (item.toppings?.length || 0) * 50 * item.quantity, 0);
@@ -280,8 +292,9 @@ export default function KiyoyoApp() {
   const filteredProducts = products.filter(p => {
     const query = search.toLowerCase();
     const matchesText = !query || `${p.name} ${p.nameZh} ${p.category}`.toLowerCase().includes(query);
-    const matchesFilter = filter === "All" || p.category === filter || (filter === "Drinks" && p.kind === "drink") || (filter === "Goods" && p.kind === "goods");
-    return matchesText && matchesFilter;
+    const matchesMode = shopMode === "drinks" ? p.kind === "drink" : p.kind === "goods";
+    const matchesFilter = ["All", "Drinks", "Goods"].includes(filter) || p.category === filter;
+    return matchesText && matchesMode && matchesFilter;
   });
 
   const openProduct = (product: Product) => {
@@ -392,6 +405,19 @@ export default function KiyoyoApp() {
   };
 
   const go = (next: Tab) => { setTab(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const openShop = (mode: "drinks" | "goods", nextFilter?: string) => {
+    setShopMode(mode);
+    setFilter(nextFilter || (mode === "drinks" ? "Drinks" : "Goods"));
+    setSearch("");
+    go("shop");
+  };
+  const campaigns = [
+    { image: "/images/events/fruit-tea-campaign-v2.jpg", alt: "KIYOYO Fruit Ice Joy campaign", tag: lang === "zh" ? "01 / 果茶新作" : "01 / FRUIT DROP", title: lang === "zh" ? "热带果茶季" : "Fruit Rush", body: lang === "zh" ? "真实鲜果、冰爽茶底，装进内罗毕的阳光。" : "Real fruit, bright tea and a little Nairobi sun.", cta: lang === "zh" ? "选一杯果茶" : "Shop fruit teas", mode: "drinks" as const, filter: "Fruit Tea" },
+    { image: "/images/events/event-3.jpg", alt: "KIYOYO sundae club campaign", tag: lang === "zh" ? "02 / 下午四点后" : "02 / AFTER FOUR", title: lang === "zh" ? "圣代俱乐部" : "Sundae Club", body: lang === "zh" ? "甜一点，今天就会更快乐一点。" : "A softer, sweeter finish to the day.", cta: lang === "zh" ? "挑选甜品" : "Pick a treat", mode: "drinks" as const, filter: "Dessert" },
+    { image: "/images/goods/streetwear.png", alt: "KIYOYO streetwear campaign", tag: lang === "zh" ? "03 / 新品系列" : "03 / NEW DROP", title: lang === "zh" ? "穿上好心情" : "Wear the mood", body: lang === "zh" ? "把 KIYOYO 的红色能量带出门。" : "Take KIYOYO's red energy beyond the cup.", cta: lang === "zh" ? "逛潮流商品" : "Shop the drop", mode: "goods" as const, filter: "Fashion" },
+  ];
+  const activeCampaign = campaigns[bannerIndex];
+  const runCampaign = () => openShop(activeCampaign.mode, activeCampaign.filter);
 
   return (
     <div className="app-shell">
@@ -402,25 +428,37 @@ export default function KiyoyoApp() {
         <div className="header-actions"><button className="lang" onClick={() => setLang(lang === "en" ? "zh" : "en")}>{lang === "en" ? "中文" : "EN"}</button><button className="desktop-cart" onClick={() => go("cart")}>BAG <b>{cartCount}</b></button></div>
       </header>
       <nav className="desktop-nav">
-        {(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => go(item)}>{t.nav[item]}{item === "cart" && cartCount > 0 && <sup>{cartCount}</sup>}</button>)}
+        {(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => item === "shop" ? openShop("drinks") : go(item)}>{t.nav[item]}{item === "cart" && cartCount > 0 && <sup>{cartCount}</sup>}</button>)}
       </nav>
 
       <main>
         {tab === "home" && <>
-          <section className="hero">
-            <div className="hero-copy"><span className="sticker">{t.heroKicker}</span><h1>{t.heroTitle.split("\n").map((line, i) => <span key={i}>{line}</span>)}</h1><p>{t.heroBody}</p><div className="hero-actions"><button className="primary" onClick={() => go("shop")}>{t.orderDrink} →</button><button className="text-button" onClick={() => { setFilter("Goods"); go("shop"); }}>{t.shopDrop}</button></div><div className="scribble">GOOD MOOD<br />IN EVERY CUP ↗</div></div>
-            <div className="hero-art"><img src="/images/events/refresh.jpg" alt="KIYOYO fruit drinks campaign" /><div className="hero-burst">NEW<br />DROP!</div><div className="hero-number">01</div></div>
+          <section className="campaign-carousel" aria-roledescription="carousel" aria-label="KIYOYO campaigns" onMouseEnter={() => setBannerPaused(true)} onMouseLeave={() => setBannerPaused(false)}>
+            <div className="campaign-stage" key={bannerIndex}><img src={activeCampaign.image} alt={activeCampaign.alt} /></div>
+            <button className="campaign-arrow previous" aria-label="Previous campaign" onClick={() => setBannerIndex(index => (index + campaigns.length - 1) % campaigns.length)}>←</button>
+            <button className="campaign-arrow next" aria-label="Next campaign" onClick={() => setBannerIndex(index => (index + 1) % campaigns.length)}>→</button>
+            <div className="campaign-info"><span>{activeCampaign.tag}</span><div><strong>{activeCampaign.title}</strong><small>{activeCampaign.body}</small></div><button onClick={runCampaign}>{activeCampaign.cta} ↗</button></div>
+            <div className="campaign-dots">{campaigns.map((campaign, index) => <button key={campaign.tag} className={bannerIndex === index ? "active" : ""} aria-label={`Show campaign ${index + 1}`} onClick={() => setBannerIndex(index)}><i /></button>)}</div>
           </section>
           <div className="marquee"><div>BOBA · SOUFFLÉ · HAPPY THINGS · NAIROBI · BOBA · SOUFFLÉ · HAPPY THINGS · NAIROBI ·</div></div>
-          <section className="content-section"><SectionHead title={t.trending} action={t.seeAll} onAction={() => go("shop")} /><div className="product-grid featured">{products.filter(p => p.kind === "drink").slice(0, 4).map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div></section>
-          <section className="story-band"><div className="story-photo"><img src="/images/goods/streetwear.png" alt="KIYOYO streetwear" /></div><div className="story-copy"><span className="eyebrow">KIYOYO WORLD / 001</span><h2>{lang === "zh" ? "不只是一杯奶茶。" : "More than a cup."}</h2><p>{lang === "zh" ? "我们把内罗毕的能量装进饮品、衣服、家居和每一个小小收藏。" : "We bottle Nairobi energy into drinks, clothes, spaces and tiny objects worth keeping."}</p><button className="primary invert" onClick={() => { setFilter("Goods"); go("shop"); }}>{t.shopDrop} →</button></div></section>
-          <section className="content-section"><SectionHead title={t.goods} action={t.seeAll} onAction={() => { setFilter("Goods"); go("shop"); }} /><div className="editorial-grid">{products.filter(p => p.kind === "goods").slice(0, 5).map((p, i) => <div className={`editorial-card e${i}`} key={p.id}><ProductCard product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} /></div>)}</div></section>
+          <section className="content-section"><SectionHead title={t.trending} action={t.seeAll} onAction={() => openShop("drinks")} /><div className="product-grid featured">{products.filter(p => p.kind === "drink").slice(0, 4).map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div></section>
+          <section className="story-band"><div className="story-photo"><img src="/images/goods/streetwear.png" alt="KIYOYO streetwear" /></div><div className="story-copy"><span className="eyebrow">KIYOYO WORLD / 001</span><h2>{lang === "zh" ? "不只是一杯奶茶。" : "More than a cup."}</h2><p>{lang === "zh" ? "我们把内罗毕的能量装进饮品、衣服、家居和每一个小小收藏。" : "We bottle Nairobi energy into drinks, clothes, spaces and tiny objects worth keeping."}</p><button className="primary invert" onClick={() => openShop("goods")}>{t.shopDrop} →</button></div></section>
+          <section className="content-section"><SectionHead title={t.goods} action={t.seeAll} onAction={() => openShop("goods")} /><div className="editorial-grid">{products.filter(p => p.kind === "goods").slice(0, 5).map((p, i) => <div className={`editorial-card e${i}`} key={p.id}><ProductCard product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} /></div>)}</div></section>
         </>}
 
         {tab === "shop" && <section className="shop-page content-section">
-          <div className="page-heading"><span className="sticker">KIYOYO MARKET</span><h1>{lang === "zh" ? "今天想要什么？" : "Pick your happy."}</h1><p>{lang === "zh" ? "先来一杯，再带点快乐回家。" : "Start with a sip. Leave with a little joy."}</p></div>
-          <div className="shop-tools"><label className="search-box"><span>⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search} /></label><div className="filters">{["All", "Drinks", "Goods", "Milk Tea", "Fruit Tea", "Fashion", "Home", "Outdoor", "Pets"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "All" ? t.all : f}</button>)}</div></div>
-          <div className="product-grid">{filteredProducts.map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div>
+          <div className="shop-mode-switch"><button className={shopMode === "drinks" ? "active" : ""} onClick={() => openShop("drinks")}><NavIcon item="shop" /><span><strong>{lang === "zh" ? "饮品点单" : "Drink studio"}</strong><small>{lang === "zh" ? "现点现做 · 可定制" : "Made fresh · Your way"}</small></span></button><button className={shopMode === "goods" ? "active" : ""} onClick={() => openShop("goods")}><span className="goods-mode-icon">◇</span><span><strong>{lang === "zh" ? "IP 商品" : "KIYOYO goods"}</strong><small>{lang === "zh" ? "穿搭 · 家居 · 收藏" : "Wear · Live · Collect"}</small></span></button></div>
+          {shopMode === "drinks" ? <>
+            <div className="drink-studio-hero"><div><span className="drink-kicker">KIYOYO DRINK STUDIO / {selectedStore.area}</span><h1>{lang === "zh" ? "先选心情，\n再定制一杯。" : "Pick a mood.\nMake it yours."}</h1><p>{lang === "zh" ? "从茶底到甜度、冰量和加料，每一杯都按你的方式现做。" : "Choose a flavour, then tune the size, sweetness, ice and toppings to you."}</p><button className="store-status" onClick={() => setStoreModal(true)}><i />{selectedStore.area} · {lang === "zh" ? "预计 15–20 分钟" : "Ready in 15–20 min"}<b>Change →</b></button></div><div className="drink-flow"><span><b>01</b>{lang === "zh" ? "选口味" : "Pick"}</span><span><b>02</b>{lang === "zh" ? "做定制" : "Tune"}</span><span><b>03</b>{lang === "zh" ? "自取或外送" : "Get it"}</span></div></div>
+            <div className="mood-picker"><button onClick={() => setFilter("Milk Tea")} className={filter === "Milk Tea" ? "active creamy" : "creamy"}><i>●</i><strong>{lang === "zh" ? "浓郁奶香" : "Creamy"}</strong><small>Milk Tea</small></button><button onClick={() => setFilter("Fruit Tea")} className={filter === "Fruit Tea" ? "active bright" : "bright"}><i>✦</i><strong>{lang === "zh" ? "清爽果香" : "Bright & fresh"}</strong><small>Fruit Tea</small></button><button onClick={() => setFilter("Coffee")} className={filter === "Coffee" ? "active energy" : "energy"}><i>↯</i><strong>{lang === "zh" ? "能量加满" : "Energy"}</strong><small>Coffee</small></button><button onClick={() => setFilter("Dessert")} className={filter === "Dessert" ? "active treat" : "treat"}><i>♡</i><strong>{lang === "zh" ? "奖励一下" : "Treat mode"}</strong><small>Dessert</small></button></div>
+            <div className="shop-tools drink-tools"><label className="search-box"><span>⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder={lang === "zh" ? "搜索饮品" : "Search the drink menu"} /></label><div className="filters">{["Drinks", "Milk Tea", "Fruit Tea", "Coffee", "Jelly Tea", "Dessert"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "Drinks" ? (lang === "zh" ? "全部饮品" : "All drinks") : f}</button>)}</div></div>
+            <div className="drink-catalog-head"><div><span>{lang === "zh" ? "本店菜单" : "YOUR STORE MENU"}</span><h2>{filter === "Drinks" || filter === "All" ? (lang === "zh" ? "全部饮品" : "All drinks") : filter}</h2></div><strong>{filteredProducts.length} {lang === "zh" ? "款可选" : "choices"}</strong></div>
+            <div className="product-grid drink-grid">{filteredProducts.map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} drinkShop />)}</div>
+          </> : <>
+            <div className="goods-shop-heading"><span className="sticker">KIYOYO MARKET</span><h1>{lang === "zh" ? "把快乐带回家。" : "Keep the good mood."}</h1><p>{lang === "zh" ? "服饰、家居与可以收藏的小东西。" : "Wear it, live with it, collect it."}</p></div>
+            <div className="shop-tools"><label className="search-box"><span>⌕</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder={lang === "zh" ? "搜索 KIYOYO 商品" : "Search KIYOYO goods"} /></label><div className="filters">{["Goods", "Fashion", "Home", "Outdoor", "Pets", "Accessories", "Collectibles"].map(f => <button key={f} className={filter === f ? "active" : ""} onClick={() => setFilter(f)}>{f === "Goods" ? (lang === "zh" ? "全部商品" : "All goods") : f}</button>)}</div></div>
+            <div className="product-grid">{filteredProducts.map(p => <ProductCard key={p.id} product={p} lang={lang} saved={saved.includes(p.id)} onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div>
+          </>}
         </section>}
 
         {tab === "collection" && <section className="content-section collection-page"><div className="page-heading"><span className="sticker">♡ YOURS</span><h1>{t.collectionTitle}</h1><p>{t.collectionSub}</p></div>{saved.length ? <div className="product-grid">{products.filter(p => saved.includes(p.id)).map(p => <ProductCard key={p.id} product={p} lang={lang} saved onSave={() => toggleSave(p.id)} onOpen={() => openProduct(p)} />)}</div> : <div className="empty-state"><span>♡</span><p>{t.emptySaved}</p><button className="primary" onClick={() => go("shop")}>{t.explore}</button></div>}</section>}
@@ -430,7 +468,7 @@ export default function KiyoyoApp() {
         {tab === "account" && <section className="account-page content-section">{!session ? <div className="account-auth"><div><span className="sticker">KIYOYO MEMBERS</span><h1>{t.authTitle}</h1><p>{t.authSub}</p><div><button className="primary" onClick={() => openAuth("signup")}>{t.createAccount} →</button><button className="text-button" onClick={() => openAuth("signin")}>{t.signIn}</button></div></div><aside><b>♡</b><strong>{lang === "zh" ? "同步收藏" : "Save your favourites"}</strong><span>{lang === "zh" ? "换设备也不会丢失" : "Keep them across devices"}</span><b>✦</b><strong>{lang === "zh" ? "积分与奖励" : "Points & rewards"}</strong><span>{lang === "zh" ? "每次快乐都有回报" : "Get more from every order"}</span><b>▤</b><strong>{lang === "zh" ? "订单与地址" : "Orders & addresses"}</strong><span>{lang === "zh" ? "快速结账、随时修改" : "Check out and update faster"}</span></aside></div> : <><div className="member-card"><div><span>{t.member}</span><h1>{profile.nickname || t.memberHello}</h1><small>{t.points}</small><strong>2,480</strong></div><Logo /><i>VIP</i></div><section className="profile-panel"><div className="profile-head"><div><span className="eyebrow">{t.profile}</span><h2>{profile.nickname}</h2><p>{session.email} · {session.provider}</p></div><button onClick={openProfile}>{t.editProfile} →</button></div><div className="profile-facts"><div><span>{t.gender}</span><strong>{profile.gender || "—"}</strong></div><div><span>{t.age}</span><strong>{profile.age || "—"}</strong></div><div><span>{lang === "zh" ? "登录方式" : "Sign-in method"}</span><strong>{session.provider}</strong></div></div><div className="address-head"><h3>{t.addressBook}</h3><button onClick={() => openAddress()}>+ {t.addAddress}</button></div>{profile.addresses.length ? <div className="address-grid">{profile.addresses.map(address => <article key={address.id} className={address.isDefault ? "default" : ""}><div><strong>{address.label}</strong>{address.isDefault && <em>{t.defaultAddress}</em>}</div><p>{address.recipient} · {address.phone}</p><span>{address.line1}, {address.area}</span><div><button onClick={() => openAddress(address)}>{t.editAddress}</button>{!address.isDefault && <button onClick={() => setDefaultAddress(address.id)}>{lang === "zh" ? "设为默认" : "Make default"}</button>}</div></article>)}</div> : <button className="empty-address" onClick={() => openAddress()}>⌖ <span>{lang === "zh" ? "添加默认配送地址，让下次结账更快。" : "Add a default delivery address for faster checkout."}</span></button>}</section><div className="account-tabs"><button className="active">{t.coupons}</button><button>{t.rewards}</button><button>{t.history}</button></div><div className="coupon-grid"><article><b>20%</b><div><strong>ALL DRINKS</strong><span>MIN. SPEND KSh 800</span></div><button>USE</button></article><article className="gold"><b>2×</b><div><strong>DOUBLE POINTS</strong><span>FRIDAY AFTER 4PM</span></div><button>USE</button></article><article className="dark"><b>FREE</b><div><strong>SIZE UPGRADE</strong><span>MEMBER TREAT</span></div><button>USE</button></article></div><SectionHead title={t.history} />{orders.length ? <div className="order-history">{orders.map(o => { const orderAddress = profile.addresses.find(a => a.id === o.addressId); return <article key={o.id}><div><strong>{o.id}</strong><span>{new Date(o.createdAt).toLocaleString(lang === "zh" ? "zh-CN" : "en-KE", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Nairobi" })}</span>{o.channel !== "Pickup" && <small>{orderAddress ? `${orderAddress.label} · ${orderAddress.line1}` : (lang === "zh" ? "未设置配送地址" : "No delivery address")}</small>}</div><div><span className="status">{o.status}</span><strong>{money(o.total)}</strong>{o.channel !== "Pickup" && o.status === "Placed" && <button className="order-address-edit" onClick={() => setEditingOrderId(o.id)}>{t.changeAddress}</button>}</div></article>})}</div> : <div className="order-empty">{t.noOrders}</div>}<div className="account-links"><a className="admin-link" href="/admin">⚙ {t.admin} →</a><button onClick={() => { setSession(null); go("home"); }}>{t.signOut}</button></div></>}</section>}
       </main>
 
-      <nav className="mobile-nav">{(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => go(item)}><i>{navIcons[item]}</i><span>{t.nav[item]}</span>{item === "cart" && cartCount > 0 && <b>{cartCount}</b>}</button>)}</nav>
+      <nav className="mobile-nav">{(Object.keys(t.nav) as Tab[]).map(item => <button key={item} className={`${tab === item ? "active" : ""} ${item === "shop" ? "drink-entry" : ""}`} onClick={() => item === "shop" ? openShop("drinks") : go(item)}><NavIcon item={item} /><span>{item === "shop" ? (lang === "zh" ? "点饮品" : "DRINK") : t.nav[item]}</span>{item === "cart" && cartCount > 0 && <b>{cartCount}</b>}</button>)}</nav>
 
       {modalProduct && <div className="modal-backdrop" onMouseDown={e => e.currentTarget === e.target && setModalProduct(null)}><div className="product-modal"><button className="modal-close" onClick={() => setModalProduct(null)}>×</button><div className="modal-image"><img src={modalProduct.image} alt={modalProduct.name} />{(modalProduct.discountPercent || 0) > 0 ? <span className="badge sale-badge">−{modalProduct.discountPercent}%</span> : modalProduct.badge && <span className="badge">{modalProduct.badge}</span>}</div><div className="modal-copy"><span className="eyebrow">{modalProduct.category}</span><h2>{lang === "zh" ? modalProduct.nameZh : modalProduct.name}</h2><p>{lang === "zh" ? modalProduct.descriptionZh : modalProduct.description}</p><div className="modal-sale-price"><strong className="modal-price">{money(salePrice(modalProduct))}</strong>{(modalProduct.discountPercent || 0) > 0 && <del>{money(modalProduct.price)}</del>}</div>{modalProduct.kind === "drink" && <div className="custom-options"><Option title={t.size} options={["Regular", "Large +80"]} value={custom.size} onChange={size => setCustom({ ...custom, size })} /><Option title={t.sugar} options={["0%", "30%", "50%", "100%"]} value={custom.sugar} onChange={sugar => setCustom({ ...custom, sugar })} /><Option title={t.ice} options={["No ice", "Less ice", "Regular"]} value={custom.ice} onChange={ice => setCustom({ ...custom, ice })} /><div className="option-group"><b>{t.toppings} <small>+ KSh 50</small></b><div>{["Boba", "Coconut jelly", "Milk cap"].map(top => <button key={top} className={custom.toppings.includes(top) ? "active" : ""} onClick={() => setCustom({ ...custom, toppings: custom.toppings.includes(top) ? custom.toppings.filter(x => x !== top) : [...custom.toppings, top] })}>{top}</button>)}</div></div></div>}<button className="primary full" onClick={addProduct}>{t.addCart} · {money(salePrice(modalProduct) + custom.toppings.length * 50)}</button></div></div></div>}
 
