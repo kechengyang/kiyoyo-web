@@ -1,8 +1,6 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
-
 import { useEffect, useRef, useState } from "react";
-import { haversineKm, money, stores } from "../data";
+import { haversineKm, stores } from "../data";
 import { drinkCategoryOrder } from "../menu";
 import {
   resolveProductTag,
@@ -17,33 +15,34 @@ import {
   observeMember,
   pickupTokenFingerprint,
   reissuePickupToken,
-  sendMemberPasswordReset,
   sendMemberVerification,
   signInMember,
-  signOutMember,
 } from "../platform";
-import GoogleStoreMap from "./GoogleStoreMap";
 import {
   categorySlug,
-  couponStatusLabel,
   drinkCategoryAnchor,
   drinkMenuTagRank,
   emptyAddress,
   emptyProfile,
 } from "./customer/foundation";
-import {
-  Logo,
-  Option,
-  PickupQR,
-  SectionHead,
-  productSizeEntries,
-} from "./customer/primitives";
+import { productSizeEntries } from "./customer/primitives";
 import { useStoredState } from "./customer/useStoredState";
 import { copy } from "./customer/copy";
 import { HomeView } from "./customer/HomeView";
 import { ShopView } from "./customer/ShopView";
 import { SavedView } from "./customer/SavedView";
 import { CartView } from "./customer/CartView";
+import { AccountView } from "./customer/AccountView";
+import { GlobalSearchDialog } from "./customer/GlobalSearchDialog";
+import { ProductDialog } from "./customer/ProductDialog";
+import { StoreDialog } from "./customer/StoreDialog";
+import { CheckoutDialog } from "./customer/CheckoutDialog";
+import { AuthDialog } from "./customer/AuthDialog";
+import { ProfileDialog } from "./customer/ProfileDialog";
+import { AddressDialog } from "./customer/AddressDialog";
+import { OrderAddressDialog } from "./customer/OrderAddressDialog";
+import { OrderDetailDialog } from "./customer/OrderDetailDialog";
+import { OrderSuccessDialog } from "./customer/OrderSuccessDialog";
 import {
   CustomerHeader,
   DesktopNavigation,
@@ -1227,452 +1226,44 @@ export default function KiyoyoApp() {
         )}
 
         {tab === "account" && (
-          <section className="account-page content-section">
-            {!session ? (
-              <div className="account-auth">
-                <div>
-                  <span className="sticker">KIYOYO MEMBERS</span>
-                  <h1>{t.authTitle}</h1>
-                  <p>{t.authSub}</p>
-                  <div>
-                    <button
-                      className="primary"
-                      onClick={() => openAuth("signup")}
-                    >
-                      {t.createAccount} →
-                    </button>
-                    <button
-                      className="text-button"
-                      onClick={() => openAuth("signin")}
-                    >
-                      {t.signIn}
-                    </button>
-                  </div>
-                </div>
-                <aside>
-                  <b>♡</b>
-                  <strong>
-                    {lang === "zh" ? "同步收藏" : "Save your favourites"}
-                  </strong>
-                  <span>
-                    {lang === "zh"
-                      ? "换设备也不会丢失"
-                      : "Keep them across devices"}
-                  </span>
-                  <b>✦</b>
-                  <strong>
-                    {lang === "zh" ? "积分与奖励" : "Points & rewards"}
-                  </strong>
-                  <span>
-                    {lang === "zh"
-                      ? "每次快乐都有回报"
-                      : "Get more from every order"}
-                  </span>
-                  <b>▤</b>
-                  <strong>
-                    {lang === "zh" ? "订单与地址" : "Orders & addresses"}
-                  </strong>
-                  <span>
-                    {lang === "zh"
-                      ? "快速结账、随时修改"
-                      : "Check out and update faster"}
-                  </span>
-                </aside>
-              </div>
-            ) : (
-              <>
-                <div className="member-card">
-                  <div>
-                    <span>{t.member}</span>
-                    <h1>{profile.nickname || t.memberHello}</h1>
-                    <small>{t.points}</small>
-                    <strong>2,480</strong>
-                  </div>
-                  <Logo />
-                  <i>VIP</i>
-                </div>
-                <section className="profile-panel">
-                  <div className="profile-head">
-                    <div>
-                      <span className="eyebrow">{t.profile}</span>
-                      <h2>{profile.nickname}</h2>
-                      <p>
-                        {session.email} · {session.provider}
-                      </p>
-                    </div>
-                    <button onClick={openProfile}>{t.editProfile} →</button>
-                  </div>
-                  <div className="profile-facts">
-                    <div>
-                      <span>{t.gender}</span>
-                      <strong>{profile.gender || "—"}</strong>
-                    </div>
-                    <div>
-                      <span>{t.age}</span>
-                      <strong>{profile.age || "—"}</strong>
-                    </div>
-                    <div>
-                      <span>
-                        {lang === "zh" ? "登录方式" : "Sign-in method"}
-                      </span>
-                      <strong>{session.provider}</strong>
-                    </div>
-                  </div>
-                  <div className="address-head">
-                    <h3>{t.addressBook}</h3>
-                    <button onClick={() => openAddress()}>
-                      + {t.addAddress}
-                    </button>
-                  </div>
-                  {profile.addresses.length ? (
-                    <div className="address-grid">
-                      {profile.addresses.map((address) => (
-                        <article
-                          key={address.id}
-                          className={address.isDefault ? "default" : ""}
-                        >
-                          <div>
-                            <strong>{address.label}</strong>
-                            {address.isDefault && <em>{t.defaultAddress}</em>}
-                          </div>
-                          <p>
-                            {address.recipient} · {address.phone}
-                          </p>
-                          <span>
-                            {address.line1}, {address.area}
-                          </span>
-                          <div>
-                            <button onClick={() => openAddress(address)}>
-                              {t.editAddress}
-                            </button>
-                            {!address.isDefault && (
-                              <button
-                                onClick={() => setDefaultAddress(address.id)}
-                              >
-                                {lang === "zh" ? "设为默认" : "Make default"}
-                              </button>
-                            )}
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <button
-                      className="empty-address"
-                      onClick={() => openAddress()}
-                    >
-                      ⌖{" "}
-                      <span>
-                        {lang === "zh"
-                          ? "添加默认配送地址，让下次结账更快。"
-                          : "Add a default delivery address for faster checkout."}
-                      </span>
-                    </button>
-                  )}
-                </section>
-                <div className="account-tabs" role="tablist">
-                  <button
-                    className={accountPanel === "coupons" ? "active" : ""}
-                    onClick={() => setAccountPanel("coupons")}
-                    role="tab"
-                    aria-selected={accountPanel === "coupons"}
-                  >
-                    {t.coupons}
-                  </button>
-                  <button
-                    className={accountPanel === "rewards" ? "active" : ""}
-                    onClick={() => setAccountPanel("rewards")}
-                    role="tab"
-                    aria-selected={accountPanel === "rewards"}
-                  >
-                    {t.rewards}
-                  </button>
-                  <button
-                    className={accountPanel === "history" ? "active" : ""}
-                    onClick={() => setAccountPanel("history")}
-                    role="tab"
-                    aria-selected={accountPanel === "history"}
-                  >
-                    {t.history}
-                  </button>
-                </div>
-                {accountPanel === "coupons" && (
-                  <div className="coupon-grid" role="tabpanel">
-                    {couponsLoading ? (
-                      <div className="coupon-empty" aria-live="polite">
-                        <strong>{lang === "zh" ? "正在加载优惠券…" : "Loading coupons…"}</strong>
-                      </div>
-                    ) : userCoupons.length ? (
-                      userCoupons.map((coupon) => (
-                        <article
-                          key={coupon.userCouponId}
-                          className={
-                            coupon.walletStatus === "AVAILABLE"
-                              ? coupon.discountType === "FREE_SIZE_UPGRADE"
-                                ? "dark"
-                                : ""
-                              : "coupon-muted"
-                          }
-                        >
-                          <b>
-                            {coupon.discountType === "PERCENT"
-                              ? `${coupon.discountValue}%`
-                              : coupon.discountType === "FIXED"
-                                ? money(coupon.discountValue)
-                                : lang === "zh"
-                                  ? "升杯"
-                                  : "FREE"}
-                          </b>
-                          <div>
-                            <strong>{lang === "zh" ? coupon.nameZh : coupon.nameEn}</strong>
-                            <span>
-                              {couponStatusLabel(coupon.walletStatus, lang)} · {lang === "zh" ? "有效期至" : "UNTIL"}{" "}
-                              {new Date(coupon.expiresAt).toLocaleDateString(
-                                lang === "zh" ? "zh-CN" : "en-KE",
-                              )}
-                            </span>
-                          </div>
-                          <button
-                            disabled={coupon.walletStatus !== "AVAILABLE"}
-                            onClick={() => {
-                              setSelectedCouponId(coupon.userCouponId);
-                              setCouponCodeInput("");
-                              setTab(cart.length ? "cart" : "shop");
-                            }}
-                          >
-                            {selectedCouponId === coupon.userCouponId
-                              ? lang === "zh"
-                                ? "已选择"
-                                : "SELECTED"
-                              : lang === "zh"
-                                ? "使用"
-                                : "USE"}
-                          </button>
-                        </article>
-                      ))
-                    ) : (
-                      <div className="coupon-empty">
-                        <strong>{lang === "zh" ? "暂时没有优惠券" : "No coupons yet"}</strong>
-                        <span>
-                          {lang === "zh"
-                            ? "新发放的会员券会显示在这里。"
-                            : "New member coupons will appear here."}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {accountPanel === "rewards" && (
-                  <div className="rewards-panel" role="tabpanel">
-                    <span>2,480</span>
-                    <div>
-                      <strong>{t.points}</strong>
-                      <p>
-                        {lang === "zh"
-                          ? "再获得 520 积分即可解锁下一份会员奖励。"
-                          : "Earn 520 more points to unlock your next member reward."}
-                      </p>
-                      <i>
-                        <b style={{ width: "83%" }} />
-                      </i>
-                    </div>
-                  </div>
-                )}
-                {accountPanel === "history" && (
-                  <div className="account-history-panel" role="tabpanel">
-                    <SectionHead title={t.history} />
-                    {orders.length ? (
-                      <div className="order-history">
-                        {orders.map((o) => {
-                          const orderAddress =
-                            o.addressSnapshot ??
-                            profile.addresses.find(
-                              (address) => address.id === o.addressId,
-                            );
-                          return (
-                            <article
-                              key={o.id}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`${t.viewOrder} ${o.id}`}
-                              onClick={() => openOrderDetails(o)}
-                              onKeyDown={(event) => {
-                                if (
-                                  event.key === "Enter" ||
-                                  event.key === " "
-                                ) {
-                                  event.preventDefault();
-                                  openOrderDetails(o);
-                                }
-                              }}
-                            >
-                              <div>
-                                <strong>{o.id}</strong>
-                                <span>
-                                  {new Date(o.createdAt).toLocaleString(
-                                    lang === "zh" ? "zh-CN" : "en-KE",
-                                    {
-                                      dateStyle: "medium",
-                                      timeStyle: "short",
-                                      timeZone: "Africa/Nairobi",
-                                    },
-                                  )}
-                                </span>
-                                {o.channel !== "Pickup" && (
-                                  <small>
-                                    {orderAddress
-                                      ? `${orderAddress.label} · ${orderAddress.line1}`
-                                      : lang === "zh"
-                                        ? "未设置配送地址"
-                                        : "No delivery address"}
-                                  </small>
-                                )}
-                                <em>{t.viewOrder} →</em>
-                              </div>
-                              <div>
-                                <span className="status">{o.status}</span>
-                                <strong>{money(o.total)}</strong>
-                                {o.channel !== "Pickup" &&
-                                  o.status === "Placed" && (
-                                    <button
-                                      className="order-address-edit"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setEditingOrderId(o.id);
-                                      }}
-                                    >
-                                      {t.changeAddress}
-                                    </button>
-                                  )}
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="order-empty">{t.noOrders}</div>
-                    )}
-                  </div>
-                )}
-                <div className="account-links">
-                  <a className="admin-link" href="/admin">
-                    ⚙ {t.admin} →
-                  </a>
-                  <button
-                    onClick={() => {
-                      void signOutMember();
-                      setSession(null);
-                      go("home");
-                    }}
-                  >
-                    {t.signOut}
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
+          <AccountView
+            t={t}
+            lang={lang}
+            session={session}
+            profile={profile}
+            openAuth={openAuth}
+            openProfile={openProfile}
+            openAddress={openAddress}
+            setDefaultAddress={setDefaultAddress}
+            accountPanel={accountPanel}
+            setAccountPanel={setAccountPanel}
+            couponsLoading={couponsLoading}
+            userCoupons={userCoupons}
+            selectedCouponId={selectedCouponId}
+            setSelectedCouponId={setSelectedCouponId}
+            setCouponCodeInput={setCouponCodeInput}
+            setTab={setTab}
+            cart={cart}
+            orders={orders}
+            openOrderDetails={openOrderDetails}
+            setEditingOrderId={setEditingOrderId}
+            setSession={setSession}
+            go={go}
+          />
         )}
       </main>
 
       {globalSearchOpen && (
-        <div
-          className="global-search-overlay"
-          onMouseDown={(event) =>
-            event.currentTarget === event.target && setGlobalSearchOpen(false)
-          }
-        >
-          <section
-            className="global-search-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="global-search-title"
-          >
-            <div className="global-search-head">
-              <div>
-                <Logo />
-                <span id="global-search-title">
-                  {lang === "zh" ? "搜索全部 KIYOYO" : "Search all KIYOYO"}
-                </span>
-              </div>
-              <button
-                onClick={() => setGlobalSearchOpen(false)}
-                aria-label={lang === "zh" ? "关闭搜索" : "Close search"}
-              >
-                ×
-              </button>
-            </div>
-            <label className="global-search-input">
-              <span className="search-mark" aria-hidden="true" />
-              <input
-                autoFocus
-                value={globalQuery}
-                onChange={(event) => setGlobalQuery(event.target.value)}
-                placeholder={t.search}
-              />
-              <kbd>ESC</kbd>
-            </label>
-            {!normalizedGlobalQuery ? (
-              <div className="search-suggestions">
-                <span>{lang === "zh" ? "热门搜索" : "Popular searches"}</span>
-                <div>
-                  {["Fruit Tea", "Milk Tea", "Fashion", "Accessories"].map(
-                    (term) => (
-                      <button key={term} onClick={() => setGlobalQuery(term)}>
-                        {term}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-            ) : globalResults.length ? (
-              <div className="global-search-results">
-                <div className="search-result-count">
-                  <span>{lang === "zh" ? "搜索结果" : "Results"}</span>
-                  <strong>{globalResults.length}</strong>
-                </div>
-                {globalResults.map((product) => (
-                  <button
-                    key={product.id}
-                    onClick={() => {
-                      setGlobalSearchOpen(false);
-                      setGlobalQuery("");
-                      openProduct(product);
-                    }}
-                  >
-                    <img src={product.image} alt="" />
-                    <span>
-                      <small>
-                        {product.kind === "drink"
-                          ? lang === "zh"
-                            ? "饮品"
-                            : "Drink"
-                          : lang === "zh"
-                            ? "商品"
-                            : "Goods"}{" "}
-                        · {product.category}
-                      </small>
-                      <strong>
-                        {lang === "zh" ? product.nameZh : product.name}
-                      </strong>
-                    </span>
-                    <b>{money(salePrice(product))}</b>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="global-search-empty">
-                <strong>
-                  {lang === "zh" ? "没有找到相关内容" : "No matches found"}
-                </strong>
-                <span>
-                  {lang === "zh"
-                    ? "试试饮品名称、品类或商品名称。"
-                    : "Try a drink, category, or product name."}
-                </span>
-              </div>
-            )}
-          </section>
-        </div>
+        <GlobalSearchDialog
+          lang={lang}
+          t={t}
+          globalQuery={globalQuery}
+          setGlobalQuery={setGlobalQuery}
+          normalizedGlobalQuery={normalizedGlobalQuery}
+          globalResults={globalResults}
+          setGlobalSearchOpen={setGlobalSearchOpen}
+          openProduct={openProduct}
+        />
       )}
 
       <MobileNavigation
@@ -1685,954 +1276,140 @@ export default function KiyoyoApp() {
       />
 
       {modalProduct && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) =>
-            e.currentTarget === e.target && setModalProduct(null)
-          }
-        >
-          <div className="product-modal">
-            <button
-              className="modal-close"
-              onClick={() => setModalProduct(null)}
-            >
-              ×
-            </button>
-            <div className={`modal-image ${modalProduct.kind === "drink" ? "drink-modal-image" : ""}`}>
-              <img src={modalProduct.image} alt={modalProduct.name} />
-              {(modalProduct.discountPercent || 0) > 0 ? (
-                <span className="badge sale-badge">
-                  −{modalProduct.discountPercent}%
-                </span>
-              ) : (
-                modalProduct.badge && (
-                  <span
-                    className="badge"
-                    data-tone={modalProduct.badgeTone || "red"}
-                  >
-                    {modalProduct.badge}
-                  </span>
-                )
-              )}
-            </div>
-            <div className="modal-copy">
-              <span className="eyebrow">{modalProduct.category}</span>
-              <h2>{lang === "zh" ? modalProduct.nameZh : modalProduct.name}</h2>
-              <p>
-                {lang === "zh"
-                  ? modalProduct.descriptionZh
-                  : modalProduct.description}
-              </p>
-              <div className="modal-sale-price">
-                <strong className="modal-price">
-                  {money(salePrice(modalProduct, custom.size))}
-                </strong>
-                {(modalProduct.discountPercent || 0) > 0 && (
-                  <del>{money(modalProduct.price)}</del>
-                )}
-              </div>
-              {modalProduct.kind === "drink" && modalProduct.category !== "Add-ons" && (
-                <div className="custom-options">
-                  {productSizeEntries(modalProduct).length > 1 && (
-                    <Option
-                      title={t.size}
-                      options={productSizeEntries(modalProduct).map(([size]) => size)}
-                      value={custom.size}
-                      onChange={(size) => setCustom({ ...custom, size })}
-                    />
-                  )}
-                  {!["Sundae", "Soufflé"].includes(modalProduct.category) && (
-                    <>
-                      <Option
-                        title={t.sugar}
-                        options={["0%", "30%", "50%", "100%"]}
-                        value={custom.sugar}
-                        onChange={(sugar) => setCustom({ ...custom, sugar })}
-                      />
-                      <Option
-                        title={t.ice}
-                        options={["No ice", "Less ice", "Regular"]}
-                        value={custom.ice}
-                        onChange={(ice) => setCustom({ ...custom, ice })}
-                      />
-                      <div className="option-group">
-                        <b>{t.toppings}</b>
-                        <div>
-                          {addOnProducts.map((top) => (
-                        <button
-                          key={top.id}
-                          className={
-                            custom.toppings.includes(top.id) ? "active" : ""
-                          }
-                          onClick={() =>
-                            setCustom({
-                              ...custom,
-                              toppings: custom.toppings.includes(top.id)
-                                ? custom.toppings.filter((x) => x !== top.id)
-                                : [...custom.toppings, top.id],
-                            })
-                          }
-                        >
-                          {lang === "zh" ? top.nameZh : top.name} +{money(salePrice(top))}
-                        </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              <button className="primary full" onClick={addProduct}>
-                {t.addCart} ·{" "}
-                {money(
-                  salePrice(modalProduct, custom.size) +
-                    custom.toppings.reduce(
-                      (sum, toppingId) =>
-                        sum +
-                        salePrice(
-                          addOnProducts.find((product) => product.id === toppingId) ?? {
-                            ...modalProduct,
-                            price: 0,
-                          },
-                        ),
-                      0,
-                    ),
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ProductDialog
+          modalProduct={modalProduct}
+          setModalProduct={setModalProduct}
+          lang={lang}
+          t={t}
+          custom={custom}
+          setCustom={setCustom}
+          addOnProducts={addOnProducts}
+          addProduct={addProduct}
+        />
       )}
 
       {storeModal && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) =>
-            e.currentTarget === e.target && setStoreModal(false)
-          }
-        >
-          <div className="store-modal">
-            <button
-              className="modal-close"
-              onClick={() => setStoreModal(false)}
-            >
-              ×
-            </button>
-            <span className="sticker">6 NAIROBI STORES</span>
-            <h2>{t.storeTitle}</h2>
-            <p>{t.storeSub}</p>
-            <button
-              className="locate-button"
-              onClick={locate}
-              disabled={locating}
-            >
-              ⌖ {locating ? "Locating…" : t.useLocation}
-            </button>
-            {locationError && (
-              <small className="error">{t.locationDenied}</small>
-            )}
-            <GoogleStoreMap
-              lang={lang}
-              stores={stores}
-              selectedStoreId={storeId}
-              onSelect={setStoreId}
-            />
-            <div className="store-list">
-              {stores.map((store, index) => (
-                <button
-                  key={store.id}
-                  disabled={!store.lat}
-                  className={store.id === storeId ? "selected" : ""}
-                  onClick={() => {
-                    setStoreId(store.id);
-                    setStoreModal(false);
-                  }}
-                >
-                  <span className="store-index">0{index + 1}</span>
-                  <span>
-                    <strong>{store.name}</strong>
-                    <small>{store.address}</small>
-                    <em>{store.verified ? store.phone : t.unverified}</em>
-                  </span>
-                  {distances[store.id] !== undefined && (
-                    <b>
-                      {distances[store.id].toFixed(1)} km
-                      {Object.values(distances).sort((a, b) => a - b)[0] ===
-                      distances[store.id]
-                        ? ` · ${t.closest}`
-                        : ""}
-                    </b>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <StoreDialog
+          t={t}
+          lang={lang}
+          setStoreModal={setStoreModal}
+          locate={locate}
+          locating={locating}
+          locationError={locationError}
+          storeId={storeId}
+          setStoreId={setStoreId}
+          distances={distances}
+        />
       )}
 
       {checkout && (
-        <div className="modal-backdrop">
-          <div className="checkout-modal">
-            <button
-              className="modal-close"
-              onClick={() => {
-                setCheckout(false);
-                setCheckoutChannel(null);
-              }}
-            >
-              ×
-            </button>
-            <span className="sticker">TEST CHECKOUT</span>
-            <h2>{t.checkoutTitle}</h2>
-            <p>
-              {selectedStore.name} · {money(subtotal)}
-            </p>
-            <div className="fulfilment-cards">
-              <button
-                className={checkoutChannel === "Pickup" ? "selected" : ""}
-                onClick={() => setCheckoutChannel("Pickup")}
-              >
-                <i>⌂</i>
-                <strong>{t.pickup}</strong>
-                <span>{t.pickupNote}</span>
-              </button>
-              <button
-                className={checkoutChannel === "Delivery" ? "selected" : ""}
-                onClick={() => setCheckoutChannel("Delivery")}
-              >
-                <i>⌁</i>
-                <strong>{t.delivery}</strong>
-                <span>{t.deliveryNote}</span>
-              </button>
-              {detailedCart.some((x) => x.product.kind === "goods") && (
-                <button
-                  className={checkoutChannel === "Shipping" ? "selected" : ""}
-                  onClick={() => setCheckoutChannel("Shipping")}
-                >
-                  <i>▧</i>
-                  <strong>{t.shipping}</strong>
-                  <span>Nairobi shipping demo</span>
-                </button>
-              )}
-            </div>
-            {checkoutChannel && (
-              <section className="checkout-coupon">
-                <div>
-                  <h3>{lang === "zh" ? "优惠券" : "Coupon"}</h3>
-                  {selectedCouponId && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCouponId("")}
-                    >
-                      {lang === "zh" ? "移除" : "Remove"}
-                    </button>
-                  )}
-                </div>
-                {userCoupons.some(
-                  (coupon) => coupon.walletStatus === "AVAILABLE",
-                ) && (
-                  <label>
-                    <span>{lang === "zh" ? "我的优惠券" : "My coupons"}</span>
-                    <select
-                      value={selectedCouponId}
-                      onChange={(event) => {
-                        setSelectedCouponId(event.target.value);
-                        if (event.target.value) setCouponCodeInput("");
-                        setCheckoutError("");
-                      }}
-                    >
-                      <option value="">
-                        {lang === "zh" ? "不使用会员券" : "No member coupon"}
-                      </option>
-                      {userCoupons
-                        .filter((coupon) => coupon.walletStatus === "AVAILABLE")
-                        .map((coupon) => (
-                          <option
-                            key={coupon.userCouponId}
-                            value={coupon.userCouponId}
-                          >
-                            {lang === "zh" ? coupon.nameZh : coupon.nameEn} · {coupon.code}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                )}
-                <label>
-                  <span>{lang === "zh" ? "或输入优惠码" : "Or enter a promo code"}</span>
-                  <input
-                    value={couponCodeInput}
-                    onChange={(event) => {
-                      setCouponCodeInput(event.target.value.toUpperCase());
-                      if (event.target.value) setSelectedCouponId("");
-                      setCheckoutError("");
-                    }}
-                    placeholder="HAPPY20"
-                    autoComplete="off"
-                  />
-                </label>
-                {selectedCoupon && estimatedCouponDiscount === 0 && (
-                  <small className="field-error">
-                    {!selectedCouponMatchesFulfillment
-                      ? lang === "zh"
-                        ? "这张券不适用于当前履约方式。"
-                        : "This coupon does not apply to this fulfilment method."
-                      : couponEligibleSubtotal < selectedCoupon.minSpend
-                        ? lang === "zh"
-                          ? `适用商品需满 ${money(selectedCoupon.minSpend)}。`
-                          : `Spend ${money(selectedCoupon.minSpend)} on eligible items.`
-                        : lang === "zh"
-                          ? "购物车中没有符合条件的商品。"
-                          : "No eligible item in this cart."}
-                  </small>
-                )}
-              </section>
-            )}
-            {checkoutChannel && checkoutChannel !== "Pickup" && (
-              <section className="checkout-address">
-                <div>
-                  <h3>{t.chooseAddress}</h3>
-                  <button onClick={() => openAddress()}>
-                    + {t.addAddress}
-                  </button>
-                </div>
-                {profile.addresses.length ? (
-                  profile.addresses.map((address) => (
-                    <label
-                      key={address.id}
-                      className={
-                        selectedAddressId === address.id ? "selected" : ""
-                      }
-                    >
-                      <input
-                        type="radio"
-                        name="checkout-address"
-                        checked={selectedAddressId === address.id}
-                        onChange={() => setSelectedAddressId(address.id)}
-                      />
-                      <span>
-                        <strong>
-                          {address.label}
-                          {address.isDefault ? ` · ${t.defaultAddress}` : ""}
-                        </strong>
-                        <small>
-                          {address.recipient} · {address.phone}
-                          <br />
-                          {address.line1}, {address.area}
-                        </small>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openAddress(address)}
-                      >
-                        {t.editAddress}
-                      </button>
-                    </label>
-                  ))
-                ) : (
-                  <button
-                    className="empty-address compact"
-                    onClick={() => openAddress()}
-                  >
-                    + {t.addAddress}
-                  </button>
-                )}
-              </section>
-            )}
-            {checkoutChannel && (
-              <>
-                <section className="checkout-price-summary">
-                  <span>{t.subtotal}<strong>{money(subtotal)}</strong></span>
-                  {estimatedCouponDiscount > 0 && (
-                    <span className="discount-row">
-                      {lang === "zh" ? "优惠券抵扣" : "Coupon discount"}
-                      <strong>−{money(estimatedCouponDiscount)}</strong>
-                    </span>
-                  )}
-                  <span>
-                    {lang === "zh" ? "配送费" : "Delivery"}
-                    <strong>{money(checkoutDeliveryFee)}</strong>
-                  </span>
-                </section>
-                {checkoutError && (
-                  <p className="checkout-error" role="alert">{checkoutError}</p>
-                )}
-                <button
-                  className="primary full checkout-submit"
-                  disabled={
-                    placingOrder ||
-                    (checkoutChannel !== "Pickup" && !selectedAddressId) ||
-                    Boolean(selectedCoupon && estimatedCouponDiscount === 0)
-                  }
-                  onClick={() => placeOrder(checkoutChannel)}
-                >
-                  {placingOrder
-                    ? lang === "zh"
-                      ? "正在提交…"
-                      : "Placing order…"
-                    : `${t.placeOrder} · ${money(estimatedCheckoutTotal)}`}
-                </button>
-              </>
-            )}
-            <small className="mock-note">ⓘ {t.mockNotice}</small>
-          </div>
-        </div>
+        <CheckoutDialog
+          setCheckout={setCheckout}
+          setCheckoutChannel={setCheckoutChannel}
+          selectedStore={selectedStore}
+          subtotal={subtotal}
+          t={t}
+          lang={lang}
+          checkoutChannel={checkoutChannel}
+          detailedCart={detailedCart}
+          userCoupons={userCoupons}
+          selectedCouponId={selectedCouponId}
+          setSelectedCouponId={setSelectedCouponId}
+          couponCodeInput={couponCodeInput}
+          setCouponCodeInput={setCouponCodeInput}
+          setCheckoutError={setCheckoutError}
+          selectedCoupon={selectedCoupon}
+          estimatedCouponDiscount={estimatedCouponDiscount}
+          selectedCouponMatchesFulfillment={selectedCouponMatchesFulfillment}
+          couponEligibleSubtotal={couponEligibleSubtotal}
+          profile={profile}
+          openAddress={openAddress}
+          selectedAddressId={selectedAddressId}
+          setSelectedAddressId={setSelectedAddressId}
+          checkoutDeliveryFee={checkoutDeliveryFee}
+          checkoutError={checkoutError}
+          placingOrder={placingOrder}
+          placeOrder={placeOrder}
+          estimatedCheckoutTotal={estimatedCheckoutTotal}
+        />
       )}
 
       {authMode && (
-        <div className="modal-backdrop">
-          <div className="auth-modal">
-            <button
-              className="modal-close"
-              onClick={() => {
-                setAuthMode(null);
-                setPendingCheckout(false);
-              }}
-            >
-              ×
-            </button>
-            <Logo />
-            <span className="auth-kicker">
-              {authMode === "signup" ? t.createAccount : t.signIn}
-            </span>
-            <h2>{t.authTitle}</h2>
-            <p>{t.authSub}</p>
-            <button
-              className="social google"
-              onClick={() => completeAuth("google")}
-            >
-              <b>G</b>
-              {t.continueGoogle}
-            </button>
-            <button
-              className="social facebook"
-              onClick={() => completeAuth("facebook")}
-            >
-              <b>f</b>
-              {t.continueFacebook}
-            </button>
-            <div className="auth-divider">
-              <span>{t.or}</span>
-            </div>
-            <label className="form-field">
-              <span>{t.email}</span>
-              <input
-                type="email"
-                value={authForm.email}
-                onChange={(e) =>
-                  setAuthForm({ ...authForm, email: e.target.value })
-                }
-                placeholder="you@example.com"
-                autoComplete="email"
-              />
-            </label>
-            <label className="form-field">
-              <span>{t.password}</span>
-              <input
-                type="password"
-                value={authForm.password}
-                onChange={(e) =>
-                  setAuthForm({ ...authForm, password: e.target.value })
-                }
-                placeholder="6+ characters"
-                autoComplete={
-                  authMode === "signup" ? "new-password" : "current-password"
-                }
-              />
-            </label>
-            {authError && <div className="form-error">{authError}</div>}
-            <button
-              className="primary full"
-              onClick={() => completeAuth("password")}
-            >
-              {authMode === "signup" ? t.createAccount : t.signIn} →
-            </button>
-            <button
-              className="auth-switch"
-              onClick={() => {
-                setAuthMode(authMode === "signup" ? "signin" : "signup");
-                setAuthError("");
-              }}
-            >
-              {authMode === "signup"
-                ? lang === "zh"
-                  ? "已有账号？登录"
-                  : "Already a member? Sign in"
-                : lang === "zh"
-                  ? "还没有账号？注册"
-                  : "New here? Create account"}
-            </button>
-            {authMode === "signin" && (
-              <button
-                className="auth-switch auth-reset"
-                onClick={async () => {
-                  const email = authForm.email.trim();
-                  if (!email.includes("@")) {
-                    setAuthError(
-                      lang === "zh"
-                        ? "请先输入需要重置密码的邮箱。"
-                        : "Enter your email first to reset the password.",
-                    );
-                    return;
-                  }
-                  try {
-                    await sendMemberPasswordReset(email);
-                    setAuthError(
-                      lang === "zh"
-                        ? "密码重置邮件已发送。"
-                        : "Password reset email sent.",
-                    );
-                  } catch (error) {
-                    setAuthError(
-                      error instanceof Error
-                        ? error.message
-                        : "Password reset could not be sent",
-                    );
-                  }
-                }}
-              >
-                {lang === "zh" ? "忘记密码？" : "Forgot password?"}
-              </button>
-            )}
-            <small className="auth-test">ⓘ {t.testAuth}</small>
-          </div>
-        </div>
+        <AuthDialog
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          setPendingCheckout={setPendingCheckout}
+          t={t}
+          completeAuth={completeAuth}
+          authForm={authForm}
+          setAuthForm={setAuthForm}
+          authError={authError}
+          setAuthError={setAuthError}
+          lang={lang}
+        />
       )}
 
       {profileModal && (
-        <div className="modal-backdrop">
-          <div className="profile-modal">
-            <button
-              className="modal-close"
-              onClick={() => {
-                setProfileModal(false);
-                setPendingCheckout(false);
-              }}
-            >
-              ×
-            </button>
-            <span className="sticker">MEMBER PROFILE</span>
-            <h2>{profile.nickname ? t.editProfile : t.completeProfile}</h2>
-            <p>{session?.email}</p>
-            <label className="form-field">
-              <span>{t.nickname}</span>
-              <input
-                value={profileForm.nickname}
-                onChange={(e) =>
-                  setProfileForm({ ...profileForm, nickname: e.target.value })
-                }
-                placeholder={
-                  lang === "zh"
-                    ? "大家怎么称呼你？"
-                    : "What should we call you?"
-                }
-              />
-            </label>
-            <div className="form-split">
-              <label className="form-field">
-                <span>{t.gender}</span>
-                <select
-                  value={profileForm.gender}
-                  onChange={(e) =>
-                    setProfileForm({
-                      ...profileForm,
-                      gender: e.target.value as UserProfile["gender"],
-                    })
-                  }
-                >
-                  <option value="">—</option>
-                  <option>Female</option>
-                  <option>Male</option>
-                  <option>Non-binary</option>
-                  <option>Prefer not to say</option>
-                </select>
-              </label>
-              <label className="form-field">
-                <span>{t.age}</span>
-                <input
-                  type="number"
-                  min="13"
-                  max="120"
-                  value={profileForm.age}
-                  onChange={(e) =>
-                    setProfileForm({ ...profileForm, age: e.target.value })
-                  }
-                  placeholder="18+"
-                />
-              </label>
-            </div>
-            <small className="profile-privacy">
-              {lang === "zh"
-                ? "年龄与性别用于会员分析和更合适的推荐，不会公开展示。"
-                : "Age and gender help with member insights and recommendations. They are never shown publicly."}
-            </small>
-            <button
-              className="primary full"
-              disabled={
-                !profileForm.nickname.trim() || Number(profileForm.age) < 13
-              }
-              onClick={saveProfile}
-            >
-              {t.save} →
-            </button>
-          </div>
-        </div>
+        <ProfileDialog
+          setProfileModal={setProfileModal}
+          setPendingCheckout={setPendingCheckout}
+          profile={profile}
+          t={t}
+          session={session}
+          profileForm={profileForm}
+          setProfileForm={setProfileForm}
+          lang={lang}
+          saveProfile={saveProfile}
+        />
       )}
 
       {addressModal && (
-        <div className="modal-backdrop">
-          <div className="address-modal">
-            <button
-              className="modal-close"
-              onClick={() => setAddressModal(false)}
-            >
-              ×
-            </button>
-            <span className="sticker">NAIROBI DELIVERY</span>
-            <h2>
-              {addressForm.id &&
-              profile.addresses.some((a) => a.id === addressForm.id)
-                ? t.editAddress
-                : t.addAddress}
-            </h2>
-            <div className="form-split">
-              <label className="form-field">
-                <span>{t.addressLabel}</span>
-                <input
-                  value={addressForm.label}
-                  onChange={(e) =>
-                    setAddressForm({ ...addressForm, label: e.target.value })
-                  }
-                />
-              </label>
-              <label className="form-field">
-                <span>{t.recipient}</span>
-                <input
-                  value={addressForm.recipient}
-                  onChange={(e) =>
-                    setAddressForm({
-                      ...addressForm,
-                      recipient: e.target.value,
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <label className="form-field">
-              <span>{t.phone}</span>
-              <input
-                type="tel"
-                value={addressForm.phone}
-                onChange={(e) =>
-                  setAddressForm({ ...addressForm, phone: e.target.value })
-                }
-                placeholder="+254 7•• ••• •••"
-              />
-            </label>
-            <label className="form-field">
-              <span>{t.area}</span>
-              <input
-                value={addressForm.area}
-                onChange={(e) =>
-                  setAddressForm({ ...addressForm, area: e.target.value })
-                }
-                placeholder="Kilimani, Westlands, CBD…"
-              />
-            </label>
-            <label className="form-field">
-              <span>{t.addressLine}</span>
-              <input
-                value={addressForm.line1}
-                onChange={(e) =>
-                  setAddressForm({ ...addressForm, line1: e.target.value })
-                }
-              />
-            </label>
-            <label className="form-field">
-              <span>{t.instructions}</span>
-              <textarea
-                value={addressForm.instructions}
-                onChange={(e) =>
-                  setAddressForm({
-                    ...addressForm,
-                    instructions: e.target.value,
-                  })
-                }
-              />
-            </label>
-            <label className="default-check">
-              <input
-                type="checkbox"
-                checked={addressForm.isDefault}
-                onChange={(e) =>
-                  setAddressForm({
-                    ...addressForm,
-                    isDefault: e.target.checked,
-                  })
-                }
-              />
-              <span>{t.makeDefault}</span>
-            </label>
-            {addressError && <div className="form-error">{addressError}</div>}
-            <button className="primary full" onClick={saveAddress}>
-              {t.save} →
-            </button>
-          </div>
-        </div>
+        <AddressDialog
+          setAddressModal={setAddressModal}
+          addressForm={addressForm}
+          setAddressForm={setAddressForm}
+          profile={profile}
+          t={t}
+          addressError={addressError}
+          saveAddress={saveAddress}
+        />
       )}
 
       {editingOrderId && !addressModal && (
-        <div className="modal-backdrop">
-          <div className="order-address-modal">
-            <button
-              className="modal-close"
-              onClick={() => setEditingOrderId(null)}
-            >
-              ×
-            </button>
-            <span className="sticker">ACTIVE ORDER</span>
-            <h2>{t.changeAddress}</h2>
-            <p>{editingOrderId}</p>
-            {profile.addresses.map((address) => (
-              <button
-                key={address.id}
-                onClick={() => changeOrderAddress(address.id)}
-              >
-                <strong>
-                  {address.label}
-                  {address.isDefault ? ` · ${t.defaultAddress}` : ""}
-                </strong>
-                <span>
-                  {address.recipient} · {address.line1}, {address.area}
-                </span>
-              </button>
-            ))}
-            <button className="add-order-address" onClick={() => openAddress()}>
-              + {t.addAddress}
-            </button>
-          </div>
-        </div>
+        <OrderAddressDialog
+          editingOrderId={editingOrderId}
+          setEditingOrderId={setEditingOrderId}
+          profile={profile}
+          changeOrderAddress={changeOrderAddress}
+          t={t}
+          openAddress={openAddress}
+        />
       )}
 
       {selectedOrder && (
-        <div
-          className="modal-backdrop order-detail-backdrop"
-          onMouseDown={(event) =>
-            event.currentTarget === event.target && setSelectedOrder(null)
-          }
-        >
-          <section
-            className="order-detail-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="order-detail-title"
-          >
-            <button
-              className="modal-close"
-              onClick={() => setSelectedOrder(null)}
-              aria-label={t.close}
-            >
-              ×
-            </button>
-            <div className="order-detail-heading">
-              <div>
-                <span className="sticker">{selectedOrder.status}</span>
-                <h2 id="order-detail-title">{t.orderDetails}</h2>
-                <strong>{selectedOrder.id}</strong>
-              </div>
-              <span>{selectedOrder.channel}</span>
-            </div>
-            <p className="order-detail-date">
-              {new Date(selectedOrder.createdAt).toLocaleString(
-                lang === "zh" ? "zh-CN" : "en-KE",
-                {
-                  dateStyle: "full",
-                  timeStyle: "short",
-                  timeZone: "Africa/Nairobi",
-                },
-              )}
-            </p>
-
-            {selectedOrder.channel === "Pickup" ? (
-              <section className="order-pickup-card">
-                <div>
-                  <span>{t.pickupAt}</span>
-                  <strong>
-                    {selectedOrderStore?.name ??
-                      (lang === "zh" ? "KIYOYO 门店" : "KIYOYO store")}
-                  </strong>
-                  <p>{selectedOrderStore?.address}</p>
-                </div>
-                {selectedOrder.pickupCode !== "NO-PICKUP" &&
-                !["Completed", "Cancelled"].includes(selectedOrder.status) ? (
-                  <div className="order-pickup-code">
-                    <PickupQR code={selectedOrder.pickupCode} />
-                    <code>{selectedOrder.pickupCode}</code>
-                    <small>{t.qrHelp}</small>
-                  </div>
-                ) : selectedOrder.pickupCanReissue &&
-                  !["Completed", "Cancelled"].includes(
-                    selectedOrder.status,
-                  ) ? (
-                  <div className="order-reissue-code">
-                    <b>▦</b>
-                    <strong>{t.restorePickupCode}</strong>
-                    <p>{t.restorePickupHelp}</p>
-                    {pickupQrError && <small>{pickupQrError}</small>}
-                    <button
-                      className="primary"
-                      disabled={pickupQrLoading}
-                      onClick={restorePickupQr}
-                    >
-                      {pickupQrLoading
-                        ? t.restoringCode
-                        : `${t.restorePickupCode} →`}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="order-closed-code">
-                    <b>✓</b>
-                    <span>
-                      {selectedOrder.status === "Completed"
-                        ? lang === "zh"
-                          ? "订单已核销"
-                          : "Pickup completed"
-                        : lang === "zh"
-                          ? "二维码当前不可用"
-                          : "Pickup code unavailable"}
-                    </span>
-                  </div>
-                )}
-              </section>
-            ) : (
-              <section className="order-delivery-card">
-                <span>{t.deliverTo}</span>
-                <strong>
-                  {selectedOrderAddress?.label ??
-                    (lang === "zh" ? "配送地址" : "Delivery address")}
-                </strong>
-                {selectedOrderAddress ? (
-                  <p>
-                    {selectedOrderAddress.recipient} ·{" "}
-                    {selectedOrderAddress.phone}
-                    <br />
-                    {selectedOrderAddress.line1}, {selectedOrderAddress.area}
-                  </p>
-                ) : (
-                  <p>{lang === "zh" ? "地址信息不可用" : "Address unavailable"}</p>
-                )}
-                {selectedOrder.status === "Placed" && (
-                  <button
-                    onClick={() => {
-                      setSelectedOrder(null);
-                      setEditingOrderId(selectedOrder.id);
-                    }}
-                  >
-                    {t.changeAddress} →
-                  </button>
-                )}
-              </section>
-            )}
-
-            <section className="order-detail-items">
-              <h3>{t.orderedItems}</h3>
-              {selectedOrder.items.map((item) => {
-                const product = catalog.find(
-                  (candidate) => candidate.id === item.productId,
-                );
-                const itemName =
-                  lang === "zh"
-                    ? (item.productNameZh ?? product?.nameZh ?? item.productId)
-                    : (item.productName ?? product?.name ?? item.productId);
-                const options = [
-                  item.size,
-                  item.sugar,
-                  item.ice,
-                  ...(item.toppings ?? []),
-                ].filter(Boolean);
-                const lineTotal =
-                  item.lineTotal ??
-                  (item.unitPrice ?? (product ? salePrice(product) : 0)) *
-                    item.quantity;
-                return (
-                  <article key={item.key}>
-                    {(item.productImage ?? product?.image) && (
-                      <img
-                        src={item.productImage ?? product?.image}
-                        alt=""
-                      />
-                    )}
-                    <div>
-                      <strong>{itemName}</strong>
-                      {options.length > 0 && <span>{options.join(" · ")}</span>}
-                      <small>× {item.quantity}</small>
-                    </div>
-                    <b>{money(lineTotal)}</b>
-                  </article>
-                );
-              })}
-            </section>
-
-            <div className="order-detail-total">
-              <span>
-                {selectedOrder.subtotal != null && (
-                  <small>{t.subtotal} · {money(selectedOrder.subtotal)}</small>
-                )}
-                {(selectedOrder.discount ?? 0) > 0 && (
-                  <small>
-                    {lang === "zh" ? "优惠券" : "Coupon"}{" "}
-                    {selectedOrder.couponCode ? `· ${selectedOrder.couponCode} ` : ""}
-                    −{money(selectedOrder.discount ?? 0)}
-                  </small>
-                )}
-                {t.orderTotal}
-              </span>
-              <strong>{money(selectedOrder.total)}</strong>
-            </div>
-            <button
-              className="primary full order-detail-close"
-              onClick={() => setSelectedOrder(null)}
-            >
-              {t.close}
-            </button>
-          </section>
-        </div>
+        <OrderDetailDialog
+          selectedOrder={selectedOrder}
+          setSelectedOrder={setSelectedOrder}
+          t={t}
+          lang={lang}
+          selectedOrderStore={selectedOrderStore}
+          selectedOrderAddress={selectedOrderAddress}
+          pickupQrError={pickupQrError}
+          pickupQrLoading={pickupQrLoading}
+          restorePickupQr={restorePickupQr}
+          setEditingOrderId={setEditingOrderId}
+          catalog={catalog}
+        />
       )}
 
       {success && (
-        <div className="modal-backdrop">
-          <div className="success-modal">
-            <span className="success-pop">✓</span>
-            <h2>{t.success}</h2>
-            <strong className="order-number">{success.id}</strong>
-            {success.channel === "Pickup" ? (
-              <>
-                <PickupQR code={success.pickupCode} />
-                <code>{success.pickupCode}</code>
-                <p>{t.qrHelp}</p>
-              </>
-            ) : (
-              <>
-                <div className="delivery-success">⌁</div>
-                <p>
-                  {success.channel} ·{" "}
-                  {
-                    profile.addresses.find((a) => a.id === success.addressId)
-                      ?.line1
-                  }
-                </p>
-              </>
-            )}
-            <button
-              className="primary full"
-              onClick={() => {
-                setSuccess(null);
-                go("home");
-              }}
-            >
-              {t.done}
-            </button>
-          </div>
-        </div>
+        <OrderSuccessDialog
+          success={success}
+          setSuccess={setSuccess}
+          t={t}
+          profile={profile}
+          go={go}
+        />
       )}
     </div>
   );
