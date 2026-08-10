@@ -21,6 +21,7 @@ test("server-renders the KIYOYO customer storefront", async () => {
   assert.match(html, /Fruit Rush/);
   assert.match(html, /fruit-tea-campaign-v2\.jpg/);
   assert.match(html, /KIYOYO campaigns/);
+  assert.match(html, /aria-label="Your KIYOYO: Kilimani"/);
   assert.match(html, /class=" shop-entry"/);
   assert.match(html, />Shop<\/span>/);
   assert.match(html, /Assam Boba Tea/);
@@ -38,6 +39,10 @@ test("server-renders the KIYOYO customer storefront", async () => {
   assert.doesNotMatch(featured, />Add-ons</);
   assert.match(featured, /Passion Fruit Tea/);
   assert.match(featured, /Raw Coconut Latte/);
+  assert.match(html, /Home<\/span>/);
+  assert.match(html, /Saved<\/span>/);
+  assert.match(html, /Cart<\/span>/);
+  assert.match(html, /Account<\/span>/);
 });
 
 test("server-renders the Nairobi operations admin", async () => {
