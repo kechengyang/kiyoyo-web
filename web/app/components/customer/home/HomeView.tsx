@@ -1,9 +1,9 @@
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Lang, Product } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { ProductCard, SectionHead } from "./primitives";
+import type { Lang, Product } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { ProductCard, SectionHead } from "../shared/primitives";
 
 export type Campaign = {
   image: string;

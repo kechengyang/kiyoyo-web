@@ -1,8 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { Order, Tab, UserProfile } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
-import { PickupQR } from "./primitives";
+import type { Order, Tab, UserProfile } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
+import { PickupQR } from "../shared/primitives";
 
 export function OrderSuccessDialog({ success, setSuccess, t, profile, go }: {
   success: Order;

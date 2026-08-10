@@ -1,10 +1,10 @@
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { drinkCategoryOrder, drinkCategoryZh } from "../../menu";
-import type { Lang, Product } from "../../types";
-import { drinkCategoryAnchor } from "./foundation";
-import { DrinkMenuCard, Logo, ProductCard } from "./primitives";
+import { drinkCategoryOrder, drinkCategoryZh } from "../../../menu";
+import type { Lang, Product } from "../../../types";
+import { drinkCategoryAnchor } from "../core/foundation";
+import { DrinkMenuCard, Logo, ProductCard } from "../shared/primitives";
 
 export function ShopView({
   lang, shopMode, openShop, setStoreModal, storeArea, drinkCategoryNavRef,

@@ -1,4 +1,4 @@
-import type { Address, Lang, Product, UserCoupon, UserProfile } from "../../types";
+import type { Address, Lang, Product, UserCoupon, UserProfile } from "../../../types";
 
 export const drinkCategoryAnchor = (category: string) =>
   category.toLowerCase().replace(/[^a-z0-9]+/g, "-");

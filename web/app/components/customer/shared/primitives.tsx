@@ -1,9 +1,9 @@
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
 import QRCode from "react-qr-code";
-import { salePrice } from "../../catalog";
-import { money } from "../../data";
-import type { Lang, Product, Tab } from "../../types";
+import { salePrice } from "../../../catalog";
+import { money } from "../../../data";
+import type { Lang, Product, Tab } from "../../../types";
 
 export function Logo() {
   return <span className="logo">KIYOYO</span>;

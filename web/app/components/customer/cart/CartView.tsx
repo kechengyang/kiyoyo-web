@@ -1,9 +1,9 @@
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
-import { salePrice } from "../../catalog";
-import { money } from "../../data";
-import type { AuthSession, CartItem, Lang, Product } from "../../types";
-import type { CustomerCopy } from "./copy";
+import { salePrice } from "../../../catalog";
+import { money } from "../../../data";
+import type { AuthSession, CartItem, Lang, Product } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
 
 type DetailedCartItem = CartItem & { product: Product };
 

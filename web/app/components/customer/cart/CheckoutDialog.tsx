@@ -1,8 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
-import { money } from "../../data";
-import type { Address, CartItem, Lang, Order, Product, UserCoupon, UserProfile } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
+import { money } from "../../../data";
+import type { Address, CartItem, Lang, Order, Product, UserCoupon, UserProfile } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
 
 type DetailedCartItem = CartItem & { product: Product };
 

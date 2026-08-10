@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { Address, UserProfile } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
+import type { Address, UserProfile } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
 
 export function OrderAddressDialog({ editingOrderId, setEditingOrderId, profile, changeOrderAddress, t, openAddress }: {
   editingOrderId: string;

@@ -1,9 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
-import { stores } from "../../data";
-import type { Lang } from "../../types";
-import GoogleStoreMap from "../GoogleStoreMap";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
+import { stores } from "../../../data";
+import type { Lang } from "../../../types";
+import GoogleStoreMap from "../../GoogleStoreMap";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
 
 export function StoreDialog({
   t, lang, setStoreModal, locate, locating, locationError, storeId, setStoreId, distances,

@@ -1,12 +1,12 @@
 import type { Dispatch, SetStateAction } from "react";
-import { money } from "../../data";
-import { signOutMember } from "../../platform";
+import { money } from "../../../data";
+import { signOutMember } from "../../../platform";
 import type {
   Address, AuthSession, CartItem, Lang, Order, Tab, UserCoupon, UserProfile,
-} from "../../types";
-import type { CustomerCopy } from "./copy";
-import { couponStatusLabel } from "./foundation";
-import { Logo, SectionHead } from "./primitives";
+} from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { couponStatusLabel } from "../core/foundation";
+import { Logo, SectionHead } from "../shared/primitives";
 
 export type AccountPanel = "coupons" | "rewards" | "history";
 

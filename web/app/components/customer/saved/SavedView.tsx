@@ -1,6 +1,6 @@
-import type { Lang, Product } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { ProductCard } from "./primitives";
+import type { Lang, Product } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { ProductCard } from "../shared/primitives";
 
 export function SavedView({ t, lang, saved, products, toggleSave, openProduct, onExplore }: {
   t: CustomerCopy;

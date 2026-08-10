@@ -1,9 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
-import { sendMemberPasswordReset } from "../../platform";
-import type { AuthProvider, Lang } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
-import { Logo } from "./primitives";
+import { sendMemberPasswordReset } from "../../../platform";
+import type { AuthProvider, Lang } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
+import { Logo } from "../shared/primitives";
 
 type AuthMode = "signin" | "signup";
 type AuthForm = { email: string; password: string };

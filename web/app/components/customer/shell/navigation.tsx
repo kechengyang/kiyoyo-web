@@ -1,6 +1,6 @@
-import type { AuthSession, Lang, Tab, UserProfile } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { Logo, NavIcon } from "./primitives";
+import type { AuthSession, Lang, Tab, UserProfile } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { Logo, NavIcon } from "../shared/primitives";
 
 type NavigationProps = {
   t: CustomerCopy;

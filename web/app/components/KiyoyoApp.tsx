@@ -24,30 +24,30 @@ import {
   drinkMenuTagRank,
   emptyAddress,
   emptyProfile,
-} from "./customer/foundation";
-import { productSizeEntries } from "./customer/primitives";
-import { useStoredState } from "./customer/useStoredState";
-import { copy } from "./customer/copy";
-import { HomeView } from "./customer/HomeView";
-import { ShopView } from "./customer/ShopView";
-import { SavedView } from "./customer/SavedView";
-import { CartView } from "./customer/CartView";
-import { AccountView } from "./customer/AccountView";
-import { GlobalSearchDialog } from "./customer/GlobalSearchDialog";
-import { ProductDialog } from "./customer/ProductDialog";
-import { StoreDialog } from "./customer/StoreDialog";
-import { CheckoutDialog } from "./customer/CheckoutDialog";
-import { AuthDialog } from "./customer/AuthDialog";
-import { ProfileDialog } from "./customer/ProfileDialog";
-import { AddressDialog } from "./customer/AddressDialog";
-import { OrderAddressDialog } from "./customer/OrderAddressDialog";
-import { OrderDetailDialog } from "./customer/OrderDetailDialog";
-import { OrderSuccessDialog } from "./customer/OrderSuccessDialog";
+} from "./customer/core/foundation";
+import { productSizeEntries } from "./customer/shared/primitives";
+import { useStoredState } from "./customer/core/useStoredState";
+import { copy } from "./customer/core/copy";
+import { HomeView } from "./customer/home/HomeView";
+import { ShopView } from "./customer/shop/ShopView";
+import { SavedView } from "./customer/saved/SavedView";
+import { CartView } from "./customer/cart/CartView";
+import { AccountView } from "./customer/account/AccountView";
+import { GlobalSearchDialog } from "./customer/shell/GlobalSearchDialog";
+import { ProductDialog } from "./customer/shop/ProductDialog";
+import { StoreDialog } from "./customer/fulfillment/StoreDialog";
+import { CheckoutDialog } from "./customer/cart/CheckoutDialog";
+import { AuthDialog } from "./customer/account/AuthDialog";
+import { ProfileDialog } from "./customer/account/ProfileDialog";
+import { AddressDialog } from "./customer/account/AddressDialog";
+import { OrderAddressDialog } from "./customer/orders/OrderAddressDialog";
+import { OrderDetailDialog } from "./customer/orders/OrderDetailDialog";
+import { OrderSuccessDialog } from "./customer/orders/OrderSuccessDialog";
 import {
   CustomerHeader,
   DesktopNavigation,
   MobileNavigation,
-} from "./customer/navigation";
+} from "./customer/shell/navigation";
 import type {
   Address,
   AuthProvider,

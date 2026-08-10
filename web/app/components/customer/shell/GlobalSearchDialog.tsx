@@ -1,12 +1,12 @@
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
 import type { Dispatch, SetStateAction } from "react";
-import { salePrice } from "../../catalog";
-import { money } from "../../data";
-import type { Lang, Product } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
-import { Logo } from "./primitives";
+import { salePrice } from "../../../catalog";
+import { money } from "../../../data";
+import type { Lang, Product } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
+import { Logo } from "../shared/primitives";
 
 export function GlobalSearchDialog({
   lang, t, globalQuery, setGlobalQuery, normalizedGlobalQuery, globalResults,

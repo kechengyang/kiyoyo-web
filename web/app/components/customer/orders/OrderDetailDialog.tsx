@@ -1,12 +1,12 @@
 /* eslint-disable @next/next/no-img-element -- Order history retains stored product images. */
 
 import type { Dispatch, SetStateAction } from "react";
-import { salePrice } from "../../catalog";
-import { money } from "../../data";
-import type { Address, Lang, Order, Product } from "../../types";
-import type { CustomerCopy } from "./copy";
-import { DialogBackdrop } from "./DialogBackdrop";
-import { PickupQR } from "./primitives";
+import { salePrice } from "../../../catalog";
+import { money } from "../../../data";
+import type { Address, Lang, Order, Product } from "../../../types";
+import type { CustomerCopy } from "../core/copy";
+import { DialogBackdrop } from "../shared/DialogBackdrop";
+import { PickupQR } from "../shared/primitives";
 
 export function OrderDetailDialog({
   selectedOrder, setSelectedOrder, t, lang, selectedOrderStore, selectedOrderAddress,
