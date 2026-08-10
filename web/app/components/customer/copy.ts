@@ -215,3 +215,5 @@ export const copy = {
     placeOrder: "提交测试订单",
   },
 };
+
+export type CustomerCopy = (typeof copy)[keyof typeof copy];

@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { haversineKm, money, stores } from "../data";
-import { drinkCategoryOrder, drinkCategoryZh } from "../menu";
+import { drinkCategoryOrder } from "../menu";
 import {
   resolveProductTag,
   salePrice,
@@ -32,17 +32,23 @@ import {
   emptyProfile,
 } from "./customer/foundation";
 import {
-  DrinkMenuCard,
   Logo,
-  NavIcon,
   Option,
   PickupQR,
-  ProductCard,
   SectionHead,
   productSizeEntries,
 } from "./customer/primitives";
 import { useStoredState } from "./customer/useStoredState";
 import { copy } from "./customer/copy";
+import { HomeView } from "./customer/HomeView";
+import { ShopView } from "./customer/ShopView";
+import { SavedView } from "./customer/SavedView";
+import { CartView } from "./customer/CartView";
+import {
+  CustomerHeader,
+  DesktopNavigation,
+  MobileNavigation,
+} from "./customer/navigation";
 import type {
   Address,
   AuthProvider,
@@ -1127,600 +1133,97 @@ export default function KiyoyoApp() {
 
   return (
     <div className="app-shell">
-      <div className="top-strip">
-        <span>NAIROBI, KENYA</span>
-        <span>FRESHLY MADE · PLAYFULLY SERVED</span>
-        <span>EST. WITH JOY</span>
-      </div>
-      <header className="site-header">
-        <button
-          className="store-button"
-          onClick={() => setStoreModal(true)}
-          aria-label={`${t.location}: ${selectedStore.area}`}
-          title={`${t.location}: ${selectedStore.area}`}
-        >
-          <span>⌖</span>
-          <span>
-            <small>{t.location}</small>
-            <strong>{selectedStore.area}⌄</strong>
-          </span>
-        </button>
-        <button className="brand-button" onClick={() => go("home")}>
-          <Logo />
-        </button>
-        <div className="header-actions">
-          <button
-            className="global-search-trigger"
-            onClick={() => setGlobalSearchOpen(true)}
-            aria-label={t.search}
-          >
-            <span className="search-mark" aria-hidden="true" />
-            <strong>{lang === "zh" ? "搜索" : "Search"}</strong>
-            <kbd>/</kbd>
-          </button>
-          <button
-            className={`member-trigger ${session ? "has-session" : ""}`}
-            onClick={() => (session ? go("account") : openAuth("signin"))}
-            aria-label={
-              session
-                ? lang === "zh"
-                  ? "打开用户中心"
-                  : "Open account"
-                : lang === "zh"
-                  ? "登录"
-                  : "Log in"
-            }
-          >
-            <span aria-hidden="true">
-              {session
-                ? (profile.nickname || session.email).charAt(0).toUpperCase()
-                : "○"}
-            </span>
-            <strong>
-              {session
-                ? profile.nickname || (lang === "zh" ? "账户" : "ACCOUNT")
-                : lang === "zh"
-                  ? "登录"
-                  : "LOGIN"}
-            </strong>
-          </button>
-          <button
-            className="lang"
-            onClick={() => setLang(lang === "en" ? "zh" : "en")}
-            aria-label={lang === "en" ? "切换到中文" : "Switch to English"}
-          >
-            {lang === "en" ? "中文" : "EN"}
-          </button>
-          <button className="desktop-cart" onClick={() => go("cart")}>
-            BAG <b>{cartCount}</b>
-          </button>
-        </div>
-      </header>
-      <nav className="desktop-nav">
-        {(Object.keys(t.nav) as Tab[]).map((item) => (
-          <button
-            key={item}
-            className={tab === item ? "active" : ""}
-            onClick={() => (item === "shop" ? openShop("drinks") : go(item))}
-          >
-            {t.nav[item]}
-            {item === "cart" && cartCount > 0 && <sup>{cartCount}</sup>}
-          </button>
-        ))}
-      </nav>
+      <CustomerHeader
+        t={t}
+        lang={lang}
+        storeArea={selectedStore.area}
+        session={session}
+        profile={profile}
+        cartCount={cartCount}
+        onOpenStore={() => setStoreModal(true)}
+        onHome={() => go("home")}
+        onSearch={() => setGlobalSearchOpen(true)}
+        onMember={() => (session ? go("account") : openAuth("signin"))}
+        onToggleLanguage={() => setLang(lang === "en" ? "zh" : "en")}
+        onCart={() => go("cart")}
+      />
+      <DesktopNavigation
+        t={t}
+        tab={tab}
+        cartCount={cartCount}
+        onNavigate={(item) =>
+          item === "shop" ? openShop("drinks") : go(item)
+        }
+      />
 
       <main>
         {tab === "home" && (
-          <>
-            <section
-              className="campaign-carousel"
-              aria-roledescription="carousel"
-              aria-label="KIYOYO campaigns"
-              onMouseEnter={() => setBannerPointerPaused(true)}
-              onMouseLeave={() => setBannerPointerPaused(false)}
-              onFocusCapture={() => setBannerFocusPaused(true)}
-              onBlurCapture={(event) => {
-                if (
-                  !event.currentTarget.contains(event.relatedTarget as Node)
-                )
-                  setBannerFocusPaused(false);
-              }}
-            >
-              <div
-                className={`campaign-stage motion-${activeCampaign.motion}`}
-                key={bannerIndex}
-              >
-                <img
-                  className="campaign-backdrop"
-                  src={activeCampaign.image}
-                  alt=""
-                  aria-hidden="true"
-                />
-                <img
-                  className="campaign-art"
-                  src={activeCampaign.image}
-                  alt={activeCampaign.alt}
-                />
-                <div className="campaign-motion" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              </div>
-              <button
-                className="campaign-arrow previous"
-                aria-label="Previous campaign"
-                onClick={() =>
-                  setBannerIndex(
-                    (index) =>
-                      (index + campaigns.length - 1) % campaigns.length,
-                  )
-                }
-              >
-                ←
-              </button>
-              <button
-                className="campaign-arrow next"
-                aria-label="Next campaign"
-                onClick={() =>
-                  setBannerIndex((index) => (index + 1) % campaigns.length)
-                }
-              >
-                →
-              </button>
-              <div className="campaign-info">
-                <span>{activeCampaign.tag}</span>
-                <div>
-                  <strong>{activeCampaign.title}</strong>
-                  <small>{activeCampaign.body}</small>
-                </div>
-                <button onClick={runCampaign}>{activeCampaign.cta} ↗</button>
-              </div>
-              <div className="campaign-dots">
-                {campaigns.map((campaign, index) => (
-                  <button
-                    key={campaign.tag}
-                    className={bannerIndex === index ? "active" : ""}
-                    aria-label={`Show campaign ${index + 1}`}
-                    onClick={() => setBannerIndex(index)}
-                  >
-                    <i />
-                  </button>
-                ))}
-              </div>
-            </section>
-            <div className="marquee">
-              <div>
-                BOBA · SOUFFLÉ · HAPPY THINGS · NAIROBI · BOBA · SOUFFLÉ · HAPPY
-                THINGS · NAIROBI ·
-              </div>
-            </div>
-            <section className="content-section">
-              <SectionHead
-                title={t.trending}
-                action={t.seeAll}
-                onAction={() => openShop("drinks")}
-              />
-              <div className="product-grid featured">
-                {trendingProducts.map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    lang={lang}
-                    saved={saved.includes(p.id)}
-                    onSave={() => toggleSave(p.id)}
-                    onOpen={() => openProduct(p)}
-                  />
-                ))}
-              </div>
-            </section>
-            <section className="story-band">
-              <div className="story-photo">
-                <img
-                  src="/images/goods/streetwear.png"
-                  alt="KIYOYO streetwear"
-                />
-              </div>
-              <div className="story-copy">
-                <span className="eyebrow">KIYOYO WORLD / 001</span>
-                <h2>
-                  {lang === "zh" ? "不只是一杯奶茶。" : "More than a cup."}
-                </h2>
-                <p>
-                  {lang === "zh"
-                    ? "我们把内罗毕的能量装进饮品、衣服、家居和每一个小小收藏。"
-                    : "We bottle Nairobi energy into drinks, clothes, spaces and tiny objects worth keeping."}
-                </p>
-                <button
-                  className="primary invert"
-                  onClick={() => openShop("goods")}
-                >
-                  {t.shopDrop} →
-                </button>
-              </div>
-            </section>
-            <section className="content-section">
-              <SectionHead
-                title={t.goods}
-                action={t.seeAll}
-                onAction={() => openShop("goods")}
-              />
-              <div className="editorial-grid">
-                {products
-                  .filter((p) => p.kind === "goods")
-                  .slice(0, 5)
-                  .map((p, i) => (
-                    <div className={`editorial-card e${i}`} key={p.id}>
-                      <ProductCard
-                        product={p}
-                        lang={lang}
-                        saved={saved.includes(p.id)}
-                        onSave={() => toggleSave(p.id)}
-                        onOpen={() => openProduct(p)}
-                      />
-                    </div>
-                  ))}
-              </div>
-            </section>
-          </>
+          <HomeView
+            t={t}
+            lang={lang}
+            campaigns={campaigns}
+            activeCampaign={activeCampaign}
+            bannerIndex={bannerIndex}
+            setBannerIndex={setBannerIndex}
+            setBannerPointerPaused={setBannerPointerPaused}
+            setBannerFocusPaused={setBannerFocusPaused}
+            runCampaign={runCampaign}
+            openShop={openShop}
+            trendingProducts={trendingProducts}
+            products={products}
+            saved={saved}
+            toggleSave={toggleSave}
+            openProduct={openProduct}
+          />
         )}
 
         {tab === "shop" && (
-          <section className="shop-page content-section">
-            <div
-              className="shop-mode-switch"
-              role="tablist"
-              aria-label={lang === "zh" ? "商城模式" : "Shop mode"}
-            >
-              <button
-                role="tab"
-                aria-selected={shopMode === "drinks"}
-                className={shopMode === "drinks" ? "active" : ""}
-                onClick={() => openShop("drinks")}
-              >
-                {lang === "zh" ? "饮品" : "Drinks"}
-              </button>
-              <button
-                role="tab"
-                aria-selected={shopMode === "goods"}
-                className={shopMode === "goods" ? "active" : ""}
-                onClick={() => openShop("goods")}
-              >
-                {lang === "zh" ? "好物" : "Goods"}
-              </button>
-            </div>
-            {shopMode === "drinks" ? (
-              <>
-                <div className="drink-studio-hero">
-                  <img
-                    src="/images/events/drink-studio-kiyoyo-trend-v2.jpg"
-                    alt="Three KIYOYO fruit drinks in a playful red, mango and cream campaign set"
-                  />
-                  <div className="drink-studio-copy">
-                    <div className="drink-brand-lockup">
-                      <Logo />
-                    </div>
-                    <h1>
-                      {lang === "zh" ? (
-                        <>
-                          新鲜现做。
-                          <br />
-                          自在定制。
-                        </>
-                      ) : (
-                        <>
-                          Made fresh.
-                          <br />
-                          Made yours.
-                        </>
-                      )}
-                    </h1>
-                    <div>
-                      <button
-                        className="drink-hero-cta"
-                        onClick={() =>
-                          document
-                            .getElementById("drink-menu")
-                            ?.scrollIntoView({ behavior: "smooth" })
-                        }
-                      >
-                        {lang === "zh" ? "选择饮品" : "Choose a drink"} →
-                      </button>
-                      <button
-                        className="store-status"
-                        onClick={() => setStoreModal(true)}
-                      >
-                        <i />
-                        {selectedStore.area} ·{" "}
-                        {lang === "zh" ? "15–20 分钟" : "15–20 min"}
-                        <b>{lang === "zh" ? "更换" : "Change"}</b>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div id="drink-menu" className="drink-vertical-menu">
-                  <aside
-                    ref={drinkCategoryNavRef}
-                    className="drink-category-nav"
-                    aria-label={lang === "zh" ? "饮品分类" : "Drink categories"}
-                  >
-                    <span>{lang === "zh" ? "菜单" : "MENU"}</span>
-                    {drinkCategoryOrder.map((category) => (
-                      <button
-                        key={category}
-                        data-drink-category-tab={category}
-                        className={filter === category ? "active" : ""}
-                        aria-pressed={filter === category}
-                        onClick={() => jumpToDrinkCategory(category)}
-                      >
-                        <b>{lang === "zh" ? drinkCategoryZh[category] : category}</b>
-                        <small>
-                          {products.filter((product) => product.kind === "drink" && product.category === category).length}
-                        </small>
-                      </button>
-                    ))}
-                  </aside>
-                  <section className="drink-menu-panel">
-                    {drinkGroups.map((group, index) => (
-                      <section
-                        key={group.category}
-                        id={`drink-category-${drinkCategoryAnchor(group.category)}`}
-                        className="drink-category-section"
-                        data-drink-category={group.category}
-                        aria-labelledby={`drink-category-title-${drinkCategoryAnchor(group.category)}`}
-                      >
-                        <div className="drink-catalog-head">
-                          <div>
-                            <span>
-                              {index === 0
-                                ? lang === "zh"
-                                  ? "本店菜单"
-                                  : "YOUR STORE MENU"
-                                : `${String(index + 1).padStart(2, "0")} / ${String(drinkGroups.length).padStart(2, "0")}`}
-                            </span>
-                            <h2
-                              id={`drink-category-title-${drinkCategoryAnchor(group.category)}`}
-                            >
-                              {lang === "zh"
-                                ? drinkCategoryZh[group.category]
-                                : group.category}
-                            </h2>
-                          </div>
-                          <strong>
-                            {group.products.length}{" "}
-                            {lang === "zh" ? "款可选" : "choices"}
-                          </strong>
-                        </div>
-                        <div className="drink-menu-list">
-                          {group.products.map((product) => (
-                            <DrinkMenuCard
-                              key={product.id}
-                              product={product}
-                              lang={lang}
-                              saved={saved.includes(product.id)}
-                              onSave={() => toggleSave(product.id)}
-                              onOpen={() => openProduct(product)}
-                            />
-                          ))}
-                        </div>
-                      </section>
-                    ))}
-                  </section>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="goods-shop-heading">
-                  <span className="sticker">KIYOYO MARKET</span>
-                  <h1>
-                    {lang === "zh" ? "把快乐带回家。" : "Keep the good mood."}
-                  </h1>
-                  <p>
-                    {lang === "zh"
-                      ? "服饰、家居与可以收藏的小东西。"
-                      : "Wear it, live with it, collect it."}
-                  </p>
-                </div>
-                <div className="shop-tools">
-                  <div className="filters">
-                    {[
-                      "Goods",
-                      "Fashion",
-                      "Home",
-                      "Outdoor",
-                      "Pets",
-                      "Accessories",
-                      "Collectibles",
-                    ].map((f) => (
-                      <button
-                        key={f}
-                        className={filter === f ? "active" : ""}
-                        onClick={() => setFilter(f)}
-                      >
-                        {f === "Goods"
-                          ? lang === "zh"
-                            ? "全部商品"
-                            : "All goods"
-                          : f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="product-grid">
-                  {filteredProducts.map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      lang={lang}
-                      saved={saved.includes(p.id)}
-                      onSave={() => toggleSave(p.id)}
-                      onOpen={() => openProduct(p)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </section>
+          <ShopView
+            lang={lang}
+            shopMode={shopMode}
+            openShop={openShop}
+            setStoreModal={setStoreModal}
+            storeArea={selectedStore.area}
+            drinkCategoryNavRef={drinkCategoryNavRef}
+            filter={filter}
+            products={products}
+            jumpToDrinkCategory={jumpToDrinkCategory}
+            drinkGroups={drinkGroups}
+            saved={saved}
+            toggleSave={toggleSave}
+            openProduct={openProduct}
+            setFilter={setFilter}
+            filteredProducts={filteredProducts}
+          />
         )}
 
         {tab === "collection" && (
-          <section className="content-section collection-page">
-            <div className="page-heading">
-              <span className="sticker">♡ YOURS</span>
-              <h1>{t.collectionTitle}</h1>
-              <p>{t.collectionSub}</p>
-            </div>
-            {saved.length ? (
-              <div className="product-grid">
-                {products
-                  .filter((p) => saved.includes(p.id))
-                  .map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      lang={lang}
-                      saved
-                      onSave={() => toggleSave(p.id)}
-                      onOpen={() => openProduct(p)}
-                    />
-                  ))}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <span>♡</span>
-                <p>{t.emptySaved}</p>
-                <button className="primary" onClick={() => go("shop")}>
-                  {t.explore}
-                </button>
-              </div>
-            )}
-          </section>
+          <SavedView
+            t={t}
+            lang={lang}
+            saved={saved}
+            products={products}
+            toggleSave={toggleSave}
+            openProduct={openProduct}
+            onExplore={() => go("shop")}
+          />
         )}
 
         {tab === "cart" && (
-          <section className="content-section cart-page">
-            <div className="page-heading">
-              <span className="sticker">{cartCount} ITEMS</span>
-              <h1>{t.cartTitle}</h1>
-            </div>
-            {!cart.length ? (
-              <div className="empty-state">
-                <span>▱</span>
-                <p>{t.emptyCart}</p>
-                <button className="primary" onClick={() => go("shop")}>
-                  {t.explore}
-                </button>
-              </div>
-            ) : (
-              <div className="cart-layout">
-                <div className="cart-list">
-                  {detailedCart.map((item) => (
-                    <article
-                      className={`cart-row ${item.product.active === false ? "unavailable" : ""}`}
-                      key={item.key}
-                    >
-                      <img src={item.product.image} alt={item.product.name} />
-                      <div className="cart-name">
-                        <span className="eyebrow">
-                          {item.product.active === false
-                            ? lang === "zh"
-                              ? "已下架"
-                              : "Unavailable"
-                            : item.product.kind === "drink"
-                              ? t.drinks
-                              : t.merch}
-                        </span>
-                        <h3>
-                          {lang === "zh"
-                            ? item.product.nameZh
-                            : item.product.name}
-                        </h3>
-                        {item.product.kind === "drink" && (
-                          <small>
-                            {item.size} · {item.sugar} · {item.ice}
-                            {item.toppings?.length
-                              ? ` · ${item.toppings
-                                  .map((toppingId) => {
-                                    const topping = catalog.find(
-                                      (product) => product.id === toppingId,
-                                    );
-                                    return lang === "zh"
-                                      ? topping?.nameZh
-                                      : topping?.name;
-                                  })
-                                  .filter(Boolean)
-                                  .join(", ")}`
-                              : ""}
-                          </small>
-                        )}
-                        <strong>
-                          {money(
-                            salePrice(item.product, item.size) +
-                              (item.toppings ?? []).reduce(
-                                (sum, toppingId) =>
-                                  sum +
-                                  salePrice(
-                                    catalog.find(
-                                      (product) => product.id === toppingId,
-                                    ) ?? { ...item.product, price: 0 },
-                                  ),
-                                0,
-                              ),
-                          )}
-                        </strong>
-                      </div>
-                      <div className="qty">
-                        <button onClick={() => updateQty(item.key, -1)}>
-                          −
-                        </button>
-                        <span>{item.quantity}</span>
-                        <button
-                          onClick={() => updateQty(item.key, 1)}
-                          disabled={item.product.active === false}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                <aside className="cart-summary">
-                  <h2>{lang === "zh" ? "订单概要" : "Order summary"}</h2>
-                  <div>
-                    <span>{t.subtotal}</span>
-                    <strong>{money(subtotal)}</strong>
-                  </div>
-                  <div>
-                    <span>{lang === "zh" ? "配送费" : "Delivery"}</span>
-                    <span>
-                      {lang === "zh" ? "结账时计算" : "Calculated next"}
-                    </span>
-                  </div>
-                  <button
-                    className="primary full"
-                    disabled={hasUnavailable}
-                    onClick={beginCheckout}
-                  >
-                    {t.checkout} →
-                  </button>
-                  <small>
-                    {hasUnavailable
-                      ? lang === "zh"
-                        ? "请移除已下架商品后结账。"
-                        : "Remove unavailable items before checkout."
-                      : session
-                        ? t.mockNotice
-                        : lang === "zh"
-                          ? "结账前需要登录。"
-                          : "Sign in is required at checkout."}
-                  </small>
-                </aside>
-              </div>
-            )}
-          </section>
+          <CartView
+            t={t}
+            lang={lang}
+            cart={cart}
+            cartCount={cartCount}
+            detailedCart={detailedCart}
+            catalog={catalog}
+            updateQty={updateQty}
+            subtotal={subtotal}
+            hasUnavailable={hasUnavailable}
+            beginCheckout={beginCheckout}
+            session={session}
+            onExplore={() => go("shop")}
+          />
         )}
 
         {tab === "account" && (
@@ -2172,19 +1675,14 @@ export default function KiyoyoApp() {
         </div>
       )}
 
-      <nav className="mobile-nav">
-        {(Object.keys(t.nav) as Tab[]).map((item) => (
-          <button
-            key={item}
-            className={`${tab === item ? "active" : ""} ${item === "shop" ? "shop-entry" : ""}`}
-            onClick={() => (item === "shop" ? openShop("drinks") : go(item))}
-          >
-            <NavIcon item={item} />
-            <span>{t.nav[item]}</span>
-            {item === "cart" && cartCount > 0 && <b>{cartCount}</b>}
-          </button>
-        ))}
-      </nav>
+      <MobileNavigation
+        t={t}
+        tab={tab}
+        cartCount={cartCount}
+        onNavigate={(item) =>
+          item === "shop" ? openShop("drinks") : go(item)
+        }
+      />
 
       {modalProduct && (
         <div
