@@ -39,6 +39,12 @@ export const defaultProductTags: ProductTag[] = [
     tone: "red",
     createdAt: "2026-08-05T00:00:00.000Z",
   },
+  {
+    id: "tag-recommended",
+    label: "RECOMMENDED",
+    tone: "red",
+    createdAt: "2026-08-09T00:00:00.000Z",
+  },
 ];
 
 export const resolveProductTag = (product: Product, tags: ProductTag[]) => {
@@ -50,9 +56,12 @@ export const resolveProductTag = (product: Product, tags: ProductTag[]) => {
   return undefined;
 };
 
-export const salePrice = (product: Product) => {
+export const salePrice = (product: Product, size?: string) => {
   const discount = Math.max(0, Math.min(90, product.discountPercent || 0));
-  return Math.round(product.price * (1 - discount / 100));
+  const selectedPrice = size
+    ? (product.sizePrices?.[size] ?? product.price)
+    : product.price;
+  return Math.round(selectedPrice * (1 - discount / 100));
 };
 
 export function useCatalog() {

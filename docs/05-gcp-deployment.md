@@ -18,6 +18,9 @@
 | 地图 | Maps JavaScript API / Routes API | Browser key 已限定域名和 API |
 | 密钥 | Secret Manager | DB 密码与自取签名密钥；不进入 Terraform state |
 | IaC 状态 | `gs://kiyoyo-dev-tfstate` | 版本控制、统一 bucket 访问 |
+| 预算 | Billing Budget `kiyoyo-dev monthly budget` | 账单币种 30 单位/月；50/80/100% 与预测超支阈值 |
+| 可用性 | Monitoring uptime check | 每 5 分钟检查 API `/readyz` |
+| 告警 | Cloud Monitoring | API 不可用、Cloud Run 5xx、Cloud SQL CPU |
 
 前后端是分离部署：Firebase Hosting 只承载静态前端，所有用户、地址、商品、订单、
 优惠、标签、图片与核销操作都通过 Cloud Run API 进入 Cloud SQL / Cloud Storage。
@@ -27,8 +30,11 @@
 - 线上 Hosting、API `/readyz`、12 杯饮品、6 家门店与最近门店排序均正常。
 - Email/Password 注册、用户资料、默认配送地址、模拟支付与订单历史均通过。
 - 自取订单会生成签名二维码；重复提交会命中 Idempotency-Key，不会生成重复订单。
+- 登录后 History 从 Cloud SQL 同步商品、门店、地址与履约状态；跨设备重新签发取餐码时
+  旧 token hash 被原子替换，旧二维码失效。
 - 普通用户访问 Admin API 返回 403；Admin 路由实施服务端 RBAC。
-- Web production build、ESLint 与 production dependency audit 均通过。
+- Web production build、ESLint、静态渲染测试与 production dependency audit 均通过。
+- Monitoring email channel 已创建；收件人需要按 Google 邮件提示完成验证后才会收到运行告警。
 
 ## 最省钱且少运维的 MVP 组合
 
@@ -58,7 +64,15 @@
 
 ## 项目与网络
 
-- 推荐项目：`kiyoyo-dev`、`kiyoyo-staging`、`kiyoyo-prod`。
+- 当前按经营方要求使用单一 GCP 项目 `kiyoyo`，KIYOYO 自建资源统一使用
+  `kiyoyo-{env}` 前缀，例如 `kiyoyo-dev-api`、`kiyoyo-staging-api`、
+  `kiyoyo-prod-api`。Terraform state、tfvars、Hosting site、数据库、Bucket、Service
+  Account 和监控策略必须按环境隔离；不能让 staging/prod 复用 dev backend 或镜像。
+- GCP 自动创建的默认 Service Account、Firebase project 级对象和 Cloud Build staging
+  bucket 可能使用平台固定名称，不受自定义前缀控制。除此之外，KIYOYO 自建资源必须
+  遵守前缀规则。
+- 若以后需要更强的账单、IAM 或合规隔离，再把环境拆为独立 GCP project；资源前缀规则
+  仍保持不变。
 - Cloud Run 使用第二代执行环境；仅允许 HTTPS。
 - Cloud SQL 不开放公网白名单；通过 Cloud SQL connector 连接。
 - 连接池严格限制，按 Cloud Run 最大实例数预算总连接数。初始可设 API concurrency 40、max instances 5、每实例 pool 5，再按指标调优。
@@ -90,6 +104,21 @@ flowchart LR
 - 容器按 digest 部署；Cloud Run 保留前一 revision，可立即回滚。
 - Migration 独立 job 执行；先兼容 schema，再部署应用。
 - Terraform 管理服务、IAM、预算和告警；秘密值不进入 Git。
+
+### 当前前端发布产物
+
+Firebase Hosting 的目录是 `web/out`。标准生产构建为：
+
+```sh
+cd web
+npm run lint
+npm test
+npm run build
+```
+
+`npm run build:preview` 生成本地 vinext 预览产物 `web/dist`，不能替代上述 Firebase 静态导出。
+每个 staging/prod 构建必须显式提供 `NEXT_PUBLIC_*` 环境配置；缺失时构建会失败，防止
+正式前端误连 `kiyoyo-dev`。dev 保留受域名/API 限制的公开 Web 配置作为本地默认值。
 
 ## 成本控制
 
@@ -126,12 +155,15 @@ flowchart LR
 ## 回滚手册
 
 1. **前端**：Firebase Console → Hosting → Release history，选择前一个成功版本并回滚。
-2. **API**：当前 revision 是 `kiyoyo-dev-api-00003-vqt`；需要回滚时把 100% 流量切回已验证的前一 revision，例如：
+2. **API**：先列出 revision 并确认当前和前一已验证版本，再把 100% 流量切回目标 revision：
 
    ```sh
+   gcloud run revisions list \
+     --service=kiyoyo-dev-api --region=europe-west1 --project=kiyoyo
+
    gcloud run services update-traffic kiyoyo-dev-api \
      --region=europe-west1 --project=kiyoyo \
-     --to-revisions=kiyoyo-dev-api-00002-gmj=100
+     --to-revisions=TARGET_VERIFIED_REVISION=100
    ```
 
 3. **数据库**：不要用向下 migration 删除数据。先从最近成功备份或 PITR 创建恢复实例，

@@ -1,4 +1,9 @@
-project_id  = "kiyoyo"
-app_name    = "kiyoyo"
-environment = "dev"
-region      = "europe-west1"
+project_id            = "kiyoyo"
+app_name              = "kiyoyo"
+environment           = "dev"
+region                = "europe-west1"
+billing_account_id    = "01ABE9-F61BC7-C4084F"
+api_image             = "europe-west1-docker.pkg.dev/kiyoyo/kiyoyo-dev/api:coupon-20260810-1"
+monthly_budget_amount = 30
+alert_email           = "kechengyang234@gmail.com"
+admin_emails          = ["kechengyang234@gmail.com"]

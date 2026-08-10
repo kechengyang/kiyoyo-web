@@ -16,8 +16,5 @@ terraform {
     }
   }
 
-  backend "gcs" {
-    bucket = "kiyoyo-dev-tfstate"
-    prefix = "terraform/env/dev"
-  }
+  backend "gcs" {}
 }

@@ -1,9 +1,10 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Tiny admin thumbnails do not need image optimization. */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { money, stores } from "../data";
+import { money } from "../data";
+import { drinkCategoryOrder } from "../menu";
 import {
   resolveProductTag,
   salePrice,
@@ -12,9 +13,14 @@ import {
 } from "../catalog";
 import {
   apiFetch,
+  auth,
   fetchCatalog,
   mapApiProduct,
   observeMember,
+  sendMemberPasswordReset,
+  sendMemberVerification,
+  signInMember,
+  signOutMember,
 } from "../platform";
 import type { Order, Product, ProductTagTone } from "../types";
 
@@ -22,139 +28,211 @@ type AdminTab =
   | "overview"
   | "orders"
   | "products"
+  | "coupons"
   | "redeem"
   | "customers"
   | "stores";
 
-const sampleOrders: Order[] = [
-  {
-    id: "KYO-2608-3186",
-    createdAt: "2026-08-04T13:59:00.000Z",
-    status: "Preparing",
-    channel: "Pickup",
-    storeId: "kilimani",
-    total: 920,
-    pickupCode: "M4K8Q2YP",
-    items: [
-      {
-        key: "sample1",
-        productId: "d1",
-        quantity: 1,
-        size: "Large",
-        sugar: "50%",
-        ice: "Less ice",
-        toppings: ["Boba"],
-      },
-      {
-        key: "sample2",
-        productId: "d4",
-        quantity: 1,
-        size: "Regular",
-        sugar: "30%",
-        ice: "Regular",
-        toppings: [],
-      },
-    ],
-  },
-  {
-    id: "KYO-2608-3179",
-    createdAt: "2026-08-04T13:47:00.000Z",
-    status: "Ready",
-    channel: "Pickup",
-    storeId: "westlands",
-    total: 450,
-    pickupCode: "P7LW9X3A",
-    items: [
-      {
-        key: "sample3",
-        productId: "d2",
-        quantity: 1,
-        size: "Regular",
-        sugar: "50%",
-        ice: "Less ice",
-        toppings: [],
-      },
-    ],
-  },
-  {
-    id: "KYO-2608-3162",
-    createdAt: "2026-08-04T13:17:00.000Z",
-    status: "Placed",
-    channel: "Delivery",
-    storeId: "cbd",
-    total: 6370,
-    pickupCode: "D2R6N8UZ",
-    items: [
-      {
-        key: "sample4",
-        productId: "d8",
-        quantity: 1,
-        size: "Regular",
-        sugar: "30%",
-        ice: "Less ice",
-        toppings: [],
-      },
-      { key: "sample5", productId: "g1", quantity: 1 },
-    ],
-  },
-  {
-    id: "KYO-2608-3128",
-    createdAt: "2026-08-04T11:35:00.000Z",
-    status: "Completed",
-    channel: "Pickup",
-    storeId: "parklands",
-    total: 840,
-    pickupCode: "USED2219",
-    items: [
-      {
-        key: "sample6",
-        productId: "d3",
-        quantity: 2,
-        size: "Regular",
-        sugar: "50%",
-        ice: "Less ice",
-        toppings: [],
-      },
-    ],
-  },
-];
+type AdminCustomer = {
+  id: string;
+  email: string | null;
+  nickname: string;
+  gender: string | null;
+  birth_year: number | null;
+  locale: string;
+  status: "ACTIVE" | "SUSPENDED" | "DELETED";
+  created_at: string;
+  order_count: number;
+  lifetime_value: number;
+};
 
-const customers = [
-  {
-    name: "Amina Wanjiku",
-    phone: "+254 712 ••• 481",
-    points: 2480,
-    orders: 18,
-    tier: "VIP",
-  },
-  {
-    name: "Brian Otieno",
-    phone: "+254 733 ••• 092",
-    points: 940,
-    orders: 7,
-    tier: "Member",
-  },
-  {
-    name: "Njeri Kamau",
-    phone: "+254 701 ••• 553",
-    points: 620,
-    orders: 5,
-    tier: "Member",
-  },
-  {
-    name: "Samira Noor",
-    phone: "+254 729 ••• 044",
-    points: 310,
-    orders: 3,
-    tier: "New",
-  },
-];
+type CustomerDetail = AdminCustomer & {
+  addresses: Array<{
+    id: string;
+    label: string;
+    contact_name: string;
+    phone_e164: string;
+    line1: string;
+    area: string;
+    city: string;
+    is_default: boolean;
+  }>;
+  orders: Array<{
+    order_number: string;
+    total: number;
+    payment_status: string;
+    is_test: boolean;
+    created_at: string;
+  }>;
+  coupons: Array<{
+    user_coupon_id: string;
+    coupon_id: string;
+    code: string;
+    name_en: string;
+    name_zh: string;
+    discount_type: "PERCENT" | "FIXED" | "FREE_SIZE_UPGRADE";
+    discount_value: number;
+    status: "ISSUED" | "RESERVED" | "REDEEMED" | "REVOKED";
+    wallet_status: "AVAILABLE" | "UPCOMING" | "RESERVED" | "USED" | "EXPIRED" | "REVOKED" | "UNAVAILABLE";
+    source: string;
+    issued_at: string;
+    expires_at: string;
+    redeemed_at: string | null;
+    revoked_at: string | null;
+    revoke_reason: string | null;
+  }>;
+};
+
+type AdminCoupon = {
+  id: string;
+  code: string;
+  name_en: string;
+  name_zh: string;
+  description_en: string;
+  description_zh: string;
+  discount_type: "PERCENT" | "FIXED" | "FREE_SIZE_UPGRADE";
+  discount_value: number;
+  max_discount: number | null;
+  min_spend: number;
+  scope_type: "ALL" | "DRINKS" | "GOODS" | "CATEGORY" | "PRODUCT";
+  scope_value: string | null;
+  fulfillment_scope: "ALL" | "PICKUP" | "DELIVERY" | "SHIPPING";
+  issuance_mode: "PUBLIC_CODE" | "ASSIGNED";
+  starts_at: string;
+  ends_at: string;
+  issuance_limit: number | null;
+  usage_limit: number | null;
+  per_user_limit: number;
+  status: "DRAFT" | "SCHEDULED" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
+  effective_status: "DRAFT" | "SCHEDULED" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
+  issuance_enabled: boolean;
+  redemption_enabled: boolean;
+  stackable: boolean;
+  version: number;
+  issued_count: number;
+  redeemed_count: number;
+  discount_total: number;
+  updated_at: string;
+};
+
+type AdminStore = {
+  id: string;
+  code: string;
+  name: string;
+  area: string;
+  address: string;
+  phone: string | null;
+  lat: number | null;
+  lng: number | null;
+  status: "ACTIVE" | "INACTIVE" | "COMING_SOON";
+  pickup_enabled: boolean;
+  delivery_enabled: boolean;
+  location_verified: boolean;
+};
+
+type AdminState = "loading" | "anonymous" | "forbidden" | "ready" | "error";
+
+type QrDetector = {
+  detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+};
+
+type QrDetectorConstructor = new (options: { formats: string[] }) => QrDetector;
+
+const goodsCategoryOrder = [
+  "Fashion",
+  "Accessories",
+  "Home",
+  "Outdoor",
+  "Pets",
+  "Beauty",
+  "Collectibles",
+  "Sport",
+] as const;
+
+const categorySlug = (category: string) =>
+  category
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+const inputDateTime = (value: string) => {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+};
+
+const nairobiDateTimeIso = (value: string) =>
+  value ? new Date(`${value}:00+03:00`).toISOString() : "";
+
+const newCouponDraft = (): AdminCoupon => {
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 30);
+  return {
+    id: "",
+    code: "",
+    name_en: "",
+    name_zh: "",
+    description_en: "",
+    description_zh: "",
+    discount_type: "PERCENT",
+    discount_value: 10,
+    max_discount: null,
+    min_spend: 0,
+    scope_type: "ALL",
+    scope_value: null,
+    fulfillment_scope: "ALL",
+    issuance_mode: "ASSIGNED",
+    starts_at: start.toISOString(),
+    ends_at: end.toISOString(),
+    issuance_limit: null,
+    usage_limit: null,
+    per_user_limit: 1,
+    status: "DRAFT",
+    effective_status: "DRAFT",
+    issuance_enabled: false,
+    redemption_enabled: false,
+    stackable: false,
+    version: 1,
+    issued_count: 0,
+    redeemed_count: 0,
+    discount_total: 0,
+    updated_at: start.toISOString(),
+  };
+};
 
 export default function AdminApp() {
   const [tab, setTab] = useState<AdminTab>("overview");
   const [catalog, setCatalog] = useCatalog();
   const [productTags, setProductTags] = useProductTags();
-  const [orders, setOrders] = useState<Order[]>(sampleOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
+  const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
+  const [selectedCustomer, setSelectedCustomer] =
+    useState<CustomerDetail | null>(null);
+  const [editingStore, setEditingStore] = useState<AdminStore | null>(null);
+  const [editingCoupon, setEditingCoupon] = useState<AdminCoupon | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [issueCouponId, setIssueCouponId] = useState("");
+  const [adminState, setAdminState] = useState<AdminState>("loading");
+  const [adminAuth, setAdminAuth] = useState({ email: "", password: "" });
+  const [adminAuthError, setAdminAuthError] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
   const [scan, setScan] = useState("");
   const [scanResult, setScanResult] = useState<{
     ok: boolean;
@@ -166,6 +244,7 @@ export default function AdminApp() {
   const [productKind, setProductKind] = useState<"all" | "drink" | "goods">(
     "all",
   );
+  const [productCategory, setProductCategory] = useState("all");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productError, setProductError] = useState("");
   const [showTagManager, setShowTagManager] = useState(false);
@@ -174,17 +253,28 @@ export default function AdminApp() {
   );
   const [tagError, setTagError] = useState("");
   const [pendingImage, setPendingImage] = useState<File | null>(null);
-  const [cloudStatus, setCloudStatus] = useState(
-    "Sign in from Account before managing cloud data.",
-  );
+  const [cloudStatus, setCloudStatus] = useState("Connecting to KIYOYO Cloud…");
+  const [scannerActive, setScannerActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerStreamRef = useRef<MediaStream | null>(null);
+  const couponDialogRef = useRef<HTMLElement>(null);
+  const couponReturnFocusRef = useRef<HTMLElement | null>(null);
+  const couponEditorOpen = Boolean(editingCoupon);
 
   useEffect(
     () =>
       observeMember(async (user) => {
         if (!user) {
-          setCloudStatus("Sign in from Account before opening Admin.");
+          setAdminState("anonymous");
+          setAdminEmail("");
+          setOrders([]);
+          setCustomers([]);
+          setCoupons([]);
+          setAdminStores([]);
           return;
         }
+        setAdminState("loading");
+        setAdminEmail(user.email ?? "");
         try {
           await apiFetch("/v1/auth/bootstrap", {
             method: "POST",
@@ -194,7 +284,14 @@ export default function AdminApp() {
               locale: "en",
             }),
           });
-          const [productPayload, tagPayload, orderPayload] = await Promise.all([
+          const [
+            productPayload,
+            tagPayload,
+            orderPayload,
+            customerPayload,
+            couponPayload,
+            storePayload,
+          ] = await Promise.all([
             apiFetch<{ data: Parameters<typeof mapApiProduct>[0][] }>(
               "/v1/admin/products",
             ),
@@ -213,10 +310,20 @@ export default function AdminApp() {
                 status: string;
                 type: string;
                 fulfillment_id: string;
-                store_code: string;
+                store_code: string | null;
                 total: number;
+                items: Array<{
+                  id: string;
+                  product_id: string | null;
+                  product_code: string | null;
+                  quantity: number;
+                  customization: Record<string, unknown>;
+                }>;
               }>;
             }>("/v1/admin/orders"),
+            apiFetch<{ data: AdminCustomer[] }>("/v1/admin/customers"),
+            apiFetch<{ data: AdminCoupon[] }>("/v1/admin/coupons"),
+            apiFetch<{ data: AdminStore[] }>("/v1/admin/stores"),
           ]);
           setCatalog(productPayload.data.map(mapApiProduct));
           setProductTags(
@@ -235,21 +342,137 @@ export default function AdminApp() {
               `${order.status.charAt(0)}${order.status.slice(1).toLowerCase()}` as Order["status"],
             channel:
               `${order.type.charAt(0)}${order.type.slice(1).toLowerCase()}` as Order["channel"],
-            storeId: order.store_code,
+            storeId: order.store_code ?? "delivery",
             total: order.total,
             pickupCode: "SERVER",
-            items: [],
+            items: order.items.map((item) => ({
+              key: item.id,
+              productId: item.product_code ?? item.product_id ?? "archived",
+              quantity: item.quantity,
+              size:
+                typeof item.customization.size === "string"
+                  ? item.customization.size
+                  : undefined,
+              sugar:
+                typeof item.customization.sugar === "string"
+                  ? item.customization.sugar
+                  : undefined,
+              ice:
+                typeof item.customization.ice === "string"
+                  ? item.customization.ice
+                  : undefined,
+              toppings: Array.isArray(item.customization.toppings)
+                ? (item.customization.toppings as string[])
+                : undefined,
+            })),
           }));
-          if (cloudOrders.length) setOrders(cloudOrders);
+          setOrders(cloudOrders);
+          setCustomers(customerPayload.data);
+          setCoupons(couponPayload.data);
+          setAdminStores(storePayload.data);
           setCloudStatus(`Connected as ${user.email}`);
+          setAdminState("ready");
         } catch (error) {
-          setCloudStatus(
-            error instanceof Error ? error.message : "Cloud connection failed",
+          const message =
+            error instanceof Error ? error.message : "Cloud connection failed";
+          setCloudStatus(message);
+          setAdminAuthError(message);
+          setAdminState(
+            message.includes("Admin access") || message.includes("Verify your email")
+              ? "forbidden"
+              : "error",
           );
         }
       }),
     [setCatalog, setProductTags],
   );
+
+  useEffect(
+    () => () => {
+      scannerStreamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!couponEditorOpen) return;
+    couponReturnFocusRef.current = document.activeElement as HTMLElement | null;
+    const dialog = couponDialogRef.current;
+    if (!dialog) return;
+    const focusable = () =>
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+        ),
+      );
+    requestAnimationFrame(() => focusable()[0]?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setEditingCoupon(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = focusable();
+      if (!controls.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener("keydown", handleKeyDown);
+    return () => {
+      dialog.removeEventListener("keydown", handleKeyDown);
+      couponReturnFocusRef.current?.focus();
+      couponReturnFocusRef.current = null;
+    };
+  }, [couponEditorOpen]);
+
+  const signInAdmin = async () => {
+    setAdminAuthError("");
+    if (!adminAuth.email.includes("@") || adminAuth.password.length < 6) {
+      setAdminAuthError("Enter your admin email and password.");
+      return;
+    }
+    try {
+      await signInMember(
+        "password",
+        "signin",
+        adminAuth.email.trim(),
+        adminAuth.password,
+      );
+    } catch (error) {
+      setAdminAuthError(
+        error instanceof Error ? error.message : "Admin sign-in failed",
+      );
+    }
+  };
+
+  const resetAdminPassword = async () => {
+    const email = adminAuth.email.trim();
+    setAdminAuthError("");
+    if (!email.includes("@")) {
+      setAdminAuthError("Enter your admin email first.");
+      return;
+    }
+    try {
+      await sendMemberPasswordReset(email);
+      setAdminAuthError(
+        "If this administrator account exists, a password reset email has been sent.",
+      );
+    } catch (error) {
+      setAdminAuthError(
+        error instanceof Error
+          ? error.message
+          : "Password reset email could not be sent",
+      );
+    }
+  };
 
   const shown = useMemo(
     () =>
@@ -258,20 +481,319 @@ export default function AdminApp() {
   );
   const active = orders.filter((o) => o.status !== "Completed");
   const revenue = orders.reduce((sum, o) => sum + o.total, 0);
+  const categoryOptions = useMemo(() => {
+    const preferred =
+      productKind === "drink"
+        ? [...drinkCategoryOrder]
+        : productKind === "goods"
+          ? [...goodsCategoryOrder]
+          : [...drinkCategoryOrder, ...goodsCategoryOrder];
+    const catalogCategories = catalog
+      .filter(
+        (product) => productKind === "all" || product.kind === productKind,
+      )
+      .map((product) => product.category);
+    return [...new Set([...preferred, ...catalogCategories])];
+  }, [catalog, productKind]);
   const shownProducts = useMemo(
     () =>
       catalog.filter((product) => {
         const query = productSearch.trim().toLowerCase();
         return (
           (productKind === "all" || product.kind === productKind) &&
+          (productCategory === "all" ||
+            product.category === productCategory) &&
           (!query ||
             `${product.name} ${product.nameZh} ${product.category}`
               .toLowerCase()
               .includes(query))
         );
       }),
-    [catalog, productKind, productSearch],
+    [catalog, productCategory, productKind, productSearch],
   );
+
+  const openCustomer = async (customer: AdminCustomer) => {
+    setAdminAuthError("");
+    setCouponError("");
+    try {
+      const response = await apiFetch<{ data: CustomerDetail }>(
+        `/v1/admin/customers/${customer.id}`,
+      );
+      setSelectedCustomer({
+        ...response.data,
+        order_count: customer.order_count,
+        lifetime_value: customer.lifetime_value,
+      });
+      setIssueCouponId((current) =>
+        current && coupons.some((coupon) => coupon.id === current)
+          ? current
+          : (coupons.find(
+              (coupon) =>
+                coupon.issuance_mode === "ASSIGNED" &&
+                coupon.issuance_enabled &&
+                ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status),
+            )?.id ?? ""),
+      );
+    } catch (error) {
+      setCloudStatus(
+        error instanceof Error ? error.message : "Customer could not be loaded",
+      );
+    }
+  };
+
+  const saveCustomer = async () => {
+    if (!selectedCustomer?.nickname.trim()) return;
+    try {
+      const response = await apiFetch<{
+        data: Pick<AdminCustomer, "id" | "email" | "nickname" | "status">;
+      }>(`/v1/admin/customers/${selectedCustomer.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nickname: selectedCustomer.nickname.trim(),
+          status: selectedCustomer.status,
+        }),
+      });
+      setCustomers((current) =>
+        current.map((customer) =>
+          customer.id === selectedCustomer.id
+            ? { ...customer, ...response.data }
+            : customer,
+        ),
+      );
+      setSelectedCustomer(null);
+      setCloudStatus("Customer saved to Cloud SQL");
+    } catch (error) {
+      setCloudStatus(
+        error instanceof Error ? error.message : "Customer could not be saved",
+      );
+    }
+  };
+
+  const refreshCoupons = async () => {
+    const response = await apiFetch<{ data: AdminCoupon[] }>(
+      "/v1/admin/coupons",
+    );
+    setCoupons(response.data);
+    return response.data;
+  };
+
+  const couponPayload = (coupon: AdminCoupon) => ({
+    code: coupon.code.trim().toUpperCase(),
+    name_en: coupon.name_en.trim(),
+    name_zh: coupon.name_zh.trim(),
+    description_en: coupon.description_en.trim(),
+    description_zh: coupon.description_zh.trim(),
+    discount_type: coupon.discount_type,
+    discount_value:
+      coupon.discount_type === "FREE_SIZE_UPGRADE"
+        ? 0
+        : coupon.discount_value,
+    max_discount: coupon.max_discount,
+    min_spend: coupon.min_spend,
+    scope_type: coupon.scope_type,
+    scope_value: coupon.scope_value?.trim() || null,
+    fulfillment_scope: coupon.fulfillment_scope,
+    issuance_mode: coupon.issuance_mode,
+    starts_at: new Date(coupon.starts_at).toISOString(),
+    ends_at: new Date(coupon.ends_at).toISOString(),
+    issuance_limit: coupon.issuance_limit,
+    usage_limit: coupon.usage_limit,
+    per_user_limit: coupon.per_user_limit,
+    stackable: coupon.stackable,
+  });
+
+  const saveCoupon = async () => {
+    if (!editingCoupon) return;
+    setCouponError("");
+    if (!editingCoupon.code.trim() || !editingCoupon.name_en.trim() || !editingCoupon.name_zh.trim()) {
+      setCouponError("Code and both customer-facing names are required.");
+      return;
+    }
+    setCouponBusy(true);
+    try {
+      await apiFetch(editingCoupon.id ? `/v1/admin/coupons/${editingCoupon.id}` : "/v1/admin/coupons", {
+        method: editingCoupon.id ? "PATCH" : "POST",
+        body: JSON.stringify({
+          ...couponPayload(editingCoupon),
+          ...(editingCoupon.id ? { version: editingCoupon.version } : {}),
+        }),
+      });
+      await refreshCoupons();
+      setEditingCoupon(null);
+      setCloudStatus(editingCoupon.id ? "Coupon draft updated" : "Coupon draft created");
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : "Coupon could not be saved");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const runCouponAction = async (
+    coupon: AdminCoupon,
+    action: "publish" | "stop-distribution" | "disable" | "archive",
+  ) => {
+    const actionLabel = {
+      publish: "publish this coupon to customers",
+      "stop-distribution": "stop new distribution while keeping issued coupons usable",
+      disable: "disable redemption for every customer",
+      archive: "archive this coupon",
+    }[action];
+    if (!window.confirm(`Confirm: ${actionLabel}?`)) return;
+    let body: Record<string, string> | undefined;
+    if (action === "disable") {
+      const reason = window.prompt("Reason for emergency disable:")?.trim();
+      if (!reason) return;
+      body = { reason };
+    }
+    setCouponBusy(true);
+    setCouponError("");
+    try {
+      await apiFetch(`/v1/admin/coupons/${coupon.id}/${action}`, {
+        method: "POST",
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      await refreshCoupons();
+      setCloudStatus(`Coupon ${action.replaceAll("-", " ")} completed`);
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : "Coupon action failed");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const issueCoupon = async () => {
+    if (!selectedCustomer || !issueCouponId) return;
+    setCouponError("");
+    setCouponBusy(true);
+    try {
+      await apiFetch(`/v1/admin/customers/${selectedCustomer.id}/coupons`, {
+        method: "POST",
+        body: JSON.stringify({ coupon_id: issueCouponId }),
+      });
+      await openCustomer(selectedCustomer);
+      await refreshCoupons();
+      setCloudStatus("Coupon issued to customer");
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : "Coupon could not be issued");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const revokeUserCoupon = async (userCouponId: string) => {
+    if (!selectedCustomer) return;
+    const reason = window.prompt("Reason for revoking this unused coupon:")?.trim();
+    if (!reason) return;
+    setCouponError("");
+    setCouponBusy(true);
+    try {
+      await apiFetch(`/v1/admin/user-coupons/${userCouponId}/revoke`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      await openCustomer(selectedCustomer);
+      await refreshCoupons();
+      setCloudStatus("Unused customer coupon revoked");
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : "Coupon could not be revoked");
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const saveStore = async () => {
+    if (!editingStore?.name.trim() || !editingStore.address.trim()) return;
+    try {
+      const response = await apiFetch<{ data: AdminStore }>(
+        `/v1/admin/stores/${editingStore.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: editingStore.name.trim(),
+            address: editingStore.address.trim(),
+            phone: editingStore.phone?.trim() || null,
+            lat: editingStore.lat,
+            lng: editingStore.lng,
+            status: editingStore.status,
+            pickup_enabled: editingStore.pickup_enabled,
+            delivery_enabled: editingStore.delivery_enabled,
+            location_verified: editingStore.location_verified,
+          }),
+        },
+      );
+      setAdminStores((current) =>
+        current.map((store) =>
+          store.id === response.data.id ? response.data : store,
+        ),
+      );
+      setEditingStore(null);
+      setCloudStatus("Store saved to Cloud SQL");
+    } catch (error) {
+      setCloudStatus(
+        error instanceof Error ? error.message : "Store could not be saved",
+      );
+    }
+  };
+
+  const stopScanner = () => {
+    scannerStreamRef.current?.getTracks().forEach((track) => track.stop());
+    scannerStreamRef.current = null;
+    setScannerActive(false);
+  };
+
+  const startScanner = async () => {
+    setScanResult(null);
+    const Detector = (
+      window as typeof window & { BarcodeDetector?: QrDetectorConstructor }
+    ).BarcodeDetector;
+    if (!Detector) {
+      setScanResult({
+        ok: false,
+        message: "This browser cannot scan QR codes. Paste the token below.",
+      });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      scannerStreamRef.current = stream;
+      setScannerActive(true);
+      requestAnimationFrame(async () => {
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+        const detector = new Detector({ formats: ["qr_code"] });
+        const scanFrame = async () => {
+          if (!scannerStreamRef.current || !videoRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            const token = codes[0]?.rawValue?.trim();
+            if (token) {
+              setScan(token);
+              setScanResult({
+                ok: true,
+                message: "QR captured. Check the store, then press Verify.",
+              });
+              stopScanner();
+              return;
+            }
+          } catch {
+            // Keep scanning while the camera is warming up.
+          }
+          requestAnimationFrame(scanFrame);
+        };
+        requestAnimationFrame(scanFrame);
+      });
+    } catch {
+      setScanResult({
+        ok: false,
+        message: "Camera access was unavailable. Paste the token below.",
+      });
+    }
+  };
   const changeStatus = async (id: string, status: Order["status"]) => {
     const order = orders.find((item) => item.id === id);
     if (order?.fulfillmentId) {
@@ -378,9 +900,12 @@ export default function AdminApp() {
       !editingProduct ||
       !editingProduct.name.trim() ||
       !editingProduct.nameZh.trim() ||
+      !editingProduct.category.trim() ||
       editingProduct.price <= 0
     ) {
-      setProductError("Complete both names and enter a valid price.");
+      setProductError(
+        "Choose a category, complete both names and enter a valid price.",
+      );
       return;
     }
     if (!editingProduct.apiId || !editingProduct.catalogVersion) {
@@ -395,6 +920,7 @@ export default function AdminApp() {
           body: JSON.stringify({
             name_en: editingProduct.name,
             name_zh: editingProduct.nameZh,
+            category_slug: categorySlug(editingProduct.category),
             base_price: editingProduct.price,
             discount_percent: Math.max(
               0,
@@ -451,7 +977,7 @@ export default function AdminApp() {
       return;
     }
     if (file.size > 1_500_000) {
-      setProductError("For this local demo, use an image under 1.5 MB.");
+      setProductError("Use an image under 1.5 MB.");
       return;
     }
     const reader = new FileReader();
@@ -470,6 +996,13 @@ export default function AdminApp() {
       setScanResult({ ok: false, message: "Enter or scan a pickup token." });
       return;
     }
+    if (storeFilter === "all") {
+      setScanResult({
+        ok: false,
+        message: "Choose the pickup store before redeeming this QR code.",
+      });
+      return;
+    }
     try {
       const response = await apiFetch<{
         data: { order_number: string; status: string };
@@ -478,7 +1011,7 @@ export default function AdminApp() {
         headers: { "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({
           token,
-          store_id: storeFilter === "all" ? "kilimani" : storeFilter,
+          store_id: storeFilter,
         }),
       });
       setScanResult({
@@ -496,6 +1029,110 @@ export default function AdminApp() {
     }
   };
 
+  if (adminState !== "ready") {
+    return (
+      <main className="admin-gate">
+        <section>
+          <span className="logo">KIYOYO</span>
+          <small>SECURE OPERATIONS</small>
+          <h1>
+            {adminState === "loading"
+              ? "Checking access…"
+              : adminState === "forbidden"
+                ? "Admin access required"
+                : adminState === "error"
+                  ? "Cloud connection unavailable"
+                  : "Sign in to Admin"}
+          </h1>
+          {adminState === "anonymous" ? (
+            <>
+              <p>
+                Use a verified KIYOYO administrator account. Customer accounts
+                cannot access operations data.
+              </p>
+              <label className="form-field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={adminAuth.email}
+                  onChange={(event) =>
+                    setAdminAuth({ ...adminAuth, email: event.target.value })
+                  }
+                />
+              </label>
+              <label className="form-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={adminAuth.password}
+                  onChange={(event) =>
+                    setAdminAuth({ ...adminAuth, password: event.target.value })
+                  }
+                  onKeyDown={(event) =>
+                    event.key === "Enter" && void signInAdmin()
+                  }
+                />
+              </label>
+              <button className="primary full" onClick={() => void signInAdmin()}>
+                Sign in securely →
+              </button>
+              <button
+                className="admin-gate-secondary"
+                onClick={() => void resetAdminPassword()}
+              >
+                Forgot password? Send reset email
+              </button>
+              <p className="admin-login-note">
+                KIYOYO does not store or display administrator passwords. A
+                real administrator account must use an inbox you control.
+              </p>
+            </>
+          ) : adminState === "loading" ? (
+            <p>Loading permissions and live Cloud SQL data.</p>
+          ) : (
+            <>
+              <p>
+                {adminAuthError ||
+                  `${adminEmail || "This account"} is not an authorised administrator.`}
+              </p>
+              {auth.currentUser && !auth.currentUser.emailVerified && (
+                <button
+                  className="primary full"
+                  onClick={async () => {
+                    try {
+                      await sendMemberVerification();
+                      setAdminAuthError("Verification email sent.");
+                    } catch (error) {
+                      setAdminAuthError(
+                        error instanceof Error
+                          ? error.message
+                          : "Verification email could not be sent",
+                      );
+                    }
+                  }}
+                >
+                  Send verification email →
+                </button>
+              )}
+              <button
+                className="admin-gate-secondary"
+                onClick={() => void signOutMember()}
+              >
+                Sign out and use another account
+              </button>
+            </>
+          )}
+          {adminAuthError && adminState === "anonymous" && (
+            <div className="form-error">{adminAuthError}</div>
+          )}
+          <Link href="/">← Back to customer store</Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -509,6 +1146,7 @@ export default function AdminApp() {
               "overview",
               "orders",
               "products",
+              "coupons",
               "redeem",
               "customers",
               "stores",
@@ -525,6 +1163,7 @@ export default function AdminApp() {
                     overview: "▦",
                     orders: "▤",
                     products: "◇",
+                    coupons: "%",
                     redeem: "⌗",
                     customers: "☺",
                     stores: "⌖",
@@ -538,9 +1177,9 @@ export default function AdminApp() {
         </nav>
         <Link href="/">← Customer store</Link>
         <div className="admin-user">
-          <i>KO</i>
+          <i>{(adminEmail || "KI").slice(0, 2).toUpperCase()}</i>
           <span>
-            <strong>Store Admin</strong>
+            <strong>{adminEmail}</strong>
             <small>Nairobi HQ</small>
           </span>
         </div>
@@ -553,8 +1192,8 @@ export default function AdminApp() {
           </div>
           <div>
             <span className="live-dot" /> {cloudStatus}{" "}
-            <button>
-              Notifications <b>{active.length}</b>
+            <button onClick={() => void signOutMember()}>
+              Sign out <b>{active.length}</b>
             </button>
           </div>
         </header>
@@ -563,16 +1202,16 @@ export default function AdminApp() {
           <>
             <section className="metric-grid">
               <Metric
-                label="Today’s orders"
+                label="Recent orders"
                 value={String(orders.length)}
                 note={`${active.length} active now`}
-                trend="+12%"
+                trend="LIVE"
               />
               <Metric
                 label="Gross sales"
                 value={money(revenue)}
                 note="Mock payment value"
-                trend="+8%"
+                trend="TEST"
               />
               <Metric
                 label="Ready for pickup"
@@ -584,9 +1223,9 @@ export default function AdminApp() {
               />
               <Metric
                 label="Members"
-                value="1,284"
-                note="Across Nairobi"
-                trend="+24"
+                value={String(customers.length)}
+                note="Loaded from Cloud SQL"
+                trend="LIVE"
               />
             </section>
             <div className="admin-two">
@@ -599,23 +1238,38 @@ export default function AdminApp() {
                 <OrderTable
                   orders={orders.slice(0, 5)}
                   catalog={catalog}
+                  stores={adminStores}
                   onStatus={changeStatus}
                 />
               </section>
               <section className="admin-panel store-pulse">
                 <PanelHead title="Store pulse" />
                 <div className="pulse-chart">
-                  {stores.slice(0, 5).map((s, i) => (
-                    <div key={s.id}>
-                      <span>{s.area}</span>
-                      <i>
-                        <b style={{ height: `${[82, 68, 58, 46, 31][i]}%` }} />
-                      </i>
-                      <strong>{[32, 27, 23, 18, 11][i]}</strong>
-                    </div>
-                  ))}
+                  {adminStores.slice(0, 5).map((store) => {
+                    const count = orders.filter(
+                      (order) => order.storeId === store.code,
+                    ).length;
+                    const maximum = Math.max(
+                      1,
+                      ...adminStores.map(
+                        (candidate) =>
+                          orders.filter(
+                            (order) => order.storeId === candidate.code,
+                          ).length,
+                      ),
+                    );
+                    return (
+                      <div key={store.id}>
+                        <span>{store.area}</span>
+                        <i>
+                          <b style={{ height: `${(count / maximum) * 100}%` }} />
+                        </i>
+                        <strong>{count}</strong>
+                      </div>
+                    );
+                  })}
                 </div>
-                <small>Orders today · illustrative demo data</small>
+                <small>Recent orders · live Cloud SQL data</small>
               </section>
             </div>
             <section className="admin-panel quick">
@@ -650,9 +1304,9 @@ export default function AdminApp() {
                 onChange={(e) => setStoreFilter(e.target.value)}
               >
                 <option value="all">All Nairobi stores</option>
-                {stores.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.area}
+                {adminStores.map((store) => (
+                  <option key={store.id} value={store.code}>
+                    {store.area}
                   </option>
                 ))}
               </select>
@@ -660,6 +1314,7 @@ export default function AdminApp() {
             <OrderTable
               orders={shown}
               catalog={catalog}
+              stores={adminStores}
               onStatus={changeStatus}
             />
           </section>
@@ -770,11 +1425,26 @@ export default function AdminApp() {
                   <button
                     key={kind}
                     className={productKind === kind ? "active" : ""}
-                    onClick={() => setProductKind(kind)}
+                    onClick={() => {
+                      setProductKind(kind);
+                      setProductCategory("all");
+                    }}
                   >
                     {kind}
                   </button>
                 ))}
+                <select
+                  aria-label="Filter products by category"
+                  value={productCategory}
+                  onChange={(event) => setProductCategory(event.target.value)}
+                >
+                  <option value="all">All categories</option>
+                  {categoryOptions.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="admin-product-list">
@@ -844,35 +1514,151 @@ export default function AdminApp() {
           </section>
         )}
 
+        {tab === "coupons" && (
+          <section className="admin-panel wide coupon-management">
+            <div className="product-admin-head">
+              <div>
+                <span className="red-label">PROMOTIONS</span>
+                <h2>Coupon management</h2>
+                <p>Create rules, schedule publishing, stop distribution and review redemptions.</p>
+              </div>
+              <div className="catalog-stats">
+                <span><b>{coupons.filter((coupon) => coupon.effective_status === "ACTIVE").length}</b> active</span>
+                <span><b>{coupons.reduce((sum, coupon) => sum + coupon.redeemed_count, 0)}</b> used</span>
+                <button onClick={() => {
+                  setCouponError("");
+                  setEditingCoupon(newCouponDraft());
+                }}>+ Create coupon</button>
+              </div>
+            </div>
+            {couponError && <div className="form-error" role="alert">{couponError}</div>}
+            <div className="admin-coupon-list">
+              <div className="coupon-list-head">
+                <span>Coupon</span>
+                <span>Offer</span>
+                <span>Window</span>
+                <span>Status</span>
+                <span>Issued / used</span>
+                <span>Actions</span>
+              </div>
+              {coupons.length ? coupons.map((coupon) => (
+                <article key={coupon.id}>
+                  <span className="admin-coupon-name">
+                    <strong>{coupon.name_en}</strong>
+                    <small>{coupon.code} · {coupon.issuance_mode === "ASSIGNED" ? "Member wallet" : "Public code"}</small>
+                  </span>
+                  <span>
+                    <strong>
+                      {coupon.discount_type === "PERCENT"
+                        ? `${coupon.discount_value}% off`
+                        : coupon.discount_type === "FIXED"
+                          ? `${money(coupon.discount_value)} off`
+                          : "Free size upgrade"}
+                    </strong>
+                    <small>{coupon.min_spend ? `Min. ${money(coupon.min_spend)}` : "No minimum"}</small>
+                  </span>
+                  <span>
+                    <strong>{new Date(coupon.starts_at).toLocaleDateString("en-KE")}</strong>
+                    <small>to {new Date(coupon.ends_at).toLocaleDateString("en-KE")}</small>
+                  </span>
+                  <span>
+                    <em className="coupon-status" data-status={coupon.effective_status.toLowerCase()}>
+                      {coupon.effective_status}
+                    </em>
+                    <small>{coupon.effective_status === "ENDED" ? "Window ended" : coupon.issuance_enabled ? "Distribution on" : "Distribution off"}</small>
+                  </span>
+                  <span>
+                    <strong>{coupon.issued_count} / {coupon.redeemed_count}</strong>
+                    <small>{money(coupon.discount_total)} discounted</small>
+                  </span>
+                  <span className="coupon-row-actions">
+                    <button onClick={() => {
+                      setCouponError("");
+                      setEditingCoupon({ ...coupon });
+                    }}>{coupon.redeemed_count ? "View rules" : "Edit"}</button>
+                    {!coupon.redemption_enabled && coupon.effective_status !== "ARCHIVED" && coupon.effective_status !== "ENDED" && (
+                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "publish")}>Publish</button>
+                    )}
+                    {coupon.redemption_enabled && !coupon.issuance_enabled && (
+                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "publish")}>Resume</button>
+                    )}
+                    {coupon.issuance_enabled && ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status) && (
+                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "stop-distribution")}>Stop issuing</button>
+                    )}
+                    {coupon.redemption_enabled && ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status) && (
+                      <button className="danger-text" disabled={couponBusy} onClick={() => void runCouponAction(coupon, "disable")}>Disable use</button>
+                    )}
+                    {coupon.effective_status !== "ARCHIVED" && (!coupon.redemption_enabled || coupon.effective_status === "ENDED") && (
+                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "archive")}>Archive</button>
+                    )}
+                  </span>
+                </article>
+              )) : (
+                <div className="admin-empty-state">
+                  <strong>No coupons yet</strong>
+                  <span>Create a draft, review its customer preview, then publish it.</span>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         {tab === "redeem" && (
           <div className="redeem-layout">
             <section className="redeem-card">
               <span className="red-label">ONE-TIME PICKUP</span>
               <h2>Scan or enter code</h2>
               <p>
-                Use a customer’s QR pickup token or order number. A completed
-                code cannot be used twice.
+                Scan the customer’s signed QR pickup token. A completed code
+                cannot be used twice.
               </p>
-              <div className="scanner-frame">
-                <div className="scanner-line" />
-                <span>⌗</span>
-                <small>Camera scanner placeholder</small>
+              <label className="redeem-store-select">
+                <span>Pickup store</span>
+                <select
+                  value={storeFilter}
+                  onChange={(event) => setStoreFilter(event.target.value)}
+                >
+                  <option value="all">Choose store</option>
+                  {adminStores
+                    .filter((store) => store.pickup_enabled)
+                    .map((store) => (
+                      <option key={store.id} value={store.code}>
+                        {store.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className={`scanner-frame ${scannerActive ? "active" : ""}`}>
+                {scannerActive ? (
+                  <video ref={videoRef} muted playsInline aria-label="QR camera" />
+                ) : (
+                  <>
+                    <div className="scanner-line" />
+                    <span>⌗</span>
+                    <small>Camera ready</small>
+                  </>
+                )}
               </div>
+              <button
+                className="camera-scan-button"
+                onClick={() =>
+                  scannerActive ? stopScanner() : void startScanner()
+                }
+              >
+                {scannerActive ? "Stop camera" : "Scan customer QR"} →
+              </button>
               <label>
-                <span>Pickup token / Order ID</span>
+                <span>Pickup QR token</span>
                 <div>
                   <input
                     value={scan}
                     onChange={(e) => setScan(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && redeem()}
-                    placeholder="e.g. P7LW9X3A"
+                    placeholder="Paste signed QR token"
                   />
                   <button onClick={redeem}>Verify →</button>
                 </div>
               </label>
-              <button className="demo-code" onClick={() => setScan("P7LW9X3A")}>
-                Use demo ready code: P7LW9X3A
-              </button>
             </section>
             <aside
               className={`scan-result ${scanResult ? (scanResult.ok ? "ok" : "bad") : ""}`}
@@ -887,8 +1673,10 @@ export default function AdminApp() {
                       <b>{scanResult.order.id}</b>
                       <small>
                         {
-                          stores.find((s) => s.id === scanResult.order?.storeId)
-                            ?.name
+                          adminStores.find(
+                            (store) =>
+                              store.code === scanResult.order?.storeId,
+                          )?.name
                         }
                       </small>
                       <strong>{money(scanResult.order.total)}</strong>
@@ -914,31 +1702,31 @@ export default function AdminApp() {
             <div className="customer-table">
               <div className="table-head">
                 <span>Customer</span>
-                <span>Tier</span>
-                <span>Points</span>
+                <span>Status</span>
+                <span>Lifetime</span>
                 <span>Orders</span>
                 <span>Action</span>
               </div>
               {customers.map((c) => (
-                <div className="customer-row" key={c.phone}>
+                <div className="customer-row" key={c.id}>
                   <span>
                     <i>
-                      {c.name
+                      {c.nickname
                         .split(" ")
                         .map((x) => x[0])
                         .join("")}
                     </i>
                     <b>
-                      {c.name}
-                      <small>{c.phone}</small>
+                      {c.nickname}
+                      <small>{c.email || "No email"}</small>
                     </b>
                   </span>
                   <span>
-                    <em>{c.tier}</em>
+                    <em data-status={c.status.toLowerCase()}>{c.status}</em>
                   </span>
-                  <strong>{c.points.toLocaleString()}</strong>
-                  <span>{c.orders}</span>
-                  <button>View →</button>
+                  <strong>{money(c.lifetime_value)}</strong>
+                  <span>{c.order_count}</span>
+                  <button onClick={() => void openCustomer(c)}>Manage →</button>
                 </div>
               ))}
             </div>
@@ -949,17 +1737,26 @@ export default function AdminApp() {
           <section className="admin-panel wide">
             <PanelHead title="Nairobi stores" />
             <div className="admin-store-grid">
-              {stores.map((s, i) => (
-                <article key={s.id}>
+              {adminStores.map((store, i) => (
+                <article key={store.id}>
                   <span>0{i + 1}</span>
                   <div>
-                    <h3>{s.name}</h3>
-                    <p>{s.address}</p>
-                    <small>{s.phone}</small>
+                    <h3>{store.name}</h3>
+                    <p>{store.address}</p>
+                    <small>{store.phone || "No phone"}</small>
                   </div>
-                  <em className={s.verified ? "verified" : "pending"}>
-                    {s.verified ? "Verified" : "Confirm details"}
-                  </em>
+                  <span className="store-card-actions">
+                    <em
+                      className={
+                        store.location_verified ? "verified" : "pending"
+                      }
+                    >
+                      {store.location_verified ? "Verified" : "Confirm details"}
+                    </em>
+                    <button onClick={() => setEditingStore({ ...store })}>
+                      Edit →
+                    </button>
+                  </span>
                 </article>
               ))}
             </div>
@@ -986,7 +1783,7 @@ export default function AdminApp() {
               <img src={editingProduct.image} alt="Product preview" />
               <label>
                 <strong>Replace image</strong>
-                <span>JPG, PNG or WebP · max 1.5 MB in local demo</span>
+                <span>JPG, PNG or WebP · signed Cloud Storage upload</span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -1006,6 +1803,43 @@ export default function AdminApp() {
                 }
               />
             </label>
+            <div className="form-split">
+              <label className="form-field">
+                <span>Product type</span>
+                <input value={editingProduct.kind} disabled />
+              </label>
+              <label className="form-field">
+                <span>Category</span>
+                <select
+                  value={editingProduct.category}
+                  onChange={(event) =>
+                    setEditingProduct({
+                      ...editingProduct,
+                      category: event.target.value,
+                    })
+                  }
+                >
+                  {(editingProduct.kind === "drink"
+                    ? drinkCategoryOrder
+                    : goodsCategoryOrder
+                  ).map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                  {!(editingProduct.kind === "drink"
+                    ? drinkCategoryOrder
+                    : goodsCategoryOrder
+                  ).some(
+                    (category) => category === editingProduct.category,
+                  ) && (
+                    <option value={editingProduct.category}>
+                      {editingProduct.category}
+                    </option>
+                  )}
+                </select>
+              </label>
+            </div>
             <div className="form-split">
               <label className="form-field">
                 <span>English name</span>
@@ -1135,6 +1969,398 @@ export default function AdminApp() {
           </div>
         </div>
       )}
+      {editingCoupon && (
+        <div className="modal-backdrop">
+          <section ref={couponDialogRef} className="admin-record-modal coupon-editor" role="dialog" aria-modal="true" aria-labelledby="coupon-editor-title">
+            <button className="modal-close" aria-label="Close coupon editor" onClick={() => setEditingCoupon(null)}>×</button>
+            <span className="red-label">COUPON DRAFT</span>
+            <h2 id="coupon-editor-title">{editingCoupon.id ? editingCoupon.name_en : "Create coupon"}</h2>
+            <p>Save the rule as a draft. Publishing remains a separate customer-visible action.</p>
+            {editingCoupon.redeemed_count > 0 && (
+              <div className="admin-info-note">This rule has redemptions and is now read-only. Duplicate it to create a new version.</div>
+            )}
+            <fieldset disabled={editingCoupon.redeemed_count > 0 || couponBusy}>
+              <div className="form-split">
+                <label className="form-field">
+                  <span>Code</span>
+                  <input value={editingCoupon.code} maxLength={40} placeholder="HAPPY20" onChange={(event) => setEditingCoupon({ ...editingCoupon, code: event.target.value.toUpperCase() })} />
+                </label>
+                <label className="form-field">
+                  <span>Distribution</span>
+                  <select value={editingCoupon.issuance_mode} onChange={(event) => setEditingCoupon({ ...editingCoupon, issuance_mode: event.target.value as AdminCoupon["issuance_mode"] })}>
+                    <option value="ASSIGNED">Member wallet</option>
+                    <option value="PUBLIC_CODE">Public code</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-split">
+                <label className="form-field">
+                  <span>English name</span>
+                  <input value={editingCoupon.name_en} onChange={(event) => setEditingCoupon({ ...editingCoupon, name_en: event.target.value })} />
+                </label>
+                <label className="form-field">
+                  <span>Chinese name</span>
+                  <input value={editingCoupon.name_zh} onChange={(event) => setEditingCoupon({ ...editingCoupon, name_zh: event.target.value })} />
+                </label>
+              </div>
+              <div className="form-split">
+                <label className="form-field">
+                  <span>English description</span>
+                  <textarea value={editingCoupon.description_en} onChange={(event) => setEditingCoupon({ ...editingCoupon, description_en: event.target.value })} />
+                </label>
+                <label className="form-field">
+                  <span>Chinese description</span>
+                  <textarea value={editingCoupon.description_zh} onChange={(event) => setEditingCoupon({ ...editingCoupon, description_zh: event.target.value })} />
+                </label>
+              </div>
+              <div className="form-split three">
+                <label className="form-field">
+                  <span>Offer type</span>
+                  <select value={editingCoupon.discount_type} onChange={(event) => setEditingCoupon({ ...editingCoupon, discount_type: event.target.value as AdminCoupon["discount_type"], discount_value: event.target.value === "FREE_SIZE_UPGRADE" ? 0 : editingCoupon.discount_value || 10 })}>
+                    <option value="PERCENT">Percentage</option>
+                    <option value="FIXED">Fixed amount</option>
+                    <option value="FREE_SIZE_UPGRADE">Free size upgrade</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>{editingCoupon.discount_type === "PERCENT" ? "Percentage" : "Amount (KSh)"}</span>
+                  <input type="number" min="0" max={editingCoupon.discount_type === "PERCENT" ? 100 : undefined} disabled={editingCoupon.discount_type === "FREE_SIZE_UPGRADE"} value={editingCoupon.discount_value} onChange={(event) => setEditingCoupon({ ...editingCoupon, discount_value: Number(event.target.value) })} />
+                </label>
+                <label className="form-field">
+                  <span>Maximum discount</span>
+                  <input type="number" min="0" placeholder="No cap" value={editingCoupon.max_discount ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, max_discount: event.target.value ? Number(event.target.value) : null })} />
+                </label>
+              </div>
+              <div className="form-split three">
+                <label className="form-field">
+                  <span>Applies to</span>
+                  <select value={editingCoupon.scope_type} onChange={(event) => setEditingCoupon({ ...editingCoupon, scope_type: event.target.value as AdminCoupon["scope_type"], scope_value: null })}>
+                    <option value="ALL">All products</option>
+                    <option value="DRINKS">All drinks</option>
+                    <option value="GOODS">All goods</option>
+                    <option value="CATEGORY">Category</option>
+                    <option value="PRODUCT">Product</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Scope selection</span>
+                  {editingCoupon.scope_type === "CATEGORY" ? (
+                    <select value={editingCoupon.scope_value ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, scope_value: event.target.value })}>
+                      <option value="">Choose category</option>
+                      {[...new Set(catalog.map((product) => categorySlug(product.category)))].map((category) => <option key={category} value={category}>{category}</option>)}
+                    </select>
+                  ) : editingCoupon.scope_type === "PRODUCT" ? (
+                    <select value={editingCoupon.scope_value ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, scope_value: event.target.value })}>
+                      <option value="">Choose product</option>
+                      {catalog.map((product) => <option key={product.apiId ?? product.id} value={product.apiId ?? product.id}>{product.name}</option>)}
+                    </select>
+                  ) : <input value="Automatically selected" disabled />}
+                </label>
+                <label className="form-field">
+                  <span>Fulfilment</span>
+                  <select value={editingCoupon.fulfillment_scope} onChange={(event) => setEditingCoupon({ ...editingCoupon, fulfillment_scope: event.target.value as AdminCoupon["fulfillment_scope"] })}>
+                    <option value="ALL">All methods</option>
+                    <option value="PICKUP">Pickup</option>
+                    <option value="DELIVERY">Delivery</option>
+                    <option value="SHIPPING">Shipping</option>
+                  </select>
+                </label>
+              </div>
+              <div className="form-split four">
+                <label className="form-field"><span>Minimum spend (KSh)</span><input type="number" min="0" value={editingCoupon.min_spend} onChange={(event) => setEditingCoupon({ ...editingCoupon, min_spend: Number(event.target.value) })} /></label>
+                <label className="form-field"><span>Issue limit</span><input type="number" min="1" placeholder="Unlimited" value={editingCoupon.issuance_limit ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, issuance_limit: event.target.value ? Number(event.target.value) : null })} /></label>
+                <label className="form-field"><span>Use limit</span><input type="number" min="1" placeholder="Unlimited" value={editingCoupon.usage_limit ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, usage_limit: event.target.value ? Number(event.target.value) : null })} /></label>
+                <label className="form-field"><span>Per customer</span><input type="number" min="1" max="100" value={editingCoupon.per_user_limit} onChange={(event) => setEditingCoupon({ ...editingCoupon, per_user_limit: Number(event.target.value) })} /></label>
+              </div>
+              <div className="form-split">
+                <label className="form-field"><span>Starts (Nairobi time)</span><input type="datetime-local" value={inputDateTime(editingCoupon.starts_at)} onChange={(event) => setEditingCoupon({ ...editingCoupon, starts_at: nairobiDateTimeIso(event.target.value) })} /></label>
+                <label className="form-field"><span>Ends (Nairobi time)</span><input type="datetime-local" value={inputDateTime(editingCoupon.ends_at)} onChange={(event) => setEditingCoupon({ ...editingCoupon, ends_at: nairobiDateTimeIso(event.target.value) })} /></label>
+              </div>
+            </fieldset>
+            <div className="coupon-customer-preview">
+              <span>Customer preview</span>
+              <strong>{editingCoupon.discount_type === "PERCENT" ? `${editingCoupon.discount_value}%` : editingCoupon.discount_type === "FIXED" ? money(editingCoupon.discount_value) : "FREE"}</strong>
+              <div><b>{editingCoupon.name_en || "Coupon name"}</b><small>{editingCoupon.code || "CODE"} · Min. {money(editingCoupon.min_spend)}</small></div>
+            </div>
+            {couponError && <div className="form-error" role="alert">{couponError}</div>}
+            {editingCoupon.redeemed_count === 0 && (
+              <button className="primary full" disabled={couponBusy} onClick={() => void saveCoupon()}>{couponBusy ? "Saving…" : editingCoupon.id ? "Save coupon draft →" : "Create draft →"}</button>
+            )}
+            <small className="admin-sync-note">After saving, publish from the coupon list. Dates are displayed in Africa/Nairobi.</small>
+          </section>
+        </div>
+      )}
+      {selectedCustomer && (
+        <div className="modal-backdrop">
+          <section className="admin-record-modal">
+            <button
+              className="modal-close"
+              onClick={() => setSelectedCustomer(null)}
+            >
+              ×
+            </button>
+            <span className="red-label">CUSTOMER RECORD</span>
+            <h2>{selectedCustomer.nickname}</h2>
+            <p>{selectedCustomer.email || "No email"}</p>
+            <div className="form-split">
+              <label className="form-field">
+                <span>Nickname</span>
+                <input
+                  value={selectedCustomer.nickname}
+                  onChange={(event) =>
+                    setSelectedCustomer({
+                      ...selectedCustomer,
+                      nickname: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="form-field">
+                <span>Account status</span>
+                <select
+                  value={selectedCustomer.status}
+                  onChange={(event) =>
+                    setSelectedCustomer({
+                      ...selectedCustomer,
+                      status: event.target.value as AdminCustomer["status"],
+                    })
+                  }
+                >
+                  <option value="ACTIVE">Active</option>
+                  <option value="SUSPENDED">Suspended</option>
+                </select>
+              </label>
+            </div>
+            <div className="record-facts">
+              <span>
+                <small>Orders</small>
+                <strong>{selectedCustomer.order_count}</strong>
+              </span>
+              <span>
+                <small>Lifetime value</small>
+                <strong>{money(selectedCustomer.lifetime_value)}</strong>
+              </span>
+              <span>
+                <small>Joined</small>
+                <strong>
+                  {new Date(selectedCustomer.created_at).toLocaleDateString(
+                    "en-KE",
+                  )}
+                </strong>
+              </span>
+            </div>
+            <h3>Delivery addresses</h3>
+            <div className="record-list">
+              {selectedCustomer.addresses.length ? (
+                selectedCustomer.addresses.map((address) => (
+                  <article key={address.id}>
+                    <strong>
+                      {address.label} {address.is_default ? "· Default" : ""}
+                    </strong>
+                    <span>
+                      {address.contact_name} · {address.phone_e164}
+                    </span>
+                    <small>
+                      {address.line1}, {address.area}, {address.city}
+                    </small>
+                  </article>
+                ))
+              ) : (
+                <small>No saved addresses.</small>
+              )}
+            </div>
+            <h3>Coupons</h3>
+            <div className="customer-coupon-issuer">
+              <select
+                aria-label="Coupon to issue"
+                value={issueCouponId}
+                onChange={(event) => setIssueCouponId(event.target.value)}
+              >
+                <option value="">Choose a published member coupon</option>
+                {coupons
+                  .filter(
+                    (coupon) =>
+                      coupon.issuance_mode === "ASSIGNED" &&
+                      coupon.issuance_enabled &&
+                      ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status),
+                  )
+                  .map((coupon) => (
+                    <option key={coupon.id} value={coupon.id}>
+                      {coupon.name_en} · {coupon.code}
+                    </option>
+                  ))}
+              </select>
+              <button disabled={!issueCouponId || couponBusy || selectedCustomer.status !== "ACTIVE"} onClick={() => void issueCoupon()}>
+                {couponBusy ? "Issuing…" : "Issue coupon"}
+              </button>
+            </div>
+            {couponError && <div className="form-error" role="alert">{couponError}</div>}
+            <div className="record-list compact customer-coupon-list">
+              {selectedCustomer.coupons.length ? (
+                selectedCustomer.coupons.map((coupon) => (
+                  <article key={coupon.user_coupon_id}>
+                    <strong>{coupon.name_en} · {coupon.code}</strong>
+                    <span>{coupon.wallet_status}</span>
+                    <small>Expires {new Date(coupon.expires_at).toLocaleDateString("en-KE")}</small>
+                    {coupon.status === "ISSUED" && coupon.wallet_status !== "EXPIRED" && (
+                      <button className="danger-text" disabled={couponBusy} onClick={() => void revokeUserCoupon(coupon.user_coupon_id)}>Revoke</button>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <small>No coupons issued.</small>
+              )}
+            </div>
+            <h3>Recent orders</h3>
+            <div className="record-list compact">
+              {selectedCustomer.orders.length ? (
+                selectedCustomer.orders.map((order) => (
+                  <article key={order.order_number}>
+                    <strong>{order.order_number}</strong>
+                    <span>{order.payment_status}</span>
+                    <small>{money(order.total)}</small>
+                  </article>
+                ))
+              ) : (
+                <small>No orders yet.</small>
+              )}
+            </div>
+            <button className="primary full" onClick={() => void saveCustomer()}>
+              Save customer →
+            </button>
+          </section>
+        </div>
+      )}
+      {editingStore && (
+        <div className="modal-backdrop">
+          <section className="admin-record-modal">
+            <button className="modal-close" onClick={() => setEditingStore(null)}>
+              ×
+            </button>
+            <span className="red-label">STORE SETTINGS</span>
+            <h2>{editingStore.name}</h2>
+            <div className="form-split">
+              <label className="form-field">
+                <span>Store name</span>
+                <input
+                  value={editingStore.name}
+                  onChange={(event) =>
+                    setEditingStore({ ...editingStore, name: event.target.value })
+                  }
+                />
+              </label>
+              <label className="form-field">
+                <span>Status</span>
+                <select
+                  value={editingStore.status}
+                  onChange={(event) =>
+                    setEditingStore({
+                      ...editingStore,
+                      status: event.target.value as AdminStore["status"],
+                    })
+                  }
+                >
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="COMING_SOON">Coming soon</option>
+                </select>
+              </label>
+            </div>
+            <label className="form-field">
+              <span>Address</span>
+              <input
+                value={editingStore.address}
+                onChange={(event) =>
+                  setEditingStore({ ...editingStore, address: event.target.value })
+                }
+              />
+            </label>
+            <label className="form-field">
+              <span>Phone</span>
+              <input
+                value={editingStore.phone ?? ""}
+                onChange={(event) =>
+                  setEditingStore({ ...editingStore, phone: event.target.value })
+                }
+              />
+            </label>
+            <div className="form-split">
+              <label className="form-field">
+                <span>Latitude</span>
+                <input
+                  type="number"
+                  step="0.000001"
+                  value={editingStore.lat ?? ""}
+                  onChange={(event) =>
+                    setEditingStore({
+                      ...editingStore,
+                      lat: event.target.value ? Number(event.target.value) : null,
+                    })
+                  }
+                />
+              </label>
+              <label className="form-field">
+                <span>Longitude</span>
+                <input
+                  type="number"
+                  step="0.000001"
+                  value={editingStore.lng ?? ""}
+                  onChange={(event) =>
+                    setEditingStore({
+                      ...editingStore,
+                      lng: event.target.value ? Number(event.target.value) : null,
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <div className="store-switches">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={editingStore.pickup_enabled}
+                  onChange={(event) =>
+                    setEditingStore({
+                      ...editingStore,
+                      pickup_enabled: event.target.checked,
+                    })
+                  }
+                />
+                Pickup enabled
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={editingStore.delivery_enabled}
+                  onChange={(event) =>
+                    setEditingStore({
+                      ...editingStore,
+                      delivery_enabled: event.target.checked,
+                    })
+                  }
+                />
+                Delivery enabled
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={editingStore.location_verified}
+                  onChange={(event) =>
+                    setEditingStore({
+                      ...editingStore,
+                      location_verified: event.target.checked,
+                    })
+                  }
+                />
+                Location verified by operations
+              </label>
+            </div>
+            <button className="primary full" onClick={() => void saveStore()}>
+              Save store →
+            </button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -1180,10 +2406,12 @@ function PanelHead({
 function OrderTable({
   orders,
   catalog,
+  stores,
   onStatus,
 }: {
   orders: Order[];
   catalog: Product[];
+  stores: AdminStore[];
   onStatus: (id: string, status: Order["status"]) => void;
 }) {
   return (
@@ -1208,7 +2436,10 @@ function OrderTable({
             </small>
           </span>
           <span>
-            <b>{stores.find((s) => s.id === o.storeId)?.area || o.storeId}</b>
+            <b>
+              {stores.find((store) => store.code === o.storeId)?.area ||
+                o.storeId}
+            </b>
             <small>{o.channel}</small>
           </span>
           <span className="item-stack">
@@ -1227,9 +2458,11 @@ function OrderTable({
             onChange={(e) => onStatus(o.id, e.target.value as Order["status"])}
           >
             <option>Placed</option>
+            <option>Confirmed</option>
             <option>Preparing</option>
             <option>Ready</option>
             <option>Completed</option>
+            <option>Cancelled</option>
           </select>
         </div>
       ))}

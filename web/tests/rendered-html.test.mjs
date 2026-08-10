@@ -21,10 +21,23 @@ test("server-renders the KIYOYO customer storefront", async () => {
   assert.match(html, /Fruit Rush/);
   assert.match(html, /fruit-tea-campaign-v2\.jpg/);
   assert.match(html, /KIYOYO campaigns/);
-  assert.match(html, />DRINK</);
-  assert.match(html, /Assam Boba Milk Tea/);
-  assert.match(html, /KSh 420/);
+  assert.match(html, /class=" shop-entry"/);
+  assert.match(html, />Shop<\/span>/);
+  assert.match(html, /Assam Boba Tea/);
+  assert.match(html, /KSh 380/);
   assert.match(html, /product-card drink-product/);
+  const featured = html.match(
+    /class="product-grid featured"[\s\S]*?<\/div><\/section>/,
+  )?.[0];
+  assert.ok(featured, "homepage trending section should render");
+  assert.equal(
+    featured.match(/product-card drink-product/g)?.length,
+    8,
+    "homepage trending should show one product from each drink category",
+  );
+  assert.doesNotMatch(featured, />Add-ons</);
+  assert.match(featured, /Passion Fruit Tea/);
+  assert.match(featured, /Raw Coconut Latte/);
 });
 
 test("server-renders the Nairobi operations admin", async () => {
@@ -32,7 +45,8 @@ test("server-renders the Nairobi operations admin", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /KIYOYO Admin/);
-  assert.match(html, /Today’s orders/);
-  assert.match(html, /Redeem pickup/);
-  assert.match(html, /KYO-2608-3179/);
+  assert.match(html, /SECURE OPERATIONS/);
+  assert.match(html, /Checking access…/);
+  assert.match(html, /Loading permissions and live Cloud SQL data/);
+  assert.doesNotMatch(html, /Today’s orders|KYO-/);
 });

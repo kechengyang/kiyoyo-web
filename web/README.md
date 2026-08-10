@@ -1,100 +1,52 @@
-# vinext-starter
+# KIYOYO Commerce Web
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+KIYOYO 的顾客商城与 Admin 前端。它是一个 Next.js 静态导出应用，部署到
+Firebase Hosting；订单、商品、用户、地址、门店、图片和核销数据全部通过独立的
+Cloud Run API 访问。
 
-## Prerequisites
+## 本地开发
 
-- Node.js `>=22.13.0`
+要求 Node.js `>=22.13.0`：
 
-## Quick Start
-
-```bash
+```sh
 npm install
 npm run dev
+```
+
+未设置环境变量时只允许使用已部署的 `kiyoyo-dev` 默认配置。可复制
+`.env.example` 为 `.env.local` 覆盖本地值；`.env.local` 不应提交。
+
+## 环境配置
+
+每个静态构建都必须绑定一个明确环境：
+
+- `NEXT_PUBLIC_KIYOYO_ENV`
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_MAPS_BROWSER_KEY`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+
+`dev` 可使用代码中的受限公开 Web 配置作为本地默认值。`staging` 和 `prod` 缺少任一
+值时构建会失败，避免正式页面误连 `kiyoyo-dev`。Firebase Web API key 和 Maps
+browser key 会公开给浏览器，安全边界分别是 Firebase authorized domains 与 Maps
+referrer/API restrictions；服务端 Secret 不得放在 `NEXT_PUBLIC_*` 中。
+
+## 检查与构建
+
+```sh
+npm run lint
+npm test
 npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+- `npm run build`：生成 Firebase Hosting 静态产物 `out/`。
+- `npm run build:preview`：生成 vinext 本地预览产物 `dist/`，不能部署到 Firebase。
+- `npm test`：构建预览并检查顾客端与 Admin 的服务端渲染骨架。
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+根目录 `firebase.json` 当前把 `web/out` 发布到 Hosting site `kiyoyo-dev`。
+`public/runtime-config.json` 是便于部署核对的非敏感环境元数据，并不替代构建时的
+`NEXT_PUBLIC_*` 配置。

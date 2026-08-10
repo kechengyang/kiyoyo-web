@@ -1,8 +1,10 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import QRCode from "react-qr-code";
 import { haversineKm, money, stores } from "../data";
+import { drinkCategoryOrder, drinkCategoryZh } from "../menu";
 import {
   resolveProductTag,
   salePrice,
@@ -11,7 +13,13 @@ import {
 } from "../catalog";
 import {
   apiFetch,
+  fetchMemberCoupons,
+  fetchMemberOrders,
   observeMember,
+  pickupTokenFingerprint,
+  reissuePickupToken,
+  sendMemberPasswordReset,
+  sendMemberVerification,
   signInMember,
   signOutMember,
 } from "../platform";
@@ -25,6 +33,7 @@ import type {
   Order,
   Product,
   Tab,
+  UserCoupon,
   UserProfile,
 } from "../types";
 
@@ -90,6 +99,17 @@ const copy = {
     coupons: "Coupons",
     rewards: "Rewards",
     history: "History",
+    orderDetails: "Order details",
+    viewOrder: "View order",
+    orderedItems: "Your items",
+    pickupAt: "Pickup at",
+    deliverTo: "Deliver to",
+    orderTotal: "Order total",
+    close: "Close",
+    restorePickupCode: "Show a new pickup QR",
+    restorePickupHelp:
+      "For security, opening a new QR invalidates the previous pickup code.",
+    restoringCode: "Creating secure QR…",
     admin: "Open Admin",
     memberHello: "Hey, Nairobi!",
     noOrders: "Your first KIYOYO order will appear here.",
@@ -187,6 +207,16 @@ const copy = {
     coupons: "优惠券",
     rewards: "奖励",
     history: "历史订单",
+    orderDetails: "订单详情",
+    viewOrder: "查看订单",
+    orderedItems: "商品明细",
+    pickupAt: "自取门店",
+    deliverTo: "配送至",
+    orderTotal: "订单合计",
+    close: "关闭",
+    restorePickupCode: "生成新的取餐二维码",
+    restorePickupHelp: "为保障安全，生成新二维码后，之前的取餐码将失效。",
+    restoringCode: "正在生成安全二维码…",
     admin: "进入管理后台",
     memberHello: "你好，内罗毕！",
     noOrders: "你的第一笔 KIYOYO 订单会显示在这里。",
@@ -223,6 +253,36 @@ const copy = {
     changeAddress: "更改地址",
     placeOrder: "提交测试订单",
   },
+};
+
+const drinkCategoryAnchor = (category: string) =>
+  category.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+const categorySlug = (category: string) =>
+  category
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+const couponStatusLabel = (status: UserCoupon["walletStatus"], lang: Lang) => {
+  const labels: Record<UserCoupon["walletStatus"], [string, string]> = {
+    AVAILABLE: ["Available", "可用"],
+    UPCOMING: ["Upcoming", "待生效"],
+    RESERVED: ["Reserved", "已锁定"],
+    USED: ["Used", "已使用"],
+    EXPIRED: ["Expired", "已过期"],
+    REVOKED: ["Revoked", "已撤销"],
+    UNAVAILABLE: ["Unavailable", "暂停使用"],
+  };
+  return labels[status][lang === "zh" ? 1 : 0];
+};
+
+const drinkMenuTagRank = (product: Product) => {
+  const label = product.badge?.trim().toLowerCase();
+  if (label === "recommended" || label === "推荐") return 0;
+  return label ? 1 : 2;
 };
 
 const emptyProfile: UserProfile = {
@@ -276,6 +336,13 @@ function NavIcon({ item }: { item: Tab }) {
     </span>
   );
 }
+
+const productSizeEntries = (product: Product) =>
+  Object.entries(product.sizePrices ?? { "One size": product.price }).sort(
+    ([first], [second]) =>
+      (["M", "L", "One size"].indexOf(first) + 3) % 3 -
+      ((["M", "L", "One size"].indexOf(second) + 3) % 3),
+  );
 
 function ProductCard({
   product,
@@ -346,6 +413,60 @@ function ProductCard({
   );
 }
 
+function DrinkMenuCard({
+  product,
+  lang,
+  saved,
+  onSave,
+  onOpen,
+}: {
+  product: Product;
+  lang: Lang;
+  saved: boolean;
+  onSave: () => void;
+  onOpen: () => void;
+}) {
+  const prices = productSizeEntries(product);
+  return (
+    <article className="drink-menu-card">
+      <button className="drink-menu-image" onClick={onOpen} aria-label={`Open ${product.name}`}>
+        <img
+          src={product.image}
+          alt={lang === "zh" ? product.nameZh : product.name}
+          loading="lazy"
+          decoding="async"
+        />
+        {product.badge && <span className="drink-menu-badge">{product.badge}</span>}
+      </button>
+      <div className="drink-menu-copy">
+        <div className="drink-menu-title">
+          <span>{product.id}</span>
+          <h3>{lang === "zh" ? product.nameZh : product.name}</h3>
+          <button className={`heart ${saved ? "saved" : ""}`} onClick={onSave} aria-label="Save product">
+            {saved ? "♥" : "♡"}
+          </button>
+        </div>
+        <p>{lang === "zh" ? product.descriptionZh : product.description}</p>
+        <div className="drink-menu-bottom">
+          <div className="drink-size-prices">
+            {prices.map(([size, price]) => (
+              <span key={size || "price"}>
+                {size && size !== "One size" && <small>{size}</small>}
+                {money(Math.round(price * (1 - (product.discountPercent || 0) / 100)))}
+              </span>
+            ))}
+          </div>
+          <button onClick={onOpen}>
+            {product.category === "Add-ons"
+              ? lang === "zh" ? "加入" : "Add"
+              : lang === "zh" ? "选规格" : "Choose"}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function SectionHead({
   title,
   action,
@@ -363,16 +484,17 @@ function SectionHead({
   );
 }
 
-function PseudoQR({ code }: { code: string }) {
-  const bits = Array.from(
-    { length: 121 },
-    (_, i) => (code.charCodeAt(i % code.length) * (i + 7) + i * 13) % 7 < 3,
-  );
+function PickupQR({ code }: { code: string }) {
   return (
     <div className="qr" aria-label={`Pickup code ${code}`}>
-      {bits.map((on, i) => (
-        <i key={i} className={on ? "on" : ""} />
-      ))}
+      <QRCode
+        value={code}
+        size={180}
+        level="M"
+        bgColor="#ffffff"
+        fgColor="#171412"
+        title={`Pickup code ${code}`}
+      />
     </div>
   );
 }
@@ -389,6 +511,7 @@ export default function KiyoyoApp() {
     "d6",
   ]);
   const [orders, setOrders] = useStoredState<Order[]>("kiyoyo-orders", []);
+  const ordersRef = useRef<Order[]>(orders);
   const [session, setSession] = useStoredState<AuthSession | null>(
     "kiyoyo-session",
     null,
@@ -401,15 +524,26 @@ export default function KiyoyoApp() {
   const [storeModal, setStoreModal] = useState(false);
   const [checkout, setCheckout] = useState(false);
   const [success, setSuccess] = useState<Order | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [pickupQrLoading, setPickupQrLoading] = useState(false);
+  const [pickupQrError, setPickupQrError] = useState("");
+  const [accountPanel, setAccountPanel] = useState<
+    "coupons" | "rewards" | "history"
+  >("coupons");
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const [distances, setDistances] = useState<Record<string, number>>({});
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalQuery, setGlobalQuery] = useState("");
-  const [filter, setFilter] = useState("All");
+  const [filter, setFilter] = useState<string>(drinkCategoryOrder[0]);
   const [shopMode, setShopMode] = useState<"drinks" | "goods">("drinks");
+  const drinkCategoryNavRef = useRef<HTMLElement>(null);
+  const pendingDrinkCategoryRef = useRef<string | null>(null);
   const [bannerIndex, setBannerIndex] = useState(0);
-  const [bannerPaused, setBannerPaused] = useState(false);
+  const [bannerPointerPaused, setBannerPointerPaused] = useState(false);
+  const [bannerFocusPaused, setBannerFocusPaused] = useState(false);
+  const [bannerPageVisible, setBannerPageVisible] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [custom, setCustom] = useState({
     size: "Regular",
     sugar: "50%",
@@ -434,6 +568,12 @@ export default function KiyoyoApp() {
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [pendingCheckout, setPendingCheckout] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [userCoupons, setUserCoupons] = useState<UserCoupon[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [selectedCouponId, setSelectedCouponId] = useState("");
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+  const [placingOrder, setPlacingOrder] = useState(false);
   const products = catalog
     .filter((product) => product.active !== false)
     .map((product) => {
@@ -447,12 +587,30 @@ export default function KiyoyoApp() {
   const t = copy[lang];
   const selectedStore = stores.find((s) => s.id === storeId) || stores[0];
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const selectedOrderStore = selectedOrder
+    ? (selectedOrder.storeSnapshot ??
+      stores.find((store) => store.id === selectedOrder.storeId))
+    : undefined;
+  const selectedOrderAddress = selectedOrder
+    ? (selectedOrder.addressSnapshot ??
+      profile.addresses.find(
+        (address) => address.id === selectedOrder.addressId,
+      ))
+    : undefined;
+
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
 
   useEffect(
     () =>
       observeMember(async (user) => {
         if (!user) {
           setSession(null);
+          setOrders([]);
+          setUserCoupons([]);
+          setCouponsLoading(false);
+          setSelectedCouponId("");
           return;
         }
         const providerId = user.providerData[0]?.providerId;
@@ -463,6 +621,7 @@ export default function KiyoyoApp() {
               ? "facebook"
               : "password";
         setSession({ id: user.uid, email: user.email ?? "", provider });
+        setCouponsLoading(true);
         try {
           await apiFetch("/v1/auth/bootstrap", {
             method: "POST",
@@ -474,7 +633,7 @@ export default function KiyoyoApp() {
               locale: lang,
             }),
           });
-          const [member, addressPayload] = await Promise.all([
+          const [member, addressPayload, remoteOrders, remoteCoupons] = await Promise.all([
             apiFetch<{
               data: {
                 nickname: string;
@@ -494,7 +653,11 @@ export default function KiyoyoApp() {
                 is_default: boolean;
               }>;
             }>("/v1/me/addresses"),
+            fetchMemberOrders(),
+            fetchMemberCoupons(),
           ]);
+          setUserCoupons(remoteCoupons);
+          setCouponsLoading(false);
           const genderMap: Record<string, UserProfile["gender"]> = {
             FEMALE: "Female",
             MALE: "Male",
@@ -518,21 +681,88 @@ export default function KiyoyoApp() {
               isDefault: address.is_default,
             })),
           });
+          const localOrders = ordersRef.current;
+          const remoteIds = new Set(remoteOrders.map((order) => order.id));
+          const mergedRemote = await Promise.all(
+            remoteOrders.map(async (remoteOrder) => {
+              const localOrder = localOrders.find(
+                (order) => order.id === remoteOrder.id,
+              );
+              const localPickupCode =
+                localOrder?.pickupCode &&
+                localOrder.pickupCode !== "NO-PICKUP"
+                  ? localOrder.pickupCode
+                  : undefined;
+              const localPickupIsCurrent =
+                localPickupCode && remoteOrder.pickupFingerprint
+                  ? (await pickupTokenFingerprint(localPickupCode)) ===
+                    remoteOrder.pickupFingerprint
+                  : false;
+              return {
+                ...remoteOrder,
+                pickupCode: localPickupIsCurrent && localPickupCode
+                  ? localPickupCode
+                  : remoteOrder.pickupCode,
+                addressSnapshot:
+                  remoteOrder.addressSnapshot ?? localOrder?.addressSnapshot,
+                storeSnapshot:
+                  remoteOrder.storeSnapshot ?? localOrder?.storeSnapshot,
+                items:
+                  remoteOrder.items.length > 0
+                    ? remoteOrder.items
+                    : (localOrder?.items ?? []),
+              };
+            }),
+          );
+          setOrders([
+            ...mergedRemote,
+            ...localOrders.filter((order) => !remoteIds.has(order.id)),
+          ]);
         } catch {
+          setCouponsLoading(false);
           /* preserve the local fallback if the API is temporarily unavailable */
         }
       }),
-    [lang, setProfile, setSession],
+    [lang, setOrders, setProfile, setSession],
   );
 
   useEffect(() => {
-    if (bannerPaused) return;
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncMotionPreference = () =>
+      setPrefersReducedMotion(motionQuery.matches);
+    syncMotionPreference();
+    motionQuery.addEventListener("change", syncMotionPreference);
+    return () =>
+      motionQuery.removeEventListener("change", syncMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    const syncVisibility = () => setBannerPageVisible(!document.hidden);
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", syncVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (
+      bannerPointerPaused ||
+      bannerFocusPaused ||
+      prefersReducedMotion ||
+      !bannerPageVisible
+    )
+      return;
     const timer = window.setInterval(
       () => setBannerIndex((index) => (index + 1) % 3),
       6000,
     );
     return () => window.clearInterval(timer);
-  }, [bannerPaused]);
+  }, [
+    bannerFocusPaused,
+    bannerPageVisible,
+    bannerPointerPaused,
+    prefersReducedMotion,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -565,18 +795,223 @@ export default function KiyoyoApp() {
     .reduce(
       (sum, item) =>
         sum +
-        salePrice(item.product) * item.quantity +
-        (item.toppings?.length || 0) * 50 * item.quantity,
+        (salePrice(item.product, item.size) +
+          (item.toppings ?? []).reduce(
+            (toppingSum, toppingId) =>
+              toppingSum +
+              salePrice(
+                catalog.find((product) => product.id === toppingId) ?? {
+                  ...item.product,
+                  price: 0,
+                },
+              ),
+            0,
+          )) *
+          item.quantity,
       0,
     );
+  const selectedCoupon = userCoupons.find(
+    (coupon) => coupon.userCouponId === selectedCouponId,
+  );
+  const couponEligibleItems = selectedCoupon
+    ? detailedCart.filter(({ product }) => {
+        if (selectedCoupon.scopeType === "ALL") return true;
+        if (selectedCoupon.scopeType === "DRINKS") return product.kind === "drink";
+        if (selectedCoupon.scopeType === "GOODS") return product.kind === "goods";
+        if (selectedCoupon.scopeType === "CATEGORY") {
+          return categorySlug(product.category) === selectedCoupon.scopeValue;
+        }
+        return [product.id, product.apiId].includes(selectedCoupon.scopeValue ?? "");
+      })
+    : [];
+  const couponEligibleSubtotal = couponEligibleItems.reduce(
+    (sum, item) =>
+      sum +
+      (salePrice(item.product, item.size) +
+        (item.toppings ?? []).reduce(
+          (toppingSum, toppingId) =>
+            toppingSum +
+            salePrice(
+              catalog.find((product) => product.id === toppingId) ?? {
+                ...item.product,
+                price: 0,
+              },
+            ),
+          0,
+        )) *
+        item.quantity,
+    0,
+  );
+  const selectedCouponMatchesFulfillment =
+    !selectedCoupon ||
+    !checkoutChannel ||
+    selectedCoupon.fulfillmentScope === "ALL" ||
+    selectedCoupon.fulfillmentScope === checkoutChannel.toUpperCase();
+  let estimatedCouponDiscount = 0;
+  if (
+    selectedCoupon &&
+    selectedCoupon.walletStatus === "AVAILABLE" &&
+    selectedCouponMatchesFulfillment &&
+    couponEligibleSubtotal >= selectedCoupon.minSpend
+  ) {
+    if (selectedCoupon.discountType === "PERCENT") {
+      estimatedCouponDiscount = Math.round(
+        (couponEligibleSubtotal * selectedCoupon.discountValue) / 100,
+      );
+    } else if (selectedCoupon.discountType === "FIXED") {
+      estimatedCouponDiscount = selectedCoupon.discountValue;
+    } else {
+      estimatedCouponDiscount = couponEligibleItems.reduce((largest, item) => {
+        const sizePrices = Object.values(item.product.sizePrices ?? {});
+        const selectedPrice = item.size
+          ? item.product.sizePrices?.[item.size]
+          : undefined;
+        if (!sizePrices.length || selectedPrice == null) return largest;
+        return Math.max(largest, selectedPrice - Math.min(...sizePrices));
+      }, 0);
+    }
+    if (selectedCoupon.maxDiscount != null) {
+      estimatedCouponDiscount = Math.min(
+        estimatedCouponDiscount,
+        selectedCoupon.maxDiscount,
+      );
+    }
+    estimatedCouponDiscount = Math.min(
+      estimatedCouponDiscount,
+      couponEligibleSubtotal,
+    );
+  }
+  const checkoutDeliveryFee =
+    checkoutChannel === "Delivery"
+      ? 150
+      : checkoutChannel === "Shipping"
+        ? 300
+        : 0;
+  const estimatedCheckoutTotal = Math.max(
+    0,
+    subtotal - estimatedCouponDiscount + checkoutDeliveryFee,
+  );
 
-  const filteredProducts = products.filter((p) => {
-    const matchesMode =
-      shopMode === "drinks" ? p.kind === "drink" : p.kind === "goods";
-    const matchesFilter =
-      ["All", "Drinks", "Goods"].includes(filter) || p.category === filter;
-    return matchesMode && matchesFilter;
-  });
+  const filteredProducts = products
+    .filter((p) => {
+      const matchesMode =
+        shopMode === "drinks" ? p.kind === "drink" : p.kind === "goods";
+      const matchesFilter =
+        ["All", "Drinks", "Goods"].includes(filter) || p.category === filter;
+      return matchesMode && matchesFilter;
+    })
+    .sort((first, second) =>
+      shopMode === "drinks"
+        ? first.id.localeCompare(second.id, undefined, { numeric: true })
+        : 0,
+    );
+  const drinkGroups = drinkCategoryOrder
+    .map((category) => ({
+      category,
+      products: products
+        .filter(
+          (product) =>
+            product.kind === "drink" && product.category === category,
+        )
+        .sort(
+          (first, second) =>
+            drinkMenuTagRank(first) - drinkMenuTagRank(second) ||
+            first.id.localeCompare(second.id, undefined, { numeric: true }),
+        ),
+    }))
+    .filter((group) => group.products.length > 0);
+  const trendingProducts = drinkGroups
+    .filter((group) => group.category !== "Add-ons")
+    .map((group) => group.products[0]);
+  const addOnProducts = products.filter(
+    (product) => product.kind === "drink" && product.category === "Add-ons",
+  );
+
+  useEffect(() => {
+    if (tab !== "shop" || shopMode !== "drinks") return;
+
+    const sections = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-drink-category]"),
+    );
+    if (sections.length === 0) return;
+
+    const requestedCategory = pendingDrinkCategoryRef.current;
+    if (requestedCategory) {
+      pendingDrinkCategoryRef.current = null;
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(
+            `drink-category-${drinkCategoryAnchor(requestedCategory)}`,
+          )
+          ?.scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+              .matches
+              ? "auto"
+              : "smooth",
+            block: "start",
+          });
+      });
+    }
+
+    let frame = 0;
+    const updateActiveCategory = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const readingLine = Math.min(window.innerHeight * 0.28, 190);
+        let activeSection = sections[0];
+
+        for (const section of sections) {
+          if (section.getBoundingClientRect().top <= readingLine) {
+            activeSection = section;
+          } else {
+            break;
+          }
+        }
+
+        if (
+          window.scrollY + window.innerHeight >=
+          document.documentElement.scrollHeight - 4
+        ) {
+          activeSection = sections[sections.length - 1];
+        }
+
+        const category = activeSection.dataset.drinkCategory;
+        if (category) {
+          setFilter((current) => (current === category ? current : category));
+        }
+      });
+    };
+
+    updateActiveCategory();
+    window.addEventListener("scroll", updateActiveCategory, { passive: true });
+    window.addEventListener("resize", updateActiveCategory);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", updateActiveCategory);
+      window.removeEventListener("resize", updateActiveCategory);
+    };
+  }, [products.length, shopMode, tab]);
+
+  useEffect(() => {
+    if (tab !== "shop" || shopMode !== "drinks") return;
+    const nav = drinkCategoryNavRef.current;
+    const activeButton = nav?.querySelector<HTMLElement>(
+      `[data-drink-category-tab="${filter}"]`,
+    );
+    if (!nav || !activeButton) return;
+
+    const navRect = nav.getBoundingClientRect();
+    const buttonRect = activeButton.getBoundingClientRect();
+    if (buttonRect.top < navRect.top || buttonRect.bottom > navRect.bottom) {
+      nav.scrollTo({
+        top:
+          activeButton.offsetTop - nav.clientHeight / 2 + activeButton.clientHeight / 2,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    }
+  }, [filter, shopMode, tab]);
   const normalizedGlobalQuery = globalQuery.trim().toLowerCase();
   const globalResults = normalizedGlobalQuery
     ? products
@@ -590,7 +1025,12 @@ export default function KiyoyoApp() {
 
   const openProduct = (product: Product) => {
     setModalProduct(product);
-    setCustom({ size: "Regular", sugar: "50%", ice: "Less ice", toppings: [] });
+    setCustom({
+      size: productSizeEntries(product)[0]?.[0] ?? "One size",
+      sugar: "50%",
+      ice: "Less ice",
+      toppings: [],
+    });
   };
 
   const addProduct = () => {
@@ -651,6 +1091,9 @@ export default function KiyoyoApp() {
         email,
         authForm.password,
       );
+      if (provider === "password" && authMode === "signup") {
+        await sendMemberVerification();
+      }
       const providerId = user.providerData[0]?.providerId;
       const actualProvider: AuthProvider =
         providerId === "google.com"
@@ -872,6 +1315,7 @@ export default function KiyoyoApp() {
         profile.addresses[0]?.id ||
         "",
     );
+    setCheckoutError("");
     setCheckoutChannel(null);
     setCheckout(true);
   };
@@ -917,12 +1361,18 @@ export default function KiyoyoApp() {
 
   const placeOrder = async (channel: Order["channel"]) => {
     if (channel !== "Pickup" && !selectedAddressId) return;
+    setCheckoutError("");
+    setPlacingOrder(true);
     try {
       const response = await apiFetch<{
         data: {
           order_number: string;
+          subtotal: number;
+          discount: number;
+          delivery_fee: number;
           total: number;
           created_at: string;
+          coupon_code: string | null;
           pickup_qr_payload: string | null;
         };
       }>("/v1/checkouts", {
@@ -944,6 +1394,8 @@ export default function KiyoyoApp() {
             store_id: channel === "Shipping" ? undefined : storeId,
             address_id: channel === "Pickup" ? undefined : selectedAddressId,
           },
+          coupon_code:
+            selectedCoupon?.code || couponCodeInput.trim() || undefined,
           payment_method: { provider: "MOCK", token: "test_ok" },
         }),
       });
@@ -953,20 +1405,96 @@ export default function KiyoyoApp() {
         status: "Placed",
         channel,
         storeId,
+        subtotal: response.data.subtotal,
+        discount: response.data.discount,
+        deliveryFee: response.data.delivery_fee,
+        couponCode: response.data.coupon_code ?? undefined,
         total: response.data.total,
-        items: cart,
+        items: detailedCart.map(({ product, ...item }) => {
+          const unitPrice =
+            salePrice(product, item.size) +
+            (item.toppings ?? []).reduce(
+              (sum, toppingId) =>
+                sum +
+                salePrice(
+                  catalog.find((candidate) => candidate.id === toppingId) ?? {
+                    ...product,
+                    price: 0,
+                  },
+                ),
+              0,
+            );
+          return {
+            ...item,
+            productName: product.name,
+            productNameZh: product.nameZh,
+            productImage: product.image,
+            unitPrice,
+            lineTotal: unitPrice * item.quantity,
+          };
+        }),
         pickupCode: response.data.pickup_qr_payload ?? "NO-PICKUP",
         addressId: channel === "Pickup" ? undefined : selectedAddressId,
+        addressSnapshot:
+          channel === "Pickup"
+            ? undefined
+            : profile.addresses.find(
+                (address) => address.id === selectedAddressId,
+              ),
+        storeSnapshot:
+          channel === "Shipping" ? undefined : { ...selectedStore },
       };
       setOrders([order, ...orders]);
       setCart([]);
       setCheckout(false);
       setCheckoutChannel(null);
+      setSelectedCouponId("");
+      setCouponCodeInput("");
+      setUserCoupons(await fetchMemberCoupons());
       setSuccess(order);
     } catch (error) {
-      setAddressError(
+      setCheckoutError(
         error instanceof Error ? error.message : "Order could not be placed",
       );
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  const openOrderDetails = (order: Order) => {
+    setPickupQrError("");
+    setSelectedOrder(order);
+  };
+
+  const restorePickupQr = async () => {
+    if (!selectedOrder || selectedOrder.channel !== "Pickup") return;
+    setPickupQrLoading(true);
+    setPickupQrError("");
+    try {
+      const next = await reissuePickupToken(selectedOrder.id);
+      const updatedOrder: Order = {
+        ...selectedOrder,
+        pickupCode: next.pickup_qr_payload,
+        pickupCanReissue: true,
+        pickupExpiresAt: next.expires_at,
+        pickupFingerprint: next.token_fingerprint,
+      };
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === updatedOrder.id ? updatedOrder : order,
+        ),
+      );
+      setSelectedOrder(updatedOrder);
+    } catch (error) {
+      setPickupQrError(
+        error instanceof Error
+          ? error.message
+          : lang === "zh"
+            ? "无法生成取餐二维码。"
+            : "Pickup QR could not be created.",
+      );
+    } finally {
+      setPickupQrLoading(false);
     }
   };
 
@@ -976,8 +1504,21 @@ export default function KiyoyoApp() {
   };
   const openShop = (mode: "drinks" | "goods", nextFilter?: string) => {
     setShopMode(mode);
-    setFilter(nextFilter || (mode === "drinks" ? "Drinks" : "Goods"));
+    pendingDrinkCategoryRef.current =
+      mode === "drinks" && nextFilter ? nextFilter : null;
+    setFilter(nextFilter || (mode === "drinks" ? drinkCategoryOrder[0] : "Goods"));
     go("shop");
+  };
+  const jumpToDrinkCategory = (category: string) => {
+    setFilter(category);
+    document
+      .getElementById(`drink-category-${drinkCategoryAnchor(category)}`)
+      ?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
   };
   const campaigns = [
     {
@@ -992,6 +1533,7 @@ export default function KiyoyoApp() {
       cta: lang === "zh" ? "选一杯果茶" : "Shop fruit teas",
       mode: "drinks" as const,
       filter: "Fruit Tea",
+      motion: "fruit",
     },
     {
       image: "/images/events/event-3.jpg",
@@ -1005,6 +1547,7 @@ export default function KiyoyoApp() {
       cta: lang === "zh" ? "挑选甜品" : "Pick a treat",
       mode: "drinks" as const,
       filter: "Dessert",
+      motion: "sundae",
     },
     {
       image: "/images/goods/streetwear.png",
@@ -1018,6 +1561,7 @@ export default function KiyoyoApp() {
       cta: lang === "zh" ? "逛潮流商品" : "Shop the drop",
       mode: "goods" as const,
       filter: "Fashion",
+      motion: "street",
     },
   ];
   const activeCampaign = campaigns[bannerIndex];
@@ -1032,7 +1576,12 @@ export default function KiyoyoApp() {
         <span>EST. WITH JOY</span>
       </div>
       <header className="site-header">
-        <button className="store-button" onClick={() => setStoreModal(true)}>
+        <button
+          className="store-button"
+          onClick={() => setStoreModal(true)}
+          aria-label={`${t.location}: ${selectedStore.area}`}
+          title={`${t.location}: ${selectedStore.area}`}
+        >
           <span>⌖</span>
           <span>
             <small>{t.location}</small>
@@ -1053,7 +1602,7 @@ export default function KiyoyoApp() {
             <kbd>/</kbd>
           </button>
           <button
-            className="member-trigger"
+            className={`member-trigger ${session ? "has-session" : ""}`}
             onClick={() => (session ? go("account") : openAuth("signin"))}
             aria-label={
               session
@@ -1081,6 +1630,7 @@ export default function KiyoyoApp() {
           <button
             className="lang"
             onClick={() => setLang(lang === "en" ? "zh" : "en")}
+            aria-label={lang === "en" ? "切换到中文" : "Switch to English"}
           >
             {lang === "en" ? "中文" : "EN"}
           </button>
@@ -1109,11 +1659,39 @@ export default function KiyoyoApp() {
               className="campaign-carousel"
               aria-roledescription="carousel"
               aria-label="KIYOYO campaigns"
-              onMouseEnter={() => setBannerPaused(true)}
-              onMouseLeave={() => setBannerPaused(false)}
+              onMouseEnter={() => setBannerPointerPaused(true)}
+              onMouseLeave={() => setBannerPointerPaused(false)}
+              onFocusCapture={() => setBannerFocusPaused(true)}
+              onBlurCapture={(event) => {
+                if (
+                  !event.currentTarget.contains(event.relatedTarget as Node)
+                )
+                  setBannerFocusPaused(false);
+              }}
             >
-              <div className="campaign-stage" key={bannerIndex}>
-                <img src={activeCampaign.image} alt={activeCampaign.alt} />
+              <div
+                className={`campaign-stage motion-${activeCampaign.motion}`}
+                key={bannerIndex}
+              >
+                <img
+                  className="campaign-backdrop"
+                  src={activeCampaign.image}
+                  alt=""
+                  aria-hidden="true"
+                />
+                <img
+                  className="campaign-art"
+                  src={activeCampaign.image}
+                  alt={activeCampaign.alt}
+                />
+                <div className="campaign-motion" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </div>
               </div>
               <button
                 className="campaign-arrow previous"
@@ -1170,19 +1748,16 @@ export default function KiyoyoApp() {
                 onAction={() => openShop("drinks")}
               />
               <div className="product-grid featured">
-                {products
-                  .filter((p) => p.kind === "drink")
-                  .slice(0, 4)
-                  .map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      lang={lang}
-                      saved={saved.includes(p.id)}
-                      onSave={() => toggleSave(p.id)}
-                      onOpen={() => openProduct(p)}
-                    />
-                  ))}
+                {trendingProducts.map((p) => (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    lang={lang}
+                    saved={saved.includes(p.id)}
+                    onSave={() => toggleSave(p.id)}
+                    onOpen={() => openProduct(p)}
+                  />
+                ))}
               </div>
             </section>
             <section className="story-band">
@@ -1309,60 +1884,74 @@ export default function KiyoyoApp() {
                     </div>
                   </div>
                 </div>
-                <div id="drink-menu" className="shop-tools drink-tools">
-                  <div className="filters">
-                    {[
-                      "Drinks",
-                      "Milk Tea",
-                      "Fruit Tea",
-                      "Coffee",
-                      "Jelly Tea",
-                      "Dessert",
-                    ].map((f) => (
+                <div id="drink-menu" className="drink-vertical-menu">
+                  <aside
+                    ref={drinkCategoryNavRef}
+                    className="drink-category-nav"
+                    aria-label={lang === "zh" ? "饮品分类" : "Drink categories"}
+                  >
+                    <span>{lang === "zh" ? "菜单" : "MENU"}</span>
+                    {drinkCategoryOrder.map((category) => (
                       <button
-                        key={f}
-                        className={filter === f ? "active" : ""}
-                        onClick={() => setFilter(f)}
+                        key={category}
+                        data-drink-category-tab={category}
+                        className={filter === category ? "active" : ""}
+                        aria-pressed={filter === category}
+                        onClick={() => jumpToDrinkCategory(category)}
                       >
-                        {f === "Drinks"
-                          ? lang === "zh"
-                            ? "全部饮品"
-                            : "All drinks"
-                          : f}
+                        <b>{lang === "zh" ? drinkCategoryZh[category] : category}</b>
+                        <small>
+                          {products.filter((product) => product.kind === "drink" && product.category === category).length}
+                        </small>
                       </button>
                     ))}
-                  </div>
-                </div>
-                <div className="drink-catalog-head">
-                  <div>
-                    <span>
-                      {lang === "zh" ? "本店菜单" : "YOUR STORE MENU"}
-                    </span>
-                    <h2>
-                      {filter === "Drinks" || filter === "All"
-                        ? lang === "zh"
-                          ? "全部饮品"
-                          : "All drinks"
-                        : filter}
-                    </h2>
-                  </div>
-                  <strong>
-                    {filteredProducts.length}{" "}
-                    {lang === "zh" ? "款可选" : "choices"}
-                  </strong>
-                </div>
-                <div className="product-grid drink-grid">
-                  {filteredProducts.map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      lang={lang}
-                      saved={saved.includes(p.id)}
-                      onSave={() => toggleSave(p.id)}
-                      onOpen={() => openProduct(p)}
-                      drinkShop
-                    />
-                  ))}
+                  </aside>
+                  <section className="drink-menu-panel">
+                    {drinkGroups.map((group, index) => (
+                      <section
+                        key={group.category}
+                        id={`drink-category-${drinkCategoryAnchor(group.category)}`}
+                        className="drink-category-section"
+                        data-drink-category={group.category}
+                        aria-labelledby={`drink-category-title-${drinkCategoryAnchor(group.category)}`}
+                      >
+                        <div className="drink-catalog-head">
+                          <div>
+                            <span>
+                              {index === 0
+                                ? lang === "zh"
+                                  ? "本店菜单"
+                                  : "YOUR STORE MENU"
+                                : `${String(index + 1).padStart(2, "0")} / ${String(drinkGroups.length).padStart(2, "0")}`}
+                            </span>
+                            <h2
+                              id={`drink-category-title-${drinkCategoryAnchor(group.category)}`}
+                            >
+                              {lang === "zh"
+                                ? drinkCategoryZh[group.category]
+                                : group.category}
+                            </h2>
+                          </div>
+                          <strong>
+                            {group.products.length}{" "}
+                            {lang === "zh" ? "款可选" : "choices"}
+                          </strong>
+                        </div>
+                        <div className="drink-menu-list">
+                          {group.products.map((product) => (
+                            <DrinkMenuCard
+                              key={product.id}
+                              product={product}
+                              lang={lang}
+                              saved={saved.includes(product.id)}
+                              onSave={() => toggleSave(product.id)}
+                              onOpen={() => openProduct(product)}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </section>
                 </div>
               </>
             ) : (
@@ -1496,14 +2085,33 @@ export default function KiyoyoApp() {
                           <small>
                             {item.size} · {item.sugar} · {item.ice}
                             {item.toppings?.length
-                              ? ` · ${item.toppings.join(", ")}`
+                              ? ` · ${item.toppings
+                                  .map((toppingId) => {
+                                    const topping = catalog.find(
+                                      (product) => product.id === toppingId,
+                                    );
+                                    return lang === "zh"
+                                      ? topping?.nameZh
+                                      : topping?.name;
+                                  })
+                                  .filter(Boolean)
+                                  .join(", ")}`
                               : ""}
                           </small>
                         )}
                         <strong>
                           {money(
-                            salePrice(item.product) +
-                              (item.toppings?.length || 0) * 50,
+                            salePrice(item.product, item.size) +
+                              (item.toppings ?? []).reduce(
+                                (sum, toppingId) =>
+                                  sum +
+                                  salePrice(
+                                    catalog.find(
+                                      (product) => product.id === toppingId,
+                                    ) ?? { ...item.product, price: 0 },
+                                  ),
+                                0,
+                              ),
                           )}
                         </strong>
                       </div>
@@ -1702,87 +2310,189 @@ export default function KiyoyoApp() {
                     </button>
                   )}
                 </section>
-                <div className="account-tabs">
-                  <button className="active">{t.coupons}</button>
-                  <button>{t.rewards}</button>
-                  <button>{t.history}</button>
+                <div className="account-tabs" role="tablist">
+                  <button
+                    className={accountPanel === "coupons" ? "active" : ""}
+                    onClick={() => setAccountPanel("coupons")}
+                    role="tab"
+                    aria-selected={accountPanel === "coupons"}
+                  >
+                    {t.coupons}
+                  </button>
+                  <button
+                    className={accountPanel === "rewards" ? "active" : ""}
+                    onClick={() => setAccountPanel("rewards")}
+                    role="tab"
+                    aria-selected={accountPanel === "rewards"}
+                  >
+                    {t.rewards}
+                  </button>
+                  <button
+                    className={accountPanel === "history" ? "active" : ""}
+                    onClick={() => setAccountPanel("history")}
+                    role="tab"
+                    aria-selected={accountPanel === "history"}
+                  >
+                    {t.history}
+                  </button>
                 </div>
-                <div className="coupon-grid">
-                  <article>
-                    <b>20%</b>
-                    <div>
-                      <strong>ALL DRINKS</strong>
-                      <span>MIN. SPEND KSh 800</span>
-                    </div>
-                    <button>USE</button>
-                  </article>
-                  <article className="gold">
-                    <b>2×</b>
-                    <div>
-                      <strong>DOUBLE POINTS</strong>
-                      <span>FRIDAY AFTER 4PM</span>
-                    </div>
-                    <button>USE</button>
-                  </article>
-                  <article className="dark">
-                    <b>FREE</b>
-                    <div>
-                      <strong>SIZE UPGRADE</strong>
-                      <span>MEMBER TREAT</span>
-                    </div>
-                    <button>USE</button>
-                  </article>
-                </div>
-                <SectionHead title={t.history} />
-                {orders.length ? (
-                  <div className="order-history">
-                    {orders.map((o) => {
-                      const orderAddress = profile.addresses.find(
-                        (a) => a.id === o.addressId,
-                      );
-                      return (
-                        <article key={o.id}>
+                {accountPanel === "coupons" && (
+                  <div className="coupon-grid" role="tabpanel">
+                    {couponsLoading ? (
+                      <div className="coupon-empty" aria-live="polite">
+                        <strong>{lang === "zh" ? "正在加载优惠券…" : "Loading coupons…"}</strong>
+                      </div>
+                    ) : userCoupons.length ? (
+                      userCoupons.map((coupon) => (
+                        <article
+                          key={coupon.userCouponId}
+                          className={
+                            coupon.walletStatus === "AVAILABLE"
+                              ? coupon.discountType === "FREE_SIZE_UPGRADE"
+                                ? "dark"
+                                : ""
+                              : "coupon-muted"
+                          }
+                        >
+                          <b>
+                            {coupon.discountType === "PERCENT"
+                              ? `${coupon.discountValue}%`
+                              : coupon.discountType === "FIXED"
+                                ? money(coupon.discountValue)
+                                : lang === "zh"
+                                  ? "升杯"
+                                  : "FREE"}
+                          </b>
                           <div>
-                            <strong>{o.id}</strong>
+                            <strong>{lang === "zh" ? coupon.nameZh : coupon.nameEn}</strong>
                             <span>
-                              {new Date(o.createdAt).toLocaleString(
+                              {couponStatusLabel(coupon.walletStatus, lang)} · {lang === "zh" ? "有效期至" : "UNTIL"}{" "}
+                              {new Date(coupon.expiresAt).toLocaleDateString(
                                 lang === "zh" ? "zh-CN" : "en-KE",
-                                {
-                                  dateStyle: "medium",
-                                  timeStyle: "short",
-                                  timeZone: "Africa/Nairobi",
-                                },
                               )}
                             </span>
-                            {o.channel !== "Pickup" && (
-                              <small>
-                                {orderAddress
-                                  ? `${orderAddress.label} · ${orderAddress.line1}`
-                                  : lang === "zh"
-                                    ? "未设置配送地址"
-                                    : "No delivery address"}
-                              </small>
-                            )}
                           </div>
-                          <div>
-                            <span className="status">{o.status}</span>
-                            <strong>{money(o.total)}</strong>
-                            {o.channel !== "Pickup" &&
-                              o.status === "Placed" && (
-                                <button
-                                  className="order-address-edit"
-                                  onClick={() => setEditingOrderId(o.id)}
-                                >
-                                  {t.changeAddress}
-                                </button>
-                              )}
-                          </div>
+                          <button
+                            disabled={coupon.walletStatus !== "AVAILABLE"}
+                            onClick={() => {
+                              setSelectedCouponId(coupon.userCouponId);
+                              setCouponCodeInput("");
+                              setTab(cart.length ? "cart" : "shop");
+                            }}
+                          >
+                            {selectedCouponId === coupon.userCouponId
+                              ? lang === "zh"
+                                ? "已选择"
+                                : "SELECTED"
+                              : lang === "zh"
+                                ? "使用"
+                                : "USE"}
+                          </button>
                         </article>
-                      );
-                    })}
+                      ))
+                    ) : (
+                      <div className="coupon-empty">
+                        <strong>{lang === "zh" ? "暂时没有优惠券" : "No coupons yet"}</strong>
+                        <span>
+                          {lang === "zh"
+                            ? "新发放的会员券会显示在这里。"
+                            : "New member coupons will appear here."}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="order-empty">{t.noOrders}</div>
+                )}
+                {accountPanel === "rewards" && (
+                  <div className="rewards-panel" role="tabpanel">
+                    <span>2,480</span>
+                    <div>
+                      <strong>{t.points}</strong>
+                      <p>
+                        {lang === "zh"
+                          ? "再获得 520 积分即可解锁下一份会员奖励。"
+                          : "Earn 520 more points to unlock your next member reward."}
+                      </p>
+                      <i>
+                        <b style={{ width: "83%" }} />
+                      </i>
+                    </div>
+                  </div>
+                )}
+                {accountPanel === "history" && (
+                  <div className="account-history-panel" role="tabpanel">
+                    <SectionHead title={t.history} />
+                    {orders.length ? (
+                      <div className="order-history">
+                        {orders.map((o) => {
+                          const orderAddress =
+                            o.addressSnapshot ??
+                            profile.addresses.find(
+                              (address) => address.id === o.addressId,
+                            );
+                          return (
+                            <article
+                              key={o.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`${t.viewOrder} ${o.id}`}
+                              onClick={() => openOrderDetails(o)}
+                              onKeyDown={(event) => {
+                                if (
+                                  event.key === "Enter" ||
+                                  event.key === " "
+                                ) {
+                                  event.preventDefault();
+                                  openOrderDetails(o);
+                                }
+                              }}
+                            >
+                              <div>
+                                <strong>{o.id}</strong>
+                                <span>
+                                  {new Date(o.createdAt).toLocaleString(
+                                    lang === "zh" ? "zh-CN" : "en-KE",
+                                    {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                      timeZone: "Africa/Nairobi",
+                                    },
+                                  )}
+                                </span>
+                                {o.channel !== "Pickup" && (
+                                  <small>
+                                    {orderAddress
+                                      ? `${orderAddress.label} · ${orderAddress.line1}`
+                                      : lang === "zh"
+                                        ? "未设置配送地址"
+                                        : "No delivery address"}
+                                  </small>
+                                )}
+                                <em>{t.viewOrder} →</em>
+                              </div>
+                              <div>
+                                <span className="status">{o.status}</span>
+                                <strong>{money(o.total)}</strong>
+                                {o.channel !== "Pickup" &&
+                                  o.status === "Placed" && (
+                                    <button
+                                      className="order-address-edit"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setEditingOrderId(o.id);
+                                      }}
+                                    >
+                                      {t.changeAddress}
+                                    </button>
+                                  )}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="order-empty">{t.noOrders}</div>
+                    )}
+                  </div>
                 )}
                 <div className="account-links">
                   <a className="admin-link" href="/admin">
@@ -1933,7 +2643,7 @@ export default function KiyoyoApp() {
             >
               ×
             </button>
-            <div className="modal-image">
+            <div className={`modal-image ${modalProduct.kind === "drink" ? "drink-modal-image" : ""}`}>
               <img src={modalProduct.image} alt={modalProduct.name} />
               {(modalProduct.discountPercent || 0) > 0 ? (
                 <span className="badge sale-badge">
@@ -1960,62 +2670,79 @@ export default function KiyoyoApp() {
               </p>
               <div className="modal-sale-price">
                 <strong className="modal-price">
-                  {money(salePrice(modalProduct))}
+                  {money(salePrice(modalProduct, custom.size))}
                 </strong>
                 {(modalProduct.discountPercent || 0) > 0 && (
                   <del>{money(modalProduct.price)}</del>
                 )}
               </div>
-              {modalProduct.kind === "drink" && (
+              {modalProduct.kind === "drink" && modalProduct.category !== "Add-ons" && (
                 <div className="custom-options">
-                  <Option
-                    title={t.size}
-                    options={["Regular", "Large +80"]}
-                    value={custom.size}
-                    onChange={(size) => setCustom({ ...custom, size })}
-                  />
-                  <Option
-                    title={t.sugar}
-                    options={["0%", "30%", "50%", "100%"]}
-                    value={custom.sugar}
-                    onChange={(sugar) => setCustom({ ...custom, sugar })}
-                  />
-                  <Option
-                    title={t.ice}
-                    options={["No ice", "Less ice", "Regular"]}
-                    value={custom.ice}
-                    onChange={(ice) => setCustom({ ...custom, ice })}
-                  />
-                  <div className="option-group">
-                    <b>
-                      {t.toppings} <small>+ KSh 50</small>
-                    </b>
-                    <div>
-                      {["Boba", "Coconut jelly", "Milk cap"].map((top) => (
+                  {productSizeEntries(modalProduct).length > 1 && (
+                    <Option
+                      title={t.size}
+                      options={productSizeEntries(modalProduct).map(([size]) => size)}
+                      value={custom.size}
+                      onChange={(size) => setCustom({ ...custom, size })}
+                    />
+                  )}
+                  {!["Sundae", "Soufflé"].includes(modalProduct.category) && (
+                    <>
+                      <Option
+                        title={t.sugar}
+                        options={["0%", "30%", "50%", "100%"]}
+                        value={custom.sugar}
+                        onChange={(sugar) => setCustom({ ...custom, sugar })}
+                      />
+                      <Option
+                        title={t.ice}
+                        options={["No ice", "Less ice", "Regular"]}
+                        value={custom.ice}
+                        onChange={(ice) => setCustom({ ...custom, ice })}
+                      />
+                      <div className="option-group">
+                        <b>{t.toppings}</b>
+                        <div>
+                          {addOnProducts.map((top) => (
                         <button
-                          key={top}
+                          key={top.id}
                           className={
-                            custom.toppings.includes(top) ? "active" : ""
+                            custom.toppings.includes(top.id) ? "active" : ""
                           }
                           onClick={() =>
                             setCustom({
                               ...custom,
-                              toppings: custom.toppings.includes(top)
-                                ? custom.toppings.filter((x) => x !== top)
-                                : [...custom.toppings, top],
+                              toppings: custom.toppings.includes(top.id)
+                                ? custom.toppings.filter((x) => x !== top.id)
+                                : [...custom.toppings, top.id],
                             })
                           }
                         >
-                          {top}
+                          {lang === "zh" ? top.nameZh : top.name} +{money(salePrice(top))}
                         </button>
-                      ))}
-                    </div>
-                  </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               <button className="primary full" onClick={addProduct}>
                 {t.addCart} ·{" "}
-                {money(salePrice(modalProduct) + custom.toppings.length * 50)}
+                {money(
+                  salePrice(modalProduct, custom.size) +
+                    custom.toppings.reduce(
+                      (sum, toppingId) =>
+                        sum +
+                        salePrice(
+                          addOnProducts.find((product) => product.id === toppingId) ?? {
+                            ...modalProduct,
+                            price: 0,
+                          },
+                        ),
+                      0,
+                    ),
+                )}
               </button>
             </div>
           </div>
@@ -2050,6 +2777,7 @@ export default function KiyoyoApp() {
               <small className="error">{t.locationDenied}</small>
             )}
             <GoogleStoreMap
+              lang={lang}
               stores={stores}
               selectedStoreId={storeId}
               onSelect={setStoreId}
@@ -2132,6 +2860,78 @@ export default function KiyoyoApp() {
                 </button>
               )}
             </div>
+            {checkoutChannel && (
+              <section className="checkout-coupon">
+                <div>
+                  <h3>{lang === "zh" ? "优惠券" : "Coupon"}</h3>
+                  {selectedCouponId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCouponId("")}
+                    >
+                      {lang === "zh" ? "移除" : "Remove"}
+                    </button>
+                  )}
+                </div>
+                {userCoupons.some(
+                  (coupon) => coupon.walletStatus === "AVAILABLE",
+                ) && (
+                  <label>
+                    <span>{lang === "zh" ? "我的优惠券" : "My coupons"}</span>
+                    <select
+                      value={selectedCouponId}
+                      onChange={(event) => {
+                        setSelectedCouponId(event.target.value);
+                        if (event.target.value) setCouponCodeInput("");
+                        setCheckoutError("");
+                      }}
+                    >
+                      <option value="">
+                        {lang === "zh" ? "不使用会员券" : "No member coupon"}
+                      </option>
+                      {userCoupons
+                        .filter((coupon) => coupon.walletStatus === "AVAILABLE")
+                        .map((coupon) => (
+                          <option
+                            key={coupon.userCouponId}
+                            value={coupon.userCouponId}
+                          >
+                            {lang === "zh" ? coupon.nameZh : coupon.nameEn} · {coupon.code}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                <label>
+                  <span>{lang === "zh" ? "或输入优惠码" : "Or enter a promo code"}</span>
+                  <input
+                    value={couponCodeInput}
+                    onChange={(event) => {
+                      setCouponCodeInput(event.target.value.toUpperCase());
+                      if (event.target.value) setSelectedCouponId("");
+                      setCheckoutError("");
+                    }}
+                    placeholder="HAPPY20"
+                    autoComplete="off"
+                  />
+                </label>
+                {selectedCoupon && estimatedCouponDiscount === 0 && (
+                  <small className="field-error">
+                    {!selectedCouponMatchesFulfillment
+                      ? lang === "zh"
+                        ? "这张券不适用于当前履约方式。"
+                        : "This coupon does not apply to this fulfilment method."
+                      : couponEligibleSubtotal < selectedCoupon.minSpend
+                        ? lang === "zh"
+                          ? `适用商品需满 ${money(selectedCoupon.minSpend)}。`
+                          : `Spend ${money(selectedCoupon.minSpend)} on eligible items.`
+                        : lang === "zh"
+                          ? "购物车中没有符合条件的商品。"
+                          : "No eligible item in this cart."}
+                  </small>
+                )}
+              </section>
+            )}
             {checkoutChannel && checkoutChannel !== "Pickup" && (
               <section className="checkout-address">
                 <div>
@@ -2184,13 +2984,39 @@ export default function KiyoyoApp() {
               </section>
             )}
             {checkoutChannel && (
-              <button
-                className="primary full checkout-submit"
-                disabled={checkoutChannel !== "Pickup" && !selectedAddressId}
-                onClick={() => placeOrder(checkoutChannel)}
-              >
-                {t.placeOrder} · {money(subtotal)}
-              </button>
+              <>
+                <section className="checkout-price-summary">
+                  <span>{t.subtotal}<strong>{money(subtotal)}</strong></span>
+                  {estimatedCouponDiscount > 0 && (
+                    <span className="discount-row">
+                      {lang === "zh" ? "优惠券抵扣" : "Coupon discount"}
+                      <strong>−{money(estimatedCouponDiscount)}</strong>
+                    </span>
+                  )}
+                  <span>
+                    {lang === "zh" ? "配送费" : "Delivery"}
+                    <strong>{money(checkoutDeliveryFee)}</strong>
+                  </span>
+                </section>
+                {checkoutError && (
+                  <p className="checkout-error" role="alert">{checkoutError}</p>
+                )}
+                <button
+                  className="primary full checkout-submit"
+                  disabled={
+                    placingOrder ||
+                    (checkoutChannel !== "Pickup" && !selectedAddressId) ||
+                    Boolean(selectedCoupon && estimatedCouponDiscount === 0)
+                  }
+                  onClick={() => placeOrder(checkoutChannel)}
+                >
+                  {placingOrder
+                    ? lang === "zh"
+                      ? "正在提交…"
+                      : "Placing order…"
+                    : `${t.placeOrder} · ${money(estimatedCheckoutTotal)}`}
+                </button>
+              </>
             )}
             <small className="mock-note">ⓘ {t.mockNotice}</small>
           </div>
@@ -2280,6 +3106,38 @@ export default function KiyoyoApp() {
                   ? "还没有账号？注册"
                   : "New here? Create account"}
             </button>
+            {authMode === "signin" && (
+              <button
+                className="auth-switch auth-reset"
+                onClick={async () => {
+                  const email = authForm.email.trim();
+                  if (!email.includes("@")) {
+                    setAuthError(
+                      lang === "zh"
+                        ? "请先输入需要重置密码的邮箱。"
+                        : "Enter your email first to reset the password.",
+                    );
+                    return;
+                  }
+                  try {
+                    await sendMemberPasswordReset(email);
+                    setAuthError(
+                      lang === "zh"
+                        ? "密码重置邮件已发送。"
+                        : "Password reset email sent.",
+                    );
+                  } catch (error) {
+                    setAuthError(
+                      error instanceof Error
+                        ? error.message
+                        : "Password reset could not be sent",
+                    );
+                  }
+                }}
+              >
+                {lang === "zh" ? "忘记密码？" : "Forgot password?"}
+              </button>
+            )}
             <small className="auth-test">ⓘ {t.testAuth}</small>
           </div>
         </div>
@@ -2500,6 +3358,191 @@ export default function KiyoyoApp() {
         </div>
       )}
 
+      {selectedOrder && (
+        <div
+          className="modal-backdrop order-detail-backdrop"
+          onMouseDown={(event) =>
+            event.currentTarget === event.target && setSelectedOrder(null)
+          }
+        >
+          <section
+            className="order-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-detail-title"
+          >
+            <button
+              className="modal-close"
+              onClick={() => setSelectedOrder(null)}
+              aria-label={t.close}
+            >
+              ×
+            </button>
+            <div className="order-detail-heading">
+              <div>
+                <span className="sticker">{selectedOrder.status}</span>
+                <h2 id="order-detail-title">{t.orderDetails}</h2>
+                <strong>{selectedOrder.id}</strong>
+              </div>
+              <span>{selectedOrder.channel}</span>
+            </div>
+            <p className="order-detail-date">
+              {new Date(selectedOrder.createdAt).toLocaleString(
+                lang === "zh" ? "zh-CN" : "en-KE",
+                {
+                  dateStyle: "full",
+                  timeStyle: "short",
+                  timeZone: "Africa/Nairobi",
+                },
+              )}
+            </p>
+
+            {selectedOrder.channel === "Pickup" ? (
+              <section className="order-pickup-card">
+                <div>
+                  <span>{t.pickupAt}</span>
+                  <strong>
+                    {selectedOrderStore?.name ??
+                      (lang === "zh" ? "KIYOYO 门店" : "KIYOYO store")}
+                  </strong>
+                  <p>{selectedOrderStore?.address}</p>
+                </div>
+                {selectedOrder.pickupCode !== "NO-PICKUP" &&
+                !["Completed", "Cancelled"].includes(selectedOrder.status) ? (
+                  <div className="order-pickup-code">
+                    <PickupQR code={selectedOrder.pickupCode} />
+                    <code>{selectedOrder.pickupCode}</code>
+                    <small>{t.qrHelp}</small>
+                  </div>
+                ) : selectedOrder.pickupCanReissue &&
+                  !["Completed", "Cancelled"].includes(
+                    selectedOrder.status,
+                  ) ? (
+                  <div className="order-reissue-code">
+                    <b>▦</b>
+                    <strong>{t.restorePickupCode}</strong>
+                    <p>{t.restorePickupHelp}</p>
+                    {pickupQrError && <small>{pickupQrError}</small>}
+                    <button
+                      className="primary"
+                      disabled={pickupQrLoading}
+                      onClick={restorePickupQr}
+                    >
+                      {pickupQrLoading
+                        ? t.restoringCode
+                        : `${t.restorePickupCode} →`}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="order-closed-code">
+                    <b>✓</b>
+                    <span>
+                      {selectedOrder.status === "Completed"
+                        ? lang === "zh"
+                          ? "订单已核销"
+                          : "Pickup completed"
+                        : lang === "zh"
+                          ? "二维码当前不可用"
+                          : "Pickup code unavailable"}
+                    </span>
+                  </div>
+                )}
+              </section>
+            ) : (
+              <section className="order-delivery-card">
+                <span>{t.deliverTo}</span>
+                <strong>
+                  {selectedOrderAddress?.label ??
+                    (lang === "zh" ? "配送地址" : "Delivery address")}
+                </strong>
+                {selectedOrderAddress ? (
+                  <p>
+                    {selectedOrderAddress.recipient} ·{" "}
+                    {selectedOrderAddress.phone}
+                    <br />
+                    {selectedOrderAddress.line1}, {selectedOrderAddress.area}
+                  </p>
+                ) : (
+                  <p>{lang === "zh" ? "地址信息不可用" : "Address unavailable"}</p>
+                )}
+                {selectedOrder.status === "Placed" && (
+                  <button
+                    onClick={() => {
+                      setSelectedOrder(null);
+                      setEditingOrderId(selectedOrder.id);
+                    }}
+                  >
+                    {t.changeAddress} →
+                  </button>
+                )}
+              </section>
+            )}
+
+            <section className="order-detail-items">
+              <h3>{t.orderedItems}</h3>
+              {selectedOrder.items.map((item) => {
+                const product = catalog.find(
+                  (candidate) => candidate.id === item.productId,
+                );
+                const itemName =
+                  lang === "zh"
+                    ? (item.productNameZh ?? product?.nameZh ?? item.productId)
+                    : (item.productName ?? product?.name ?? item.productId);
+                const options = [
+                  item.size,
+                  item.sugar,
+                  item.ice,
+                  ...(item.toppings ?? []),
+                ].filter(Boolean);
+                const lineTotal =
+                  item.lineTotal ??
+                  (item.unitPrice ?? (product ? salePrice(product) : 0)) *
+                    item.quantity;
+                return (
+                  <article key={item.key}>
+                    {(item.productImage ?? product?.image) && (
+                      <img
+                        src={item.productImage ?? product?.image}
+                        alt=""
+                      />
+                    )}
+                    <div>
+                      <strong>{itemName}</strong>
+                      {options.length > 0 && <span>{options.join(" · ")}</span>}
+                      <small>× {item.quantity}</small>
+                    </div>
+                    <b>{money(lineTotal)}</b>
+                  </article>
+                );
+              })}
+            </section>
+
+            <div className="order-detail-total">
+              <span>
+                {selectedOrder.subtotal != null && (
+                  <small>{t.subtotal} · {money(selectedOrder.subtotal)}</small>
+                )}
+                {(selectedOrder.discount ?? 0) > 0 && (
+                  <small>
+                    {lang === "zh" ? "优惠券" : "Coupon"}{" "}
+                    {selectedOrder.couponCode ? `· ${selectedOrder.couponCode} ` : ""}
+                    −{money(selectedOrder.discount ?? 0)}
+                  </small>
+                )}
+                {t.orderTotal}
+              </span>
+              <strong>{money(selectedOrder.total)}</strong>
+            </div>
+            <button
+              className="primary full order-detail-close"
+              onClick={() => setSelectedOrder(null)}
+            >
+              {t.close}
+            </button>
+          </section>
+        </div>
+      )}
+
       {success && (
         <div className="modal-backdrop">
           <div className="success-modal">
@@ -2508,7 +3551,7 @@ export default function KiyoyoApp() {
             <strong className="order-number">{success.id}</strong>
             {success.channel === "Pickup" ? (
               <>
-                <PseudoQR code={success.pickupCode} />
+                <PickupQR code={success.pickupCode} />
                 <code>{success.pickupCode}</code>
                 <p>{t.qrHelp}</p>
               </>

@@ -1,4 +1,5 @@
 import type { Product, Store } from "./types";
+import { menuProducts } from "./menu";
 
 export const stores: Store[] = [
   { id: "kilimani", name: "KIYOYO Kilimani", area: "Kilimani", address: "Argwings Kodhek Road, Nairobi", phone: "0707 557 667", lat: -1.2931495, lng: 36.7923182, verified: true },
@@ -10,18 +11,7 @@ export const stores: Store[] = [
 ];
 
 export const products: Product[] = [
-  { id: "d1", kind: "drink", category: "Milk Tea", name: "Assam Boba Milk Tea", nameZh: "阿萨姆珍珠奶茶", description: "Rich black tea, fresh milk and chewy boba.", descriptionZh: "浓郁红茶、鲜奶与Q弹珍珠。", price: 420, image: "/images/drinks/assam-boba.jpg", badge: "No.1" },
-  { id: "d2", kind: "drink", category: "Milk Tea", name: "Tiger Sugar Milk Tea", nameZh: "老虎糖奶茶", description: "Caramelised brown sugar ribbons and creamy milk tea.", descriptionZh: "焦香黑糖挂壁与丝滑奶茶。", price: 450, image: "/images/drinks/tiger-sugar.jpg", badge: "Hot" },
-  { id: "d3", kind: "drink", category: "Milk Tea", name: "Jasmine Milk Green Tea", nameZh: "茉莉奶绿", description: "Floral jasmine, mellow green tea and milk.", descriptionZh: "清香茉莉、醇和绿茶与鲜奶。", price: 400, image: "/images/drinks/jasmine-milk-tea.jpg" },
-  { id: "d4", kind: "drink", category: "Fruit Tea", name: "Fresh Lemon Tea", nameZh: "柠檬茶", description: "Hand-shaken lemon tea, bright and refreshing.", descriptionZh: "手打鲜柠茶，清爽醒神。", price: 350, image: "/images/drinks/lemon-tea.jpg", badge: "Fresh" },
-  { id: "d5", kind: "drink", category: "Fruit Tea", name: "Passion Fruit Tea", nameZh: "百香果水果茶", description: "Tropical passion fruit with fragrant tea.", descriptionZh: "热带百香果与清香茶底。", price: 420, image: "/images/drinks/passion-fruit-tea.jpg" },
-  { id: "d6", kind: "drink", category: "Fruit Tea", name: "Grape Moonlight", nameZh: "青提白月光", description: "Green grapes, tea and a cloud-soft finish.", descriptionZh: "青提鲜果、清茶与云朵般口感。", price: 480, image: "/images/drinks/grape-moonlight.jpg", badge: "New" },
-  { id: "d7", kind: "drink", category: "Coffee", name: "Coconut Latte", nameZh: "生椰拿铁", description: "Espresso mellowed with fragrant coconut milk.", descriptionZh: "浓缩咖啡融合清香生椰乳。", price: 440, image: "/images/drinks/coconut-latte.jpg" },
-  { id: "d8", kind: "drink", category: "Coffee", name: "Matcha Latte", nameZh: "抹茶拿铁", description: "Earthy matcha and velvety fresh milk.", descriptionZh: "醇厚抹茶与丝滑鲜奶。", price: 450, image: "/images/drinks/matcha-latte.jpg" },
-  { id: "d9", kind: "drink", category: "Jelly Tea", name: "Mango Passion Jelly Tea", nameZh: "芒果百香冻冻茶", description: "Juicy mango, passion fruit and springy jelly.", descriptionZh: "多汁芒果、百香果与弹嫩茶冻。", price: 490, image: "/images/drinks/mango-jelly-tea.jpg" },
-  { id: "d10", kind: "drink", category: "Dessert", name: "Strawberry Shake", nameZh: "草莓摇摇奶昔", description: "Creamy strawberry shake made for happy days.", descriptionZh: "香甜草莓奶昔，为快乐加倍。", price: 480, image: "/images/drinks/strawberry-shake.jpg" },
-  { id: "d11", kind: "drink", category: "Dessert", name: "Boba Brown Sugar Sundae", nameZh: "黑糖珍珠圣代", description: "Soft serve, boba and a brown sugar drizzle.", descriptionZh: "软冰淇淋、珍珠与黑糖淋酱。", price: 390, image: "/images/drinks/boba-sundae.jpg" },
-  { id: "d12", kind: "drink", category: "Dessert", name: "Pistachio Matcha Soufflé", nameZh: "开心果抹茶舒芙蕾", description: "Airy soufflé with pistachio and matcha.", descriptionZh: "轻盈舒芙蕾搭配开心果与抹茶。", price: 650, image: "/images/drinks/pistachio-souffle.jpg", badge: "Chef pick" },
+  ...menuProducts,
   { id: "g1", kind: "goods", category: "Fashion", name: "KIYOYO Street Set", nameZh: "KIYOYO 街头套装", description: "A playful limited streetwear capsule.", descriptionZh: "趣味限定街头服饰系列。", price: 5490, image: "/images/goods/streetwear.png", badge: "Drop 01" },
   { id: "g2", kind: "goods", category: "Accessories", name: "Logo Charm Pack", nameZh: "品牌挂件组合", description: "Bright tags, charms and key rings.", descriptionZh: "亮色吊牌、挂件与钥匙扣组合。", price: 1290, image: "/images/goods/accessories.png" },
   { id: "g3", kind: "goods", category: "Fashion", name: "Family Logo Apparel", nameZh: "全家品牌服饰", description: "Everyday KIYOYO essentials for all sizes.", descriptionZh: "适合各种尺码的日常品牌服饰。", price: 3490, image: "/images/goods/apparel.png" },

@@ -2,7 +2,7 @@ resource "google_cloud_run_v2_service" "api" {
   name                = "${local.prefix}-api"
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
+  deletion_protection = var.environment == "prod"
 
   template {
     service_account                  = google_service_account.api.email
@@ -73,11 +73,11 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "ALLOWED_ORIGINS"
-        value = join(",", var.allowed_origins)
+        value = join(",", local.allowed_origins)
       }
       env {
         name  = "ADMIN_EMAILS"
-        value = "kechengyang234@gmail.com"
+        value = join(",", var.admin_emails)
       }
       env {
         name = "DB_PASSWORD"
@@ -148,7 +148,7 @@ resource "google_cloud_run_v2_service_iam_member" "api_tasks_invoker" {
 resource "google_cloud_run_v2_job" "database_migration" {
   name                = "${local.prefix}-migrate"
   location            = var.region
-  deletion_protection = false
+  deletion_protection = var.environment == "prod"
 
   template {
     template {
@@ -230,7 +230,7 @@ resource "google_cloud_run_v2_job" "database_migration" {
 resource "google_cloud_run_v2_job" "database_seed" {
   name                = "${local.prefix}-seed"
   location            = var.region
-  deletion_protection = false
+  deletion_protection = var.environment == "prod"
 
   template {
     template {

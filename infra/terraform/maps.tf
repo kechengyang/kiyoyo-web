@@ -4,11 +4,7 @@ resource "google_apikeys_key" "maps_browser" {
 
   restrictions {
     browser_key_restrictions {
-      allowed_referrers = [
-        "http://localhost:3000/*",
-        "https://${local.prefix}.web.app/*",
-        "https://${local.prefix}.firebaseapp.com/*",
-      ]
+      allowed_referrers = local.maps_allowed_referrers
     }
 
     api_targets {

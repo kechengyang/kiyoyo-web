@@ -20,6 +20,7 @@ export type Product = {
   description: string;
   descriptionZh: string;
   price: number;
+  sizePrices?: Record<string, number>;
   image: string;
   badge?: string;
   badgeTone?: ProductTagTone;
@@ -50,19 +51,75 @@ export type CartItem = {
   sugar?: string;
   ice?: string;
   toppings?: string[];
+  productName?: string;
+  productNameZh?: string;
+  productImage?: string;
+  unitPrice?: number;
+  lineTotal?: number;
 };
 
 export type Order = {
   id: string;
   fulfillmentId?: string;
   createdAt: string;
-  status: "Placed" | "Preparing" | "Ready" | "Completed";
+  status:
+    | "Placed"
+    | "Confirmed"
+    | "Preparing"
+    | "Ready"
+    | "Completed"
+    | "Cancelled";
   channel: "Pickup" | "Delivery" | "Shipping";
   storeId: string;
+  subtotal?: number;
+  discount?: number;
+  deliveryFee?: number;
+  couponCode?: string;
   total: number;
   items: CartItem[];
   pickupCode: string;
+  pickupCanReissue?: boolean;
+  pickupExpiresAt?: string;
+  pickupFingerprint?: string;
   addressId?: string;
+  addressSnapshot?: Address;
+  storeSnapshot?: Store;
+};
+
+export type CouponDiscountType = "PERCENT" | "FIXED" | "FREE_SIZE_UPGRADE";
+export type CouponScopeType = "ALL" | "DRINKS" | "GOODS" | "CATEGORY" | "PRODUCT";
+export type CouponStatus = "DRAFT" | "SCHEDULED" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
+
+export type Coupon = {
+  id: string;
+  code: string;
+  nameEn: string;
+  nameZh: string;
+  descriptionEn: string;
+  descriptionZh: string;
+  discountType: CouponDiscountType;
+  discountValue: number;
+  maxDiscount: number | null;
+  minSpend: number;
+  scopeType: CouponScopeType;
+  scopeValue: string | null;
+  fulfillmentScope: "ALL" | "PICKUP" | "DELIVERY" | "SHIPPING";
+  issuanceMode: "PUBLIC_CODE" | "ASSIGNED";
+  startsAt: string;
+  endsAt: string;
+  issuanceLimit: number | null;
+  usageLimit: number | null;
+  perUserLimit: number;
+  stackable: boolean;
+};
+
+export type UserCoupon = Coupon & {
+  userCouponId: string;
+  source: string;
+  walletStatus: "AVAILABLE" | "UPCOMING" | "RESERVED" | "USED" | "EXPIRED" | "REVOKED" | "UNAVAILABLE";
+  issuedAt: string;
+  expiresAt: string;
+  redeemedAt: string | null;
 };
 
 export type AuthProvider = "password" | "google" | "facebook";

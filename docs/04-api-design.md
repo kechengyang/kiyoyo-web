@@ -38,7 +38,11 @@
 - `PUT /v1/me/favorites/{productId}`、`DELETE /v1/me/favorites/{productId}`
 - `GET /v1/me/loyalty`
 - `GET /v1/me/coupons`
-- `GET /v1/me/orders?cursor=...`
+- `GET /v1/me/orders` — 返回订单金额、履约状态、商品快照、门店、地址快照与取餐码状态；
+  登录后用于跨设备同步 History。
+- `POST /v1/me/orders/{orderNumber}/pickup-token` — 仅订单本人可重新签发自取二维码。
+  服务端只持有 token hash；重新签发会原子替换 hash，旧二维码立即失效。已核销、已完成
+  或已取消订单不能重新签发。
 
 ### Cart 与报价
 
@@ -67,6 +71,8 @@
 ```
 
 响应返回订单、支付状态、分组履约状态。只有自取组返回 `pickup_qr_payload`；二维码不暴露数据库 ID。
+首次下单的原始 token 只返回一次。若换设备后需要再次展示，必须调用上述本人授权的
+重新签发接口，不能把明文取餐 token 长期保存在数据库。
 
 - `GET /v1/orders/{orderNumber}`
 - `POST /v1/orders/{orderNumber}/cancel`
@@ -83,6 +89,13 @@
 - `POST /v1/admin/pickups/redeem` — 原子核销。
 - `GET /v1/admin/customers?query=...`
 - `GET /v1/admin/customers/{id}`
+- `GET /v1/admin/coupons`、`POST /v1/admin/coupons`、`PATCH /v1/admin/coupons/{id}` — 草稿列表、创建和规则编辑；已产生核销的规则不可直接修改。
+- `POST /v1/admin/coupons/{id}/publish` — 根据开始时间进入 `SCHEDULED` 或 `ACTIVE`，同时开启发放和使用。
+- `POST /v1/admin/coupons/{id}/stop-distribution` — 只停止新发放，保留已发券的使用权。
+- `POST /v1/admin/coupons/{id}/disable` — 紧急停止所有使用，body 必须包含 `reason`。
+- `POST /v1/admin/coupons/{id}/archive` — 归档并关闭发放、使用。
+- `POST /v1/admin/customers/{id}/coupons` — 向单个有效客户发放已发布的 `ASSIGNED` Coupon。
+- `POST /v1/admin/user-coupons/{id}/revoke` — 撤销未使用用户券，body 必须包含 `reason`。
 - `POST /v1/admin/loyalty/adjustments` — 管理员，强制 reason。
 - `GET /v1/admin/stores`、`PATCH /v1/admin/stores/{id}`
 - `GET /v1/admin/products?kind=DRINK&status=ACTIVE&query=...`

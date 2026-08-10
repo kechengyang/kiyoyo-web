@@ -48,8 +48,11 @@ erDiagram
 
 - `carts(id, user_id nullable, guest_token, store_id, currency, expires_at)`
 - `cart_items(id, cart_id, variant_id, quantity, customization_json)`
-- `coupons(id, code, rule_json, starts_at, ends_at, usage_limit, per_user_limit, active)`
-- `coupon_redemptions(id, coupon_id, user_id, order_id, discount_amount, redeemed_at)`
+- `coupons(id, code, name_en, name_zh, description_en, description_zh, discount_type PERCENT|FIXED|FREE_SIZE_UPGRADE, discount_value, max_discount, min_spend, scope_type, scope_value, fulfillment_scope, issuance_mode PUBLIC_CODE|ASSIGNED, starts_at, ends_at, issuance_limit, usage_limit, per_user_limit, status DRAFT|SCHEDULED|ACTIVE|PAUSED|ENDED|ARCHIVED, issuance_enabled, redemption_enabled, stackable, version, published_at, created_by, updated_by, created_at, updated_at)`
+- `user_coupons(id, coupon_id, user_id, source, status ISSUED|RESERVED|REDEEMED|REVOKED, issued_at, expires_at, reserved_at, redeemed_at, revoked_at, revoked_by, revoke_reason, created_by)`；用户券到期时间不得晚于活动结束时间。
+- `coupon_redemptions(id, coupon_id, user_coupon_id nullable, user_id, order_id, discount_amount, rule_snapshot_json, status RESERVED|REDEEMED|RELEASED|REFUNDED, idempotency_key, reserved_at, redeemed_at, released_at, refunded_at)`
+- `issuance_enabled=false` 只停止新发券，已发用户券仍可使用；`redemption_enabled=false` 是紧急停用，必须记录原因和管理员审计。
+- 券的“已过期”由 `ends_at` 与 `user_coupons.expires_at` 计算，不允许管理员手动伪造过期状态。
 - `pricing_snapshots(id, cart_id, subtotal, discount, delivery_fee, total, rule_version, expires_at)`
 
 ### 订单与履约
@@ -76,6 +79,7 @@ erDiagram
 - `discount_percent BETWEEN 0 AND 90`；折后价由定价模块计算，不单独接受前端写入。
 - `order_items.quantity > 0`；所有金额 `>= 0`。
 - `pickup_tokens.redeemed_at` 通过单事务原子设置。
+- Coupon 校验、用量检查、订单折扣和核销记录必须在同一数据库事务完成；已使用规则写入 `rule_snapshot_json`，不得被后续编辑覆盖。
 - 常用索引：
   - `orders(user_id, created_at desc)`
   - `fulfillment_groups(store_id, status, promised_at)`

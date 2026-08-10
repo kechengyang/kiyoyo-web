@@ -3,7 +3,7 @@ resource "google_sql_database_instance" "main" {
   database_version = "POSTGRES_16"
   region           = var.region
 
-  deletion_protection = false
+  deletion_protection = var.environment == "prod"
 
   settings {
     tier              = "db-f1-micro"
@@ -15,7 +15,7 @@ resource "google_sql_database_instance" "main" {
     disk_autoresize   = true
 
     connector_enforcement       = "REQUIRED"
-    deletion_protection_enabled = false
+    deletion_protection_enabled = var.environment == "prod"
 
     backup_configuration {
       enabled                        = true
@@ -47,12 +47,12 @@ resource "google_sql_database_instance" "main" {
 }
 
 resource "google_sql_database" "app" {
-  name     = var.database_name
+  name     = local.database_name
   instance = google_sql_database_instance.main.name
 }
 
 resource "google_sql_user" "api" {
-  name                = var.database_user
+  name                = local.database_user
   instance            = google_sql_database_instance.main.name
   password_wo         = ephemeral.random_password.database.result
   password_wo_version = var.secret_version
