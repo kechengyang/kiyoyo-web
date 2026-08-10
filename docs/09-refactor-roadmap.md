@@ -1,7 +1,7 @@
 # KIYOYO 重构路线图与持续记忆
 
 最后更新：2026-08-10
-状态：Phase 2 已执行
+状态：Phase 3 已执行
 重构前基线：`57a555e chore: checkpoint pre-refactor commerce baseline`
 
 ## 如何使用本文档
@@ -67,7 +67,7 @@
 | 文件 | 基线规模 | 风险 |
 | --- | ---: | --- |
 | `web/app/components/KiyoyoApp.tsx` | 基线 3613 行、Phase 2 后 1415 行 | 状态与业务编排仍集中，但页面和弹层已按领域拆分 |
-| `web/app/admin/AdminApp.tsx` | 2471 行、约 30 个 state | Admin 数据加载、写操作和界面集中 |
+| `web/app/admin/AdminApp.tsx` | 基线 2471 行、Phase 3 后 1112 行 | 状态与 API 编排仍集中，功能页和编辑器已分域 |
 | `web/app/globals.css` | 5360 行 | 客户与 Admin 样式共享全局级联 |
 | `api/src/server.ts` | 983 行、51 个路由 | schema、SQL、业务规则和 HTTP 混合 |
 | `web/app/menu.ts` + `api/src/seed.ts` | 47 条饮品重复 | 名称、价格、图片和标签可能漂移 |
@@ -112,13 +112,20 @@ Phase 1 不改变页面、API、数据库或业务行为。
 
 Phase 2 保留现有 `/v1` API、localStorage key、目录与结账规则、双语文案、CSS class 和业务事件顺序。`KiyoyoApp.tsx` 从 3613 行降至 1415 行，新建 21 个 `customer` 领域文件；主组件继续拥有状态和业务编排，视图与弹层通过显式 props 接收数据和操作。
 
+根据后续目录要求，21 个客户模块已进一步归入 `core`、`shared`、`shell`、`home`、`shop`、`saved`、`cart`、`account`、`orders` 和 `fulfillment`，提交为 `ff3aae9 refactor: group customer modules by domain`。该提交只移动文件和修复导入。
+
 验证结果（2026-08-10）：完整重构验证入口通过；本地浏览器额外验证商品定制与全局搜索弹层的 dialog 语义、初始焦点、Shift+Tab 圈定、Escape 关闭、关闭后焦点返回，浏览器控制台无 warning/error。Phase 2 未修改响应式 CSS 或既有内容 class。
 
-### Phase 3：拆分 Admin — 待执行
+### Phase 3：拆分 Admin — 完成
 
-- 将 overview、orders、products、coupons、customers、stores、pickup scanner 拆成独立功能模块。
-- 将 Admin API DTO 与映射移出页面组件。
-- 保持一次加载和所有写接口的现有顺序与错误语义。
+- [x] 将 overview、orders、products、coupons、customers、stores、pickup scanner 拆成独立领域目录。
+- [x] 将商品、优惠券、客户和门店编辑弹层归入对应领域。
+- [x] 将 Admin DTO、纯函数、表格 primitives 和后台外壳移出页面组件。
+- [x] 保持一次加载、授权门禁、所有写接口、确认流程和错误语义不变。
+
+`AdminApp.tsx` 从 2471 行降至 1112 行。主组件继续负责授权、数据加载、派生状态、API 写入和扫描器生命周期；领域组件只通过显式 props 展示数据和触发既有操作。
+
+验证结果（2026-08-10）：Web ESLint、TypeScript、Vinext 预渲染、Next Webpack 生产构建、4 个 Web 契约测试、API TypeScript、6 个 API 测试、Terraform 格式和 Git whitespace 检查全部通过。Admin SSR 契约继续确认服务器 HTML 不泄露受保护数据。
 
 ### Phase 4：拆分 API 模块化单体 — 待执行
 
@@ -198,7 +205,9 @@ sh scripts/verify-refactor.sh
 - Phase 2 采用“状态与业务编排留在 `KiyoyoApp`、视图按领域拆出”的过渡架构，避免同时改动状态模型和页面归属。
 - 所有结构拆分保持原 JSX 顺序和 CSS class；共享弹层可访问性作为独立行为变更处理。
 - 共享弹层只响应 DOM 中最上层 backdrop，防止 Checkout 与 Address 等嵌套弹层在一次 Escape 中同时关闭。
+- 客户目录按用户任务域组织，不按文件类型建立一个扁平组件仓库；跨域基础只允许进入 `core` 或 `shared`。
+- Admin 采用与客户前端一致的过渡架构：业务状态/API 编排留在入口，功能页、编辑器、DTO 和展示 primitives 按领域拆出，避免结构迁移同时改变运营行为。
 
 ## 下一步
 
-Phase 3 从 Admin 的只读 overview 和 DTO 映射开始，先拆视图与数据转换，再逐个迁移写操作；不得在同一提交中改变 Admin API 请求、确认流程或错误语义。
+Phase 4 从 API 的 auth/catalog 只读路由和 schema 开始，先迁移代码位置，再逐域分离 service、repository/SQL 与 HTTP adapter；不得在同一提交中修改请求响应格式或业务规则。

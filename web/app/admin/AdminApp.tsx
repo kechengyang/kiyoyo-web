@@ -1,13 +1,9 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- Tiny admin thumbnails do not need image optimization. */
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { money } from "../data";
 import { drinkCategoryOrder } from "../menu";
 import {
   resolveProductTag,
-  salePrice,
   useCatalog,
   useProductTags,
 } from "../catalog";
@@ -23,196 +19,31 @@ import {
   signOutMember,
 } from "../platform";
 import type { Order, Product, ProductTagTone } from "../types";
-
-type AdminTab =
-  | "overview"
-  | "orders"
-  | "products"
-  | "coupons"
-  | "redeem"
-  | "customers"
-  | "stores";
-
-type AdminCustomer = {
-  id: string;
-  email: string | null;
-  nickname: string;
-  gender: string | null;
-  birth_year: number | null;
-  locale: string;
-  status: "ACTIVE" | "SUSPENDED" | "DELETED";
-  created_at: string;
-  order_count: number;
-  lifetime_value: number;
-};
-
-type CustomerDetail = AdminCustomer & {
-  addresses: Array<{
-    id: string;
-    label: string;
-    contact_name: string;
-    phone_e164: string;
-    line1: string;
-    area: string;
-    city: string;
-    is_default: boolean;
-  }>;
-  orders: Array<{
-    order_number: string;
-    total: number;
-    payment_status: string;
-    is_test: boolean;
-    created_at: string;
-  }>;
-  coupons: Array<{
-    user_coupon_id: string;
-    coupon_id: string;
-    code: string;
-    name_en: string;
-    name_zh: string;
-    discount_type: "PERCENT" | "FIXED" | "FREE_SIZE_UPGRADE";
-    discount_value: number;
-    status: "ISSUED" | "RESERVED" | "REDEEMED" | "REVOKED";
-    wallet_status: "AVAILABLE" | "UPCOMING" | "RESERVED" | "USED" | "EXPIRED" | "REVOKED" | "UNAVAILABLE";
-    source: string;
-    issued_at: string;
-    expires_at: string;
-    redeemed_at: string | null;
-    revoked_at: string | null;
-    revoke_reason: string | null;
-  }>;
-};
-
-type AdminCoupon = {
-  id: string;
-  code: string;
-  name_en: string;
-  name_zh: string;
-  description_en: string;
-  description_zh: string;
-  discount_type: "PERCENT" | "FIXED" | "FREE_SIZE_UPGRADE";
-  discount_value: number;
-  max_discount: number | null;
-  min_spend: number;
-  scope_type: "ALL" | "DRINKS" | "GOODS" | "CATEGORY" | "PRODUCT";
-  scope_value: string | null;
-  fulfillment_scope: "ALL" | "PICKUP" | "DELIVERY" | "SHIPPING";
-  issuance_mode: "PUBLIC_CODE" | "ASSIGNED";
-  starts_at: string;
-  ends_at: string;
-  issuance_limit: number | null;
-  usage_limit: number | null;
-  per_user_limit: number;
-  status: "DRAFT" | "SCHEDULED" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
-  effective_status: "DRAFT" | "SCHEDULED" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
-  issuance_enabled: boolean;
-  redemption_enabled: boolean;
-  stackable: boolean;
-  version: number;
-  issued_count: number;
-  redeemed_count: number;
-  discount_total: number;
-  updated_at: string;
-};
-
-type AdminStore = {
-  id: string;
-  code: string;
-  name: string;
-  area: string;
-  address: string;
-  phone: string | null;
-  lat: number | null;
-  lng: number | null;
-  status: "ACTIVE" | "INACTIVE" | "COMING_SOON";
-  pickup_enabled: boolean;
-  delivery_enabled: boolean;
-  location_verified: boolean;
-};
-
-type AdminState = "loading" | "anonymous" | "forbidden" | "ready" | "error";
-
-type QrDetector = {
-  detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
-};
-
-type QrDetectorConstructor = new (options: { formats: string[] }) => QrDetector;
-
-const goodsCategoryOrder = [
-  "Fashion",
-  "Accessories",
-  "Home",
-  "Outdoor",
-  "Pets",
-  "Beauty",
-  "Collectibles",
-  "Sport",
-] as const;
-
-const categorySlug = (category: string) =>
-  category
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-
-const inputDateTime = (value: string) => {
-  if (!value) return "";
-  const parts = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Africa/Nairobi",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(value));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((candidate) => candidate.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
-};
-
-const nairobiDateTimeIso = (value: string) =>
-  value ? new Date(`${value}:00+03:00`).toISOString() : "";
-
-const newCouponDraft = (): AdminCoupon => {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 30);
-  return {
-    id: "",
-    code: "",
-    name_en: "",
-    name_zh: "",
-    description_en: "",
-    description_zh: "",
-    discount_type: "PERCENT",
-    discount_value: 10,
-    max_discount: null,
-    min_spend: 0,
-    scope_type: "ALL",
-    scope_value: null,
-    fulfillment_scope: "ALL",
-    issuance_mode: "ASSIGNED",
-    starts_at: start.toISOString(),
-    ends_at: end.toISOString(),
-    issuance_limit: null,
-    usage_limit: null,
-    per_user_limit: 1,
-    status: "DRAFT",
-    effective_status: "DRAFT",
-    issuance_enabled: false,
-    redemption_enabled: false,
-    stackable: false,
-    version: 1,
-    issued_count: 0,
-    redeemed_count: 0,
-    discount_total: 0,
-    updated_at: start.toISOString(),
-  };
-};
+import type {
+  AdminCoupon,
+  AdminCustomer,
+  AdminState,
+  AdminStore,
+  AdminTab,
+  CustomerDetail,
+  QrDetectorConstructor,
+} from "./core/types";
+import {
+  categorySlug,
+  goodsCategoryOrder,
+} from "./core/foundation";
+import { OverviewView } from "./overview/OverviewView";
+import { OrdersView } from "./orders/OrdersView";
+import { ProductsView } from "./products/ProductsView";
+import { ProductEditorDialog } from "./products/ProductEditorDialog";
+import { CouponsView } from "./coupons/CouponsView";
+import { CouponEditorDialog } from "./coupons/CouponEditorDialog";
+import { RedeemView } from "./redeem/RedeemView";
+import { CustomersView } from "./customers/CustomersView";
+import { CustomerEditorDialog } from "./customers/CustomerEditorDialog";
+import { StoresView } from "./stores/StoresView";
+import { StoreEditorDialog } from "./stores/StoreEditorDialog";
+import { AdminSidebar, AdminTopbar } from "./shell/AdminShell";
 
 export default function AdminApp() {
   const [tab, setTab] = useState<AdminTab>("overview");
@@ -1135,1337 +966,147 @@ export default function AdminApp() {
 
   return (
     <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <div className="admin-brand">
-          <span className="logo">KIYOYO</span>
-          <small>OPERATIONS</small>
-        </div>
-        <nav>
-          {(
-            [
-              "overview",
-              "orders",
-              "products",
-              "coupons",
-              "redeem",
-              "customers",
-              "stores",
-            ] as AdminTab[]
-          ).map((item) => (
-            <button
-              key={item}
-              className={tab === item ? "active" : ""}
-              onClick={() => setTab(item)}
-            >
-              <i>
-                {
-                  {
-                    overview: "▦",
-                    orders: "▤",
-                    products: "◇",
-                    coupons: "%",
-                    redeem: "⌗",
-                    customers: "☺",
-                    stores: "⌖",
-                  }[item]
-                }
-              </i>
-              <span>{item}</span>
-              {item === "orders" && <b>{active.length}</b>}
-            </button>
-          ))}
-        </nav>
-        <Link href="/">← Customer store</Link>
-        <div className="admin-user">
-          <i>{(adminEmail || "KI").slice(0, 2).toUpperCase()}</i>
-          <span>
-            <strong>{adminEmail}</strong>
-            <small>Nairobi HQ</small>
-          </span>
-        </div>
-      </aside>
+      <AdminSidebar
+        tab={tab}
+        setTab={setTab}
+        activeCount={active.length}
+        adminEmail={adminEmail}
+      />
       <main className="admin-main">
-        <header className="admin-top">
-          <div>
-            <small>KIYOYO / NAIROBI</small>
-            <h1>{tab}</h1>
-          </div>
-          <div>
-            <span className="live-dot" /> {cloudStatus}{" "}
-            <button onClick={() => void signOutMember()}>
-              Sign out <b>{active.length}</b>
-            </button>
-          </div>
-        </header>
+        <AdminTopbar
+          tab={tab}
+          cloudStatus={cloudStatus}
+          activeCount={active.length}
+        />
 
         {tab === "overview" && (
-          <>
-            <section className="metric-grid">
-              <Metric
-                label="Recent orders"
-                value={String(orders.length)}
-                note={`${active.length} active now`}
-                trend="LIVE"
-              />
-              <Metric
-                label="Gross sales"
-                value={money(revenue)}
-                note="Mock payment value"
-                trend="TEST"
-              />
-              <Metric
-                label="Ready for pickup"
-                value={String(
-                  orders.filter((o) => o.status === "Ready").length,
-                )}
-                note="Needs attention"
-                trend="LIVE"
-              />
-              <Metric
-                label="Members"
-                value={String(customers.length)}
-                note="Loaded from Cloud SQL"
-                trend="LIVE"
-              />
-            </section>
-            <div className="admin-two">
-              <section className="admin-panel">
-                <PanelHead
-                  title="Live orders"
-                  action="View all"
-                  onAction={() => setTab("orders")}
-                />
-                <OrderTable
-                  orders={orders.slice(0, 5)}
-                  catalog={catalog}
-                  stores={adminStores}
-                  onStatus={changeStatus}
-                />
-              </section>
-              <section className="admin-panel store-pulse">
-                <PanelHead title="Store pulse" />
-                <div className="pulse-chart">
-                  {adminStores.slice(0, 5).map((store) => {
-                    const count = orders.filter(
-                      (order) => order.storeId === store.code,
-                    ).length;
-                    const maximum = Math.max(
-                      1,
-                      ...adminStores.map(
-                        (candidate) =>
-                          orders.filter(
-                            (order) => order.storeId === candidate.code,
-                          ).length,
-                      ),
-                    );
-                    return (
-                      <div key={store.id}>
-                        <span>{store.area}</span>
-                        <i>
-                          <b style={{ height: `${(count / maximum) * 100}%` }} />
-                        </i>
-                        <strong>{count}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-                <small>Recent orders · live Cloud SQL data</small>
-              </section>
-            </div>
-            <section className="admin-panel quick">
-              <PanelHead title="Quick actions" />
-              <div>
-                <button onClick={() => setTab("products")}>
-                  <i>◇</i>
-                  <strong>Manage products</strong>
-                  <span>Pricing, offers & images</span>
-                </button>
-                <button onClick={() => setTab("redeem")}>
-                  <i>⌗</i>
-                  <strong>Redeem pickup</strong>
-                  <span>Verify one-time QR</span>
-                </button>
-                <button onClick={() => setTab("orders")}>
-                  <i>▤</i>
-                  <strong>Manage orders</strong>
-                  <span>Update preparation status</span>
-                </button>
-              </div>
-            </section>
-          </>
+          <OverviewView
+            orders={orders}
+            active={active}
+            revenue={revenue}
+            customers={customers}
+            setTab={setTab}
+            catalog={catalog}
+            adminStores={adminStores}
+            changeStatus={changeStatus}
+          />
         )}
 
         {tab === "orders" && (
-          <section className="admin-panel wide">
-            <div className="orders-tools">
-              <PanelHead title="All orders" />
-              <select
-                value={storeFilter}
-                onChange={(e) => setStoreFilter(e.target.value)}
-              >
-                <option value="all">All Nairobi stores</option>
-                {adminStores.map((store) => (
-                  <option key={store.id} value={store.code}>
-                    {store.area}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <OrderTable
-              orders={shown}
-              catalog={catalog}
-              stores={adminStores}
-              onStatus={changeStatus}
-            />
-          </section>
+          <OrdersView
+            storeFilter={storeFilter}
+            setStoreFilter={setStoreFilter}
+            adminStores={adminStores}
+            shown={shown}
+            catalog={catalog}
+            changeStatus={changeStatus}
+          />
         )}
 
         {tab === "products" && (
-          <section className="admin-panel wide product-management">
-            <div className="product-admin-head">
-              <div>
-                <span className="red-label">LIVE CATALOG</span>
-                <h2>Product management</h2>
-                <p>
-                  Changes sync through the Commerce API to every storefront.
-                </p>
-              </div>
-              <div className="catalog-stats">
-                <span>
-                  <b>{catalog.filter((p) => p.active !== false).length}</b> live
-                </span>
-                <span>
-                  <b>{productTags.length}</b> tags
-                </span>
-                <button onClick={() => setShowTagManager(!showTagManager)}>
-                  {showTagManager ? "Close tags" : "Manage tags"} →
-                </button>
-              </div>
-            </div>
-            {showTagManager && (
-              <section className="tag-manager">
-                <div>
-                  <span className="red-label">TAG LIBRARY</span>
-                  <h3>Create and define product tags</h3>
-                  <p>
-                    Tags are reusable. Assign one from each product’s edit
-                    panel.
-                  </p>
-                </div>
-                <div className="tag-creator">
-                  <input
-                    maxLength={18}
-                    value={newTag.label}
-                    onChange={(e) =>
-                      setNewTag({ ...newTag, label: e.target.value })
-                    }
-                    onKeyDown={(e) => e.key === "Enter" && addTag()}
-                    placeholder="e.g. DROP 01"
-                  />
-                  <select
-                    value={newTag.tone}
-                    onChange={(e) =>
-                      setNewTag({
-                        ...newTag,
-                        tone: e.target.value as ProductTagTone,
-                      })
-                    }
-                  >
-                    <option value="red">KIYOYO red</option>
-                    <option value="yellow">Highlight yellow</option>
-                    <option value="black">Studio black</option>
-                    <option value="green">Fresh green</option>
-                  </select>
-                  <span className="tag-chip" data-tone={newTag.tone}>
-                    {newTag.label.trim().toUpperCase() || "PREVIEW"}
-                  </span>
-                  <button onClick={addTag}>+ Create tag</button>
-                </div>
-                {tagError && <div className="form-error">{tagError}</div>}
-                <div className="tag-library">
-                  {productTags.map((tag) => (
-                    <span key={tag.id}>
-                      <em className="tag-chip" data-tone={tag.tone}>
-                        {tag.label}
-                      </em>
-                      <small>
-                        {
-                          catalog.filter(
-                            (product) =>
-                              product.tagId === tag.id ||
-                              (!product.tagId &&
-                                product.badge?.toLowerCase() ===
-                                  tag.label.toLowerCase()),
-                          ).length
-                        }{" "}
-                        products
-                      </small>
-                      <button
-                        aria-label={`Delete ${tag.label}`}
-                        onClick={() => deleteTag(tag.id)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </section>
-            )}
-            <div className="product-admin-tools">
-              <label>
-                <span>⌕</span>
-                <input
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Search products"
-                />
-              </label>
-              <div>
-                {(["all", "drink", "goods"] as const).map((kind) => (
-                  <button
-                    key={kind}
-                    className={productKind === kind ? "active" : ""}
-                    onClick={() => {
-                      setProductKind(kind);
-                      setProductCategory("all");
-                    }}
-                  >
-                    {kind}
-                  </button>
-                ))}
-                <select
-                  aria-label="Filter products by category"
-                  value={productCategory}
-                  onChange={(event) => setProductCategory(event.target.value)}
-                >
-                  <option value="all">All categories</option>
-                  {categoryOptions.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="admin-product-list">
-              <div className="product-list-head">
-                <span>Product</span>
-                <span>Price</span>
-                <span>Offer / tag</span>
-                <span>Visibility</span>
-                <span>Action</span>
-              </div>
-              {shownProducts.map((product) => {
-                const assignedTag = resolveProductTag(product, productTags);
-                return (
-                  <article
-                    key={product.id}
-                    className={product.active === false ? "offline" : ""}
-                  >
-                    <span className="admin-product-name">
-                      <img src={product.image} alt="" />
-                      <span>
-                        <strong>{product.name}</strong>
-                        <small>
-                          {product.nameZh} · {product.category}
-                        </small>
-                      </span>
-                    </span>
-                    <span className="admin-price">
-                      <strong>{money(salePrice(product))}</strong>
-                      {(product.discountPercent || 0) > 0 && (
-                        <del>{money(product.price)}</del>
-                      )}
-                    </span>
-                    <span>
-                      {(product.discountPercent || 0) > 0 ? (
-                        <em className="offer-pill">
-                          −{product.discountPercent}%
-                        </em>
-                      ) : assignedTag ? (
-                        <em className="tag-chip" data-tone={assignedTag.tone}>
-                          {assignedTag.label}
-                        </em>
-                      ) : (
-                        <small>—</small>
-                      )}
-                    </span>
-                    <span>
-                      <button
-                        className={`publish-toggle ${product.active === false ? "off" : ""}`}
-                        onClick={() => toggleProduct(product.id)}
-                      >
-                        <i />
-                        {product.active === false ? "Offline" : "Live"}
-                      </button>
-                    </span>
-                    <span>
-                      <button
-                        className="edit-product"
-                        onClick={() => openProductEditor(product)}
-                      >
-                        Edit →
-                      </button>
-                    </span>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
+          <ProductsView
+            catalog={catalog}
+            productTags={productTags}
+            showTagManager={showTagManager}
+            setShowTagManager={setShowTagManager}
+            newTag={newTag}
+            setNewTag={setNewTag}
+            addTag={addTag}
+            tagError={tagError}
+            deleteTag={deleteTag}
+            productSearch={productSearch}
+            setProductSearch={setProductSearch}
+            productKind={productKind}
+            setProductKind={setProductKind}
+            productCategory={productCategory}
+            setProductCategory={setProductCategory}
+            categoryOptions={categoryOptions}
+            shownProducts={shownProducts}
+            toggleProduct={toggleProduct}
+            openProductEditor={openProductEditor}
+          />
         )}
 
         {tab === "coupons" && (
-          <section className="admin-panel wide coupon-management">
-            <div className="product-admin-head">
-              <div>
-                <span className="red-label">PROMOTIONS</span>
-                <h2>Coupon management</h2>
-                <p>Create rules, schedule publishing, stop distribution and review redemptions.</p>
-              </div>
-              <div className="catalog-stats">
-                <span><b>{coupons.filter((coupon) => coupon.effective_status === "ACTIVE").length}</b> active</span>
-                <span><b>{coupons.reduce((sum, coupon) => sum + coupon.redeemed_count, 0)}</b> used</span>
-                <button onClick={() => {
-                  setCouponError("");
-                  setEditingCoupon(newCouponDraft());
-                }}>+ Create coupon</button>
-              </div>
-            </div>
-            {couponError && <div className="form-error" role="alert">{couponError}</div>}
-            <div className="admin-coupon-list">
-              <div className="coupon-list-head">
-                <span>Coupon</span>
-                <span>Offer</span>
-                <span>Window</span>
-                <span>Status</span>
-                <span>Issued / used</span>
-                <span>Actions</span>
-              </div>
-              {coupons.length ? coupons.map((coupon) => (
-                <article key={coupon.id}>
-                  <span className="admin-coupon-name">
-                    <strong>{coupon.name_en}</strong>
-                    <small>{coupon.code} · {coupon.issuance_mode === "ASSIGNED" ? "Member wallet" : "Public code"}</small>
-                  </span>
-                  <span>
-                    <strong>
-                      {coupon.discount_type === "PERCENT"
-                        ? `${coupon.discount_value}% off`
-                        : coupon.discount_type === "FIXED"
-                          ? `${money(coupon.discount_value)} off`
-                          : "Free size upgrade"}
-                    </strong>
-                    <small>{coupon.min_spend ? `Min. ${money(coupon.min_spend)}` : "No minimum"}</small>
-                  </span>
-                  <span>
-                    <strong>{new Date(coupon.starts_at).toLocaleDateString("en-KE")}</strong>
-                    <small>to {new Date(coupon.ends_at).toLocaleDateString("en-KE")}</small>
-                  </span>
-                  <span>
-                    <em className="coupon-status" data-status={coupon.effective_status.toLowerCase()}>
-                      {coupon.effective_status}
-                    </em>
-                    <small>{coupon.effective_status === "ENDED" ? "Window ended" : coupon.issuance_enabled ? "Distribution on" : "Distribution off"}</small>
-                  </span>
-                  <span>
-                    <strong>{coupon.issued_count} / {coupon.redeemed_count}</strong>
-                    <small>{money(coupon.discount_total)} discounted</small>
-                  </span>
-                  <span className="coupon-row-actions">
-                    <button onClick={() => {
-                      setCouponError("");
-                      setEditingCoupon({ ...coupon });
-                    }}>{coupon.redeemed_count ? "View rules" : "Edit"}</button>
-                    {!coupon.redemption_enabled && coupon.effective_status !== "ARCHIVED" && coupon.effective_status !== "ENDED" && (
-                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "publish")}>Publish</button>
-                    )}
-                    {coupon.redemption_enabled && !coupon.issuance_enabled && (
-                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "publish")}>Resume</button>
-                    )}
-                    {coupon.issuance_enabled && ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status) && (
-                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "stop-distribution")}>Stop issuing</button>
-                    )}
-                    {coupon.redemption_enabled && ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status) && (
-                      <button className="danger-text" disabled={couponBusy} onClick={() => void runCouponAction(coupon, "disable")}>Disable use</button>
-                    )}
-                    {coupon.effective_status !== "ARCHIVED" && (!coupon.redemption_enabled || coupon.effective_status === "ENDED") && (
-                      <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "archive")}>Archive</button>
-                    )}
-                  </span>
-                </article>
-              )) : (
-                <div className="admin-empty-state">
-                  <strong>No coupons yet</strong>
-                  <span>Create a draft, review its customer preview, then publish it.</span>
-                </div>
-              )}
-            </div>
-          </section>
+          <CouponsView
+            coupons={coupons}
+            setCouponError={setCouponError}
+            setEditingCoupon={setEditingCoupon}
+            couponError={couponError}
+            couponBusy={couponBusy}
+            runCouponAction={runCouponAction}
+          />
         )}
 
         {tab === "redeem" && (
-          <div className="redeem-layout">
-            <section className="redeem-card">
-              <span className="red-label">ONE-TIME PICKUP</span>
-              <h2>Scan or enter code</h2>
-              <p>
-                Scan the customer’s signed QR pickup token. A completed code
-                cannot be used twice.
-              </p>
-              <label className="redeem-store-select">
-                <span>Pickup store</span>
-                <select
-                  value={storeFilter}
-                  onChange={(event) => setStoreFilter(event.target.value)}
-                >
-                  <option value="all">Choose store</option>
-                  {adminStores
-                    .filter((store) => store.pickup_enabled)
-                    .map((store) => (
-                      <option key={store.id} value={store.code}>
-                        {store.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <div className={`scanner-frame ${scannerActive ? "active" : ""}`}>
-                {scannerActive ? (
-                  <video ref={videoRef} muted playsInline aria-label="QR camera" />
-                ) : (
-                  <>
-                    <div className="scanner-line" />
-                    <span>⌗</span>
-                    <small>Camera ready</small>
-                  </>
-                )}
-              </div>
-              <button
-                className="camera-scan-button"
-                onClick={() =>
-                  scannerActive ? stopScanner() : void startScanner()
-                }
-              >
-                {scannerActive ? "Stop camera" : "Scan customer QR"} →
-              </button>
-              <label>
-                <span>Pickup QR token</span>
-                <div>
-                  <input
-                    value={scan}
-                    onChange={(e) => setScan(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && redeem()}
-                    placeholder="Paste signed QR token"
-                  />
-                  <button onClick={redeem}>Verify →</button>
-                </div>
-              </label>
-            </section>
-            <aside
-              className={`scan-result ${scanResult ? (scanResult.ok ? "ok" : "bad") : ""}`}
-            >
-              {scanResult ? (
-                <>
-                  <span>{scanResult.ok ? "✓" : "!"}</span>
-                  <h3>{scanResult.ok ? "Verified" : "Cannot redeem"}</h3>
-                  <p>{scanResult.message}</p>
-                  {scanResult.order && (
-                    <div>
-                      <b>{scanResult.order.id}</b>
-                      <small>
-                        {
-                          adminStores.find(
-                            (store) =>
-                              store.code === scanResult.order?.storeId,
-                          )?.name
-                        }
-                      </small>
-                      <strong>{money(scanResult.order.total)}</strong>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span>⌗</span>
-                  <h3>Waiting for a code</h3>
-                  <p>
-                    The verification result and order summary will appear here.
-                  </p>
-                </>
-              )}
-            </aside>
-          </div>
+          <RedeemView
+            storeFilter={storeFilter}
+            setStoreFilter={setStoreFilter}
+            adminStores={adminStores}
+            scannerActive={scannerActive}
+            videoRef={videoRef}
+            stopScanner={stopScanner}
+            startScanner={startScanner}
+            scan={scan}
+            setScan={setScan}
+            redeem={redeem}
+            scanResult={scanResult}
+          />
         )}
 
         {tab === "customers" && (
-          <section className="admin-panel wide">
-            <PanelHead title="Customers" />
-            <div className="customer-table">
-              <div className="table-head">
-                <span>Customer</span>
-                <span>Status</span>
-                <span>Lifetime</span>
-                <span>Orders</span>
-                <span>Action</span>
-              </div>
-              {customers.map((c) => (
-                <div className="customer-row" key={c.id}>
-                  <span>
-                    <i>
-                      {c.nickname
-                        .split(" ")
-                        .map((x) => x[0])
-                        .join("")}
-                    </i>
-                    <b>
-                      {c.nickname}
-                      <small>{c.email || "No email"}</small>
-                    </b>
-                  </span>
-                  <span>
-                    <em data-status={c.status.toLowerCase()}>{c.status}</em>
-                  </span>
-                  <strong>{money(c.lifetime_value)}</strong>
-                  <span>{c.order_count}</span>
-                  <button onClick={() => void openCustomer(c)}>Manage →</button>
-                </div>
-              ))}
-            </div>
-          </section>
+          <CustomersView customers={customers} openCustomer={openCustomer} />
         )}
 
         {tab === "stores" && (
-          <section className="admin-panel wide">
-            <PanelHead title="Nairobi stores" />
-            <div className="admin-store-grid">
-              {adminStores.map((store, i) => (
-                <article key={store.id}>
-                  <span>0{i + 1}</span>
-                  <div>
-                    <h3>{store.name}</h3>
-                    <p>{store.address}</p>
-                    <small>{store.phone || "No phone"}</small>
-                  </div>
-                  <span className="store-card-actions">
-                    <em
-                      className={
-                        store.location_verified ? "verified" : "pending"
-                      }
-                    >
-                      {store.location_verified ? "Verified" : "Confirm details"}
-                    </em>
-                    <button onClick={() => setEditingStore({ ...store })}>
-                      Edit →
-                    </button>
-                  </span>
-                </article>
-              ))}
-            </div>
-            <div className="store-warning">
-              ⓘ Public KIYOYO sources currently verify four branches. Eastleigh
-              and Store 06 require exact operations data before production
-              launch.
-            </div>
-          </section>
+          <StoresView
+            adminStores={adminStores}
+            setEditingStore={setEditingStore}
+          />
         )}
       </main>
       {editingProduct && (
-        <div className="modal-backdrop">
-          <div className="admin-product-modal">
-            <button
-              className="modal-close"
-              onClick={() => setEditingProduct(null)}
-            >
-              ×
-            </button>
-            <span className="red-label">EDIT PRODUCT</span>
-            <h2>{editingProduct.name}</h2>
-            <div className="product-image-editor">
-              <img src={editingProduct.image} alt="Product preview" />
-              <label>
-                <strong>Replace image</strong>
-                <span>JPG, PNG or WebP · signed Cloud Storage upload</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => updateProductImage(e.target.files?.[0])}
-                />
-              </label>
-            </div>
-            <label className="form-field">
-              <span>Image path / URL</span>
-              <input
-                value={editingProduct.image}
-                onChange={(e) =>
-                  setEditingProduct({
-                    ...editingProduct,
-                    image: e.target.value,
-                  })
-                }
-              />
-            </label>
-            <div className="form-split">
-              <label className="form-field">
-                <span>Product type</span>
-                <input value={editingProduct.kind} disabled />
-              </label>
-              <label className="form-field">
-                <span>Category</span>
-                <select
-                  value={editingProduct.category}
-                  onChange={(event) =>
-                    setEditingProduct({
-                      ...editingProduct,
-                      category: event.target.value,
-                    })
-                  }
-                >
-                  {(editingProduct.kind === "drink"
-                    ? drinkCategoryOrder
-                    : goodsCategoryOrder
-                  ).map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                  {!(editingProduct.kind === "drink"
-                    ? drinkCategoryOrder
-                    : goodsCategoryOrder
-                  ).some(
-                    (category) => category === editingProduct.category,
-                  ) && (
-                    <option value={editingProduct.category}>
-                      {editingProduct.category}
-                    </option>
-                  )}
-                </select>
-              </label>
-            </div>
-            <div className="form-split">
-              <label className="form-field">
-                <span>English name</span>
-                <input
-                  value={editingProduct.name}
-                  onChange={(e) =>
-                    setEditingProduct({
-                      ...editingProduct,
-                      name: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="form-field">
-                <span>Chinese name</span>
-                <input
-                  value={editingProduct.nameZh}
-                  onChange={(e) =>
-                    setEditingProduct({
-                      ...editingProduct,
-                      nameZh: e.target.value,
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <div className="form-split">
-              <label className="form-field">
-                <span>Base price (KSh)</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={editingProduct.price}
-                  onChange={(e) =>
-                    setEditingProduct({
-                      ...editingProduct,
-                      price: Number(e.target.value),
-                    })
-                  }
-                />
-              </label>
-              <label className="form-field">
-                <span>Discount %</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="90"
-                  value={editingProduct.discountPercent || 0}
-                  onChange={(e) =>
-                    setEditingProduct({
-                      ...editingProduct,
-                      discountPercent: Number(e.target.value),
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <label className="form-field tag-assignment">
-              <span>Product tag</span>
-              <select
-                value={editingProduct.tagId || ""}
-                onChange={(e) =>
-                  setEditingProduct({
-                    ...editingProduct,
-                    tagId: e.target.value || undefined,
-                    badge: undefined,
-                  })
-                }
-              >
-                <option value="">No tag</option>
-                {productTags.map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.label} · {tag.tone}
-                  </option>
-                ))}
-              </select>
-              {editingProduct.tagId &&
-                productTags.find((tag) => tag.id === editingProduct.tagId) && (
-                  <em
-                    className="tag-chip"
-                    data-tone={
-                      productTags.find((tag) => tag.id === editingProduct.tagId)
-                        ?.tone
-                    }
-                  >
-                    {
-                      productTags.find((tag) => tag.id === editingProduct.tagId)
-                        ?.label
-                    }
-                  </em>
-                )}
-              <small>
-                Create reusable tags from Manage tags before assigning them.
-              </small>
-            </label>
-            <div className="sale-preview">
-              <span>Customer price</span>
-              <strong>{money(salePrice(editingProduct))}</strong>
-              {(editingProduct.discountPercent || 0) > 0 && (
-                <del>{money(editingProduct.price)}</del>
-              )}
-            </div>
-            <label className="admin-publish-check">
-              <input
-                type="checkbox"
-                checked={editingProduct.active !== false}
-                onChange={(e) =>
-                  setEditingProduct({
-                    ...editingProduct,
-                    active: e.target.checked,
-                  })
-                }
-              />
-              <span>
-                <strong>Published on storefront</strong>
-                <small>Uncheck to hide this item and block checkout.</small>
-              </span>
-            </label>
-            {productError && <div className="form-error">{productError}</div>}
-            <button className="primary full" onClick={saveProduct}>
-              Save & sync →
-            </button>
-            <small className="admin-sync-note">
-              Product data is stored in Cloud SQL; uploaded images use the
-              private KIYOYO media bucket.
-            </small>
-          </div>
-        </div>
+        <ProductEditorDialog
+          editingProduct={editingProduct}
+          setEditingProduct={setEditingProduct}
+          updateProductImage={updateProductImage}
+          productTags={productTags}
+          productError={productError}
+          saveProduct={saveProduct}
+        />
       )}
       {editingCoupon && (
-        <div className="modal-backdrop">
-          <section ref={couponDialogRef} className="admin-record-modal coupon-editor" role="dialog" aria-modal="true" aria-labelledby="coupon-editor-title">
-            <button className="modal-close" aria-label="Close coupon editor" onClick={() => setEditingCoupon(null)}>×</button>
-            <span className="red-label">COUPON DRAFT</span>
-            <h2 id="coupon-editor-title">{editingCoupon.id ? editingCoupon.name_en : "Create coupon"}</h2>
-            <p>Save the rule as a draft. Publishing remains a separate customer-visible action.</p>
-            {editingCoupon.redeemed_count > 0 && (
-              <div className="admin-info-note">This rule has redemptions and is now read-only. Duplicate it to create a new version.</div>
-            )}
-            <fieldset disabled={editingCoupon.redeemed_count > 0 || couponBusy}>
-              <div className="form-split">
-                <label className="form-field">
-                  <span>Code</span>
-                  <input value={editingCoupon.code} maxLength={40} placeholder="HAPPY20" onChange={(event) => setEditingCoupon({ ...editingCoupon, code: event.target.value.toUpperCase() })} />
-                </label>
-                <label className="form-field">
-                  <span>Distribution</span>
-                  <select value={editingCoupon.issuance_mode} onChange={(event) => setEditingCoupon({ ...editingCoupon, issuance_mode: event.target.value as AdminCoupon["issuance_mode"] })}>
-                    <option value="ASSIGNED">Member wallet</option>
-                    <option value="PUBLIC_CODE">Public code</option>
-                  </select>
-                </label>
-              </div>
-              <div className="form-split">
-                <label className="form-field">
-                  <span>English name</span>
-                  <input value={editingCoupon.name_en} onChange={(event) => setEditingCoupon({ ...editingCoupon, name_en: event.target.value })} />
-                </label>
-                <label className="form-field">
-                  <span>Chinese name</span>
-                  <input value={editingCoupon.name_zh} onChange={(event) => setEditingCoupon({ ...editingCoupon, name_zh: event.target.value })} />
-                </label>
-              </div>
-              <div className="form-split">
-                <label className="form-field">
-                  <span>English description</span>
-                  <textarea value={editingCoupon.description_en} onChange={(event) => setEditingCoupon({ ...editingCoupon, description_en: event.target.value })} />
-                </label>
-                <label className="form-field">
-                  <span>Chinese description</span>
-                  <textarea value={editingCoupon.description_zh} onChange={(event) => setEditingCoupon({ ...editingCoupon, description_zh: event.target.value })} />
-                </label>
-              </div>
-              <div className="form-split three">
-                <label className="form-field">
-                  <span>Offer type</span>
-                  <select value={editingCoupon.discount_type} onChange={(event) => setEditingCoupon({ ...editingCoupon, discount_type: event.target.value as AdminCoupon["discount_type"], discount_value: event.target.value === "FREE_SIZE_UPGRADE" ? 0 : editingCoupon.discount_value || 10 })}>
-                    <option value="PERCENT">Percentage</option>
-                    <option value="FIXED">Fixed amount</option>
-                    <option value="FREE_SIZE_UPGRADE">Free size upgrade</option>
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>{editingCoupon.discount_type === "PERCENT" ? "Percentage" : "Amount (KSh)"}</span>
-                  <input type="number" min="0" max={editingCoupon.discount_type === "PERCENT" ? 100 : undefined} disabled={editingCoupon.discount_type === "FREE_SIZE_UPGRADE"} value={editingCoupon.discount_value} onChange={(event) => setEditingCoupon({ ...editingCoupon, discount_value: Number(event.target.value) })} />
-                </label>
-                <label className="form-field">
-                  <span>Maximum discount</span>
-                  <input type="number" min="0" placeholder="No cap" value={editingCoupon.max_discount ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, max_discount: event.target.value ? Number(event.target.value) : null })} />
-                </label>
-              </div>
-              <div className="form-split three">
-                <label className="form-field">
-                  <span>Applies to</span>
-                  <select value={editingCoupon.scope_type} onChange={(event) => setEditingCoupon({ ...editingCoupon, scope_type: event.target.value as AdminCoupon["scope_type"], scope_value: null })}>
-                    <option value="ALL">All products</option>
-                    <option value="DRINKS">All drinks</option>
-                    <option value="GOODS">All goods</option>
-                    <option value="CATEGORY">Category</option>
-                    <option value="PRODUCT">Product</option>
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>Scope selection</span>
-                  {editingCoupon.scope_type === "CATEGORY" ? (
-                    <select value={editingCoupon.scope_value ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, scope_value: event.target.value })}>
-                      <option value="">Choose category</option>
-                      {[...new Set(catalog.map((product) => categorySlug(product.category)))].map((category) => <option key={category} value={category}>{category}</option>)}
-                    </select>
-                  ) : editingCoupon.scope_type === "PRODUCT" ? (
-                    <select value={editingCoupon.scope_value ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, scope_value: event.target.value })}>
-                      <option value="">Choose product</option>
-                      {catalog.map((product) => <option key={product.apiId ?? product.id} value={product.apiId ?? product.id}>{product.name}</option>)}
-                    </select>
-                  ) : <input value="Automatically selected" disabled />}
-                </label>
-                <label className="form-field">
-                  <span>Fulfilment</span>
-                  <select value={editingCoupon.fulfillment_scope} onChange={(event) => setEditingCoupon({ ...editingCoupon, fulfillment_scope: event.target.value as AdminCoupon["fulfillment_scope"] })}>
-                    <option value="ALL">All methods</option>
-                    <option value="PICKUP">Pickup</option>
-                    <option value="DELIVERY">Delivery</option>
-                    <option value="SHIPPING">Shipping</option>
-                  </select>
-                </label>
-              </div>
-              <div className="form-split four">
-                <label className="form-field"><span>Minimum spend (KSh)</span><input type="number" min="0" value={editingCoupon.min_spend} onChange={(event) => setEditingCoupon({ ...editingCoupon, min_spend: Number(event.target.value) })} /></label>
-                <label className="form-field"><span>Issue limit</span><input type="number" min="1" placeholder="Unlimited" value={editingCoupon.issuance_limit ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, issuance_limit: event.target.value ? Number(event.target.value) : null })} /></label>
-                <label className="form-field"><span>Use limit</span><input type="number" min="1" placeholder="Unlimited" value={editingCoupon.usage_limit ?? ""} onChange={(event) => setEditingCoupon({ ...editingCoupon, usage_limit: event.target.value ? Number(event.target.value) : null })} /></label>
-                <label className="form-field"><span>Per customer</span><input type="number" min="1" max="100" value={editingCoupon.per_user_limit} onChange={(event) => setEditingCoupon({ ...editingCoupon, per_user_limit: Number(event.target.value) })} /></label>
-              </div>
-              <div className="form-split">
-                <label className="form-field"><span>Starts (Nairobi time)</span><input type="datetime-local" value={inputDateTime(editingCoupon.starts_at)} onChange={(event) => setEditingCoupon({ ...editingCoupon, starts_at: nairobiDateTimeIso(event.target.value) })} /></label>
-                <label className="form-field"><span>Ends (Nairobi time)</span><input type="datetime-local" value={inputDateTime(editingCoupon.ends_at)} onChange={(event) => setEditingCoupon({ ...editingCoupon, ends_at: nairobiDateTimeIso(event.target.value) })} /></label>
-              </div>
-            </fieldset>
-            <div className="coupon-customer-preview">
-              <span>Customer preview</span>
-              <strong>{editingCoupon.discount_type === "PERCENT" ? `${editingCoupon.discount_value}%` : editingCoupon.discount_type === "FIXED" ? money(editingCoupon.discount_value) : "FREE"}</strong>
-              <div><b>{editingCoupon.name_en || "Coupon name"}</b><small>{editingCoupon.code || "CODE"} · Min. {money(editingCoupon.min_spend)}</small></div>
-            </div>
-            {couponError && <div className="form-error" role="alert">{couponError}</div>}
-            {editingCoupon.redeemed_count === 0 && (
-              <button className="primary full" disabled={couponBusy} onClick={() => void saveCoupon()}>{couponBusy ? "Saving…" : editingCoupon.id ? "Save coupon draft →" : "Create draft →"}</button>
-            )}
-            <small className="admin-sync-note">After saving, publish from the coupon list. Dates are displayed in Africa/Nairobi.</small>
-          </section>
-        </div>
+        <CouponEditorDialog
+          editingCoupon={editingCoupon}
+          setEditingCoupon={setEditingCoupon}
+          couponDialogRef={couponDialogRef}
+          couponBusy={couponBusy}
+          catalog={catalog}
+          couponError={couponError}
+          saveCoupon={saveCoupon}
+        />
       )}
       {selectedCustomer && (
-        <div className="modal-backdrop">
-          <section className="admin-record-modal">
-            <button
-              className="modal-close"
-              onClick={() => setSelectedCustomer(null)}
-            >
-              ×
-            </button>
-            <span className="red-label">CUSTOMER RECORD</span>
-            <h2>{selectedCustomer.nickname}</h2>
-            <p>{selectedCustomer.email || "No email"}</p>
-            <div className="form-split">
-              <label className="form-field">
-                <span>Nickname</span>
-                <input
-                  value={selectedCustomer.nickname}
-                  onChange={(event) =>
-                    setSelectedCustomer({
-                      ...selectedCustomer,
-                      nickname: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="form-field">
-                <span>Account status</span>
-                <select
-                  value={selectedCustomer.status}
-                  onChange={(event) =>
-                    setSelectedCustomer({
-                      ...selectedCustomer,
-                      status: event.target.value as AdminCustomer["status"],
-                    })
-                  }
-                >
-                  <option value="ACTIVE">Active</option>
-                  <option value="SUSPENDED">Suspended</option>
-                </select>
-              </label>
-            </div>
-            <div className="record-facts">
-              <span>
-                <small>Orders</small>
-                <strong>{selectedCustomer.order_count}</strong>
-              </span>
-              <span>
-                <small>Lifetime value</small>
-                <strong>{money(selectedCustomer.lifetime_value)}</strong>
-              </span>
-              <span>
-                <small>Joined</small>
-                <strong>
-                  {new Date(selectedCustomer.created_at).toLocaleDateString(
-                    "en-KE",
-                  )}
-                </strong>
-              </span>
-            </div>
-            <h3>Delivery addresses</h3>
-            <div className="record-list">
-              {selectedCustomer.addresses.length ? (
-                selectedCustomer.addresses.map((address) => (
-                  <article key={address.id}>
-                    <strong>
-                      {address.label} {address.is_default ? "· Default" : ""}
-                    </strong>
-                    <span>
-                      {address.contact_name} · {address.phone_e164}
-                    </span>
-                    <small>
-                      {address.line1}, {address.area}, {address.city}
-                    </small>
-                  </article>
-                ))
-              ) : (
-                <small>No saved addresses.</small>
-              )}
-            </div>
-            <h3>Coupons</h3>
-            <div className="customer-coupon-issuer">
-              <select
-                aria-label="Coupon to issue"
-                value={issueCouponId}
-                onChange={(event) => setIssueCouponId(event.target.value)}
-              >
-                <option value="">Choose a published member coupon</option>
-                {coupons
-                  .filter(
-                    (coupon) =>
-                      coupon.issuance_mode === "ASSIGNED" &&
-                      coupon.issuance_enabled &&
-                      ["ACTIVE", "SCHEDULED"].includes(coupon.effective_status),
-                  )
-                  .map((coupon) => (
-                    <option key={coupon.id} value={coupon.id}>
-                      {coupon.name_en} · {coupon.code}
-                    </option>
-                  ))}
-              </select>
-              <button disabled={!issueCouponId || couponBusy || selectedCustomer.status !== "ACTIVE"} onClick={() => void issueCoupon()}>
-                {couponBusy ? "Issuing…" : "Issue coupon"}
-              </button>
-            </div>
-            {couponError && <div className="form-error" role="alert">{couponError}</div>}
-            <div className="record-list compact customer-coupon-list">
-              {selectedCustomer.coupons.length ? (
-                selectedCustomer.coupons.map((coupon) => (
-                  <article key={coupon.user_coupon_id}>
-                    <strong>{coupon.name_en} · {coupon.code}</strong>
-                    <span>{coupon.wallet_status}</span>
-                    <small>Expires {new Date(coupon.expires_at).toLocaleDateString("en-KE")}</small>
-                    {coupon.status === "ISSUED" && coupon.wallet_status !== "EXPIRED" && (
-                      <button className="danger-text" disabled={couponBusy} onClick={() => void revokeUserCoupon(coupon.user_coupon_id)}>Revoke</button>
-                    )}
-                  </article>
-                ))
-              ) : (
-                <small>No coupons issued.</small>
-              )}
-            </div>
-            <h3>Recent orders</h3>
-            <div className="record-list compact">
-              {selectedCustomer.orders.length ? (
-                selectedCustomer.orders.map((order) => (
-                  <article key={order.order_number}>
-                    <strong>{order.order_number}</strong>
-                    <span>{order.payment_status}</span>
-                    <small>{money(order.total)}</small>
-                  </article>
-                ))
-              ) : (
-                <small>No orders yet.</small>
-              )}
-            </div>
-            <button className="primary full" onClick={() => void saveCustomer()}>
-              Save customer →
-            </button>
-          </section>
-        </div>
+        <CustomerEditorDialog
+          selectedCustomer={selectedCustomer}
+          setSelectedCustomer={setSelectedCustomer}
+          issueCouponId={issueCouponId}
+          setIssueCouponId={setIssueCouponId}
+          coupons={coupons}
+          couponBusy={couponBusy}
+          issueCoupon={issueCoupon}
+          couponError={couponError}
+          revokeUserCoupon={revokeUserCoupon}
+          saveCustomer={saveCustomer}
+        />
       )}
       {editingStore && (
-        <div className="modal-backdrop">
-          <section className="admin-record-modal">
-            <button className="modal-close" onClick={() => setEditingStore(null)}>
-              ×
-            </button>
-            <span className="red-label">STORE SETTINGS</span>
-            <h2>{editingStore.name}</h2>
-            <div className="form-split">
-              <label className="form-field">
-                <span>Store name</span>
-                <input
-                  value={editingStore.name}
-                  onChange={(event) =>
-                    setEditingStore({ ...editingStore, name: event.target.value })
-                  }
-                />
-              </label>
-              <label className="form-field">
-                <span>Status</span>
-                <select
-                  value={editingStore.status}
-                  onChange={(event) =>
-                    setEditingStore({
-                      ...editingStore,
-                      status: event.target.value as AdminStore["status"],
-                    })
-                  }
-                >
-                  <option value="ACTIVE">Active</option>
-                  <option value="INACTIVE">Inactive</option>
-                  <option value="COMING_SOON">Coming soon</option>
-                </select>
-              </label>
-            </div>
-            <label className="form-field">
-              <span>Address</span>
-              <input
-                value={editingStore.address}
-                onChange={(event) =>
-                  setEditingStore({ ...editingStore, address: event.target.value })
-                }
-              />
-            </label>
-            <label className="form-field">
-              <span>Phone</span>
-              <input
-                value={editingStore.phone ?? ""}
-                onChange={(event) =>
-                  setEditingStore({ ...editingStore, phone: event.target.value })
-                }
-              />
-            </label>
-            <div className="form-split">
-              <label className="form-field">
-                <span>Latitude</span>
-                <input
-                  type="number"
-                  step="0.000001"
-                  value={editingStore.lat ?? ""}
-                  onChange={(event) =>
-                    setEditingStore({
-                      ...editingStore,
-                      lat: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                />
-              </label>
-              <label className="form-field">
-                <span>Longitude</span>
-                <input
-                  type="number"
-                  step="0.000001"
-                  value={editingStore.lng ?? ""}
-                  onChange={(event) =>
-                    setEditingStore({
-                      ...editingStore,
-                      lng: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <div className="store-switches">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={editingStore.pickup_enabled}
-                  onChange={(event) =>
-                    setEditingStore({
-                      ...editingStore,
-                      pickup_enabled: event.target.checked,
-                    })
-                  }
-                />
-                Pickup enabled
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={editingStore.delivery_enabled}
-                  onChange={(event) =>
-                    setEditingStore({
-                      ...editingStore,
-                      delivery_enabled: event.target.checked,
-                    })
-                  }
-                />
-                Delivery enabled
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={editingStore.location_verified}
-                  onChange={(event) =>
-                    setEditingStore({
-                      ...editingStore,
-                      location_verified: event.target.checked,
-                    })
-                  }
-                />
-                Location verified by operations
-              </label>
-            </div>
-            <button className="primary full" onClick={() => void saveStore()}>
-              Save store →
-            </button>
-          </section>
-        </div>
+        <StoreEditorDialog
+          editingStore={editingStore}
+          setEditingStore={setEditingStore}
+          saveStore={saveStore}
+        />
       )}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  note,
-  trend,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  trend: string;
-}) {
-  return (
-    <article className="metric">
-      <div>
-        <span>{label}</span>
-        <b>{trend}</b>
-      </div>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </article>
-  );
-}
-function PanelHead({
-  title,
-  action,
-  onAction,
-}: {
-  title: string;
-  action?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className="panel-head">
-      <h2>{title}</h2>
-      {action && <button onClick={onAction}>{action} →</button>}
-    </div>
-  );
-}
-function OrderTable({
-  orders,
-  catalog,
-  stores,
-  onStatus,
-}: {
-  orders: Order[];
-  catalog: Product[];
-  stores: AdminStore[];
-  onStatus: (id: string, status: Order["status"]) => void;
-}) {
-  return (
-    <div className="order-table">
-      <div className="table-head">
-        <span>Order</span>
-        <span>Store / channel</span>
-        <span>Items</span>
-        <span>Total</span>
-        <span>Status</span>
-      </div>
-      {orders.map((o) => (
-        <div className="order-row" key={o.id}>
-          <span>
-            <strong>{o.id}</strong>
-            <small>
-              {new Date(o.createdAt).toLocaleTimeString("en-KE", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "Africa/Nairobi",
-              })}
-            </small>
-          </span>
-          <span>
-            <b>
-              {stores.find((store) => store.code === o.storeId)?.area ||
-                o.storeId}
-            </b>
-            <small>{o.channel}</small>
-          </span>
-          <span className="item-stack">
-            {o.items.slice(0, 3).map((i) => (
-              <img
-                key={i.key}
-                src={catalog.find((p) => p.id === i.productId)?.image}
-                alt=""
-              />
-            ))}
-          </span>
-          <strong>{money(o.total)}</strong>
-          <select
-            className={`status-select s-${o.status.toLowerCase()}`}
-            value={o.status}
-            onChange={(e) => onStatus(o.id, e.target.value as Order["status"])}
-          >
-            <option>Placed</option>
-            <option>Confirmed</option>
-            <option>Preparing</option>
-            <option>Ready</option>
-            <option>Completed</option>
-            <option>Cancelled</option>
-          </select>
-        </div>
-      ))}
     </div>
   );
 }
