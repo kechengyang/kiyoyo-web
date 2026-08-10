@@ -3,6 +3,7 @@ import { stores } from "../../data";
 import type { Lang } from "../../types";
 import GoogleStoreMap from "../GoogleStoreMap";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 
 export function StoreDialog({
   t, lang, setStoreModal, locate, locating, locationError, storeId, setStoreId, distances,
@@ -18,12 +19,7 @@ export function StoreDialog({
   distances: Record<string, number>;
 }) {
   return (
-<div
-  className="modal-backdrop"
-  onMouseDown={(e) =>
-    e.currentTarget === e.target && setStoreModal(false)
-  }
->
+<DialogBackdrop closeOnBackdrop onClose={() => setStoreModal(false)}>
   <div className="store-modal">
     <button
       className="modal-close"
@@ -80,6 +76,6 @@ export function StoreDialog({
       ))}
     </div>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

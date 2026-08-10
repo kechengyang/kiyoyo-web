@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { sendMemberPasswordReset } from "../../platform";
 import type { AuthProvider, Lang } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 import { Logo } from "./primitives";
 
 type AuthMode = "signin" | "signup";
@@ -23,7 +24,12 @@ export function AuthDialog({
   lang: Lang;
 }) {
   return (
-<div className="modal-backdrop">
+<DialogBackdrop
+  onClose={() => {
+    setAuthMode(null);
+    setPendingCheckout(false);
+  }}
+>
   <div className="auth-modal">
     <button
       className="modal-close"
@@ -139,6 +145,6 @@ export function AuthDialog({
     )}
     <small className="auth-test">ⓘ {t.testAuth}</small>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

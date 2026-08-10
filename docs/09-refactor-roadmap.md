@@ -1,7 +1,7 @@
 # KIYOYO 重构路线图与持续记忆
 
 最后更新：2026-08-10
-状态：Phase 1 已执行
+状态：Phase 2 已执行
 重构前基线：`57a555e chore: checkpoint pre-refactor commerce baseline`
 
 ## 如何使用本文档
@@ -66,7 +66,7 @@
 
 | 文件 | 基线规模 | 风险 |
 | --- | ---: | --- |
-| `web/app/components/KiyoyoApp.tsx` | 3613 行、约 42 个 state | 客户端所有领域集中，修改容易跨功能回归 |
+| `web/app/components/KiyoyoApp.tsx` | 基线 3613 行、Phase 2 后 1415 行 | 状态与业务编排仍集中，但页面和弹层已按领域拆分 |
 | `web/app/admin/AdminApp.tsx` | 2471 行、约 30 个 state | Admin 数据加载、写操作和界面集中 |
 | `web/app/globals.css` | 5360 行 | 客户与 Admin 样式共享全局级联 |
 | `api/src/server.ts` | 983 行、51 个路由 | schema、SQL、业务规则和 HTTP 混合 |
@@ -93,17 +93,26 @@ Phase 1 不改变页面、API、数据库或业务行为。
 
 验证结果（2026-08-10）：Web ESLint、TypeScript、Vinext 预渲染、Next Webpack 生产构建、4 个 Web 契约测试、API TypeScript、6 个 API 测试、Terraform 格式和 Git whitespace 检查全部通过。
 
-### Phase 2：拆分客户前端 — 待执行
+### Phase 2：拆分客户前端 — 完成
 
-建议按下列顺序小步迁移，每次只移动一个行为域：
+- [x] 抽取 `copy`、纯函数、持久化 hook 和展示 primitives。
+- [x] 拆分 Header、Desktop/Mobile Navigation。
+- [x] 拆分 Campaign、Home、商品卡片和饮品卡片。
+- [x] 拆分 Drink Studio 和商品定制弹层。
+- [x] 拆分 Saved、Cart 和 Checkout。
+- [x] 拆分 Account、Profile、Address、Coupon 和 Order History。
+- [x] 建立共享 `DialogBackdrop`，统一 Escape、焦点圈定、焦点返回和最上层弹层判断。
 
-1. `copy`、纯函数和持久化 hook。
-2. Shell、Header、Desktop/Mobile Navigation。
-3. Campaign 与商品/饮品卡片。
-4. Drink Studio 与定制弹窗。
-5. Saved、Cart 与 Checkout。
-6. Account、Profile、Address、Coupon、Order History。
-7. 统一 Dialog/Sheet 基础组件；此项包含可访问性行为变化，应单独提交。
+执行提交：
+
+- `8e76a44 refactor: extract customer storefront foundations`
+- `cdaa5ea refactor: split customer navigation and storefront views`
+- `489064b refactor: split customer account checkout and dialogs`
+- 共享弹层行为提交见本阶段完成提交。
+
+Phase 2 保留现有 `/v1` API、localStorage key、目录与结账规则、双语文案、CSS class 和业务事件顺序。`KiyoyoApp.tsx` 从 3613 行降至 1415 行，新建 21 个 `customer` 领域文件；主组件继续拥有状态和业务编排，视图与弹层通过显式 props 接收数据和操作。
+
+验证结果（2026-08-10）：完整重构验证入口通过；本地浏览器额外验证商品定制与全局搜索弹层的 dialog 语义、初始焦点、Shift+Tab 圈定、Escape 关闭、关闭后焦点返回，浏览器控制台无 warning/error。Phase 2 未修改响应式 CSS 或既有内容 class。
 
 ### Phase 3：拆分 Admin — 待执行
 
@@ -175,7 +184,7 @@ sh scripts/verify-refactor.sh
 | 公开请求包含下架目录 | 下架商品元数据可被获取 | Phase 6 |
 | 客户使用静态门店 | Admin 门店变更不传播 | Phase 5/6 |
 | localStorage/seed 静默回退 | 可能展示旧价格和旧标签 | Phase 5/6 |
-| 多数弹窗缺少统一焦点管理 | 键盘和读屏体验不完整 | Phase 2 独立行为提交 |
+| 弹层新共享焦点管理需持续覆盖嵌套场景 | 地址弹层可能叠加在结账/订单弹层上 | 后续 UI 回归持续验证 |
 | API 路由测试覆盖不足 | 服务拆分回归风险较高 | Phase 4 前持续补充 |
 
 ## 决策日志
@@ -186,7 +195,10 @@ sh scripts/verify-refactor.sh
 - Phase 1 只增加文档、测试、验证入口和忽略规则，不移动生产代码。
 - 不把 mock 支付或本地订单缓存当作死代码直接删除，因为当前功能仍依赖它们。
 - 使用过渡性菜单一致性测试保护重复 seed；Phase 5 引入单一数据来源后替换该测试。
+- Phase 2 采用“状态与业务编排留在 `KiyoyoApp`、视图按领域拆出”的过渡架构，避免同时改动状态模型和页面归属。
+- 所有结构拆分保持原 JSX 顺序和 CSS class；共享弹层可访问性作为独立行为变更处理。
+- 共享弹层只响应 DOM 中最上层 backdrop，防止 Checkout 与 Address 等嵌套弹层在一次 Escape 中同时关闭。
 
 ## 下一步
 
-Phase 2 的第一个提交只抽取 `KiyoyoApp` 的双语 copy、纯函数和 `useStoredState`，保持 DOM、CSS class、localStorage key、初始值和事件顺序完全不变。
+Phase 3 从 Admin 的只读 overview 和 DTO 映射开始，先拆视图与数据转换，再逐个迁移写操作；不得在同一提交中改变 Admin API 请求、确认流程或错误语义。

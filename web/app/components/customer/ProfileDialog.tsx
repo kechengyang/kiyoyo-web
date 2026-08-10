@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { AuthSession, Lang, UserProfile } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 
 type ProfileForm = Pick<UserProfile, "nickname" | "gender" | "age">;
 
@@ -19,7 +20,12 @@ export function ProfileDialog({
   saveProfile: () => void;
 }) {
   return (
-<div className="modal-backdrop">
+<DialogBackdrop
+  onClose={() => {
+    setProfileModal(false);
+    setPendingCheckout(false);
+  }}
+>
   <div className="profile-modal">
     <button
       className="modal-close"
@@ -95,6 +101,6 @@ export function ProfileDialog({
       {t.save} →
     </button>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

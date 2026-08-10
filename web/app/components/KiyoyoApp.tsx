@@ -337,7 +337,6 @@ export default function KiyoyoApp() {
         event.preventDefault();
         setGlobalSearchOpen(true);
       }
-      if (event.key === "Escape") setGlobalSearchOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

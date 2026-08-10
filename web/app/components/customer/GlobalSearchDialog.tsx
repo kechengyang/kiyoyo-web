@@ -5,6 +5,7 @@ import { salePrice } from "../../catalog";
 import { money } from "../../data";
 import type { Lang, Product } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 import { Logo } from "./primitives";
 
 export function GlobalSearchDialog({
@@ -21,17 +22,14 @@ export function GlobalSearchDialog({
   openProduct: (product: Product) => void;
 }) {
   return (
-<div
-  className="global-search-overlay"
-  onMouseDown={(event) =>
-    event.currentTarget === event.target && setGlobalSearchOpen(false)
-  }
+<DialogBackdrop
+  baseClassName="global-search-overlay"
+  closeOnBackdrop
+  labelledBy="global-search-title"
+  onClose={() => setGlobalSearchOpen(false)}
 >
   <section
     className="global-search-panel"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="global-search-title"
   >
     <div className="global-search-head">
       <div>
@@ -118,6 +116,6 @@ export function GlobalSearchDialog({
       </div>
     )}
   </section>
-</div>
+</DialogBackdrop>
   );
 }

@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Order, Tab, UserProfile } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 import { PickupQR } from "./primitives";
 
 export function OrderSuccessDialog({ success, setSuccess, t, profile, go }: {
@@ -11,7 +12,12 @@ export function OrderSuccessDialog({ success, setSuccess, t, profile, go }: {
   go: (tab: Tab) => void;
 }) {
   return (
-<div className="modal-backdrop">
+<DialogBackdrop
+  onClose={() => {
+    setSuccess(null);
+    go("home");
+  }}
+>
   <div className="success-modal">
     <span className="success-pop">✓</span>
     <h2>{t.success}</h2>
@@ -44,6 +50,6 @@ export function OrderSuccessDialog({ success, setSuccess, t, profile, go }: {
       {t.done}
     </button>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

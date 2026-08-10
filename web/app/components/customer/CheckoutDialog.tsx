@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { money } from "../../data";
 import type { Address, CartItem, Lang, Order, Product, UserCoupon, UserProfile } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 
 type DetailedCartItem = CartItem & { product: Product };
 
@@ -42,7 +43,12 @@ export function CheckoutDialog({
   estimatedCheckoutTotal: number;
 }) {
   return (
-<div className="modal-backdrop">
+<DialogBackdrop
+  onClose={() => {
+    setCheckout(false);
+    setCheckoutChannel(null);
+  }}
+>
   <div className="checkout-modal">
     <button
       className="modal-close"
@@ -246,6 +252,6 @@ export function CheckoutDialog({
     )}
     <small className="mock-note">ⓘ {t.mockNotice}</small>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

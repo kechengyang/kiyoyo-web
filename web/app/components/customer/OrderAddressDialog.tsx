@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Address, UserProfile } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 
 export function OrderAddressDialog({ editingOrderId, setEditingOrderId, profile, changeOrderAddress, t, openAddress }: {
   editingOrderId: string;
@@ -11,7 +12,7 @@ export function OrderAddressDialog({ editingOrderId, setEditingOrderId, profile,
   openAddress: (address?: Address) => void;
 }) {
   return (
-<div className="modal-backdrop">
+<DialogBackdrop onClose={() => setEditingOrderId(null)}>
   <div className="order-address-modal">
     <button
       className="modal-close"
@@ -40,6 +41,6 @@ export function OrderAddressDialog({ editingOrderId, setEditingOrderId, profile,
       + {t.addAddress}
     </button>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

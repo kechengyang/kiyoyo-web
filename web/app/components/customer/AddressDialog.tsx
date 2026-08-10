@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Address, UserProfile } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 
 export function AddressDialog({
   setAddressModal, addressForm, setAddressForm, profile, t, addressError, saveAddress,
@@ -14,7 +15,7 @@ export function AddressDialog({
   saveAddress: () => void;
 }) {
   return (
-<div className="modal-backdrop">
+<DialogBackdrop onClose={() => setAddressModal(false)}>
   <div className="address-modal">
     <button
       className="modal-close"
@@ -112,6 +113,6 @@ export function AddressDialog({
       {t.save} →
     </button>
   </div>
-</div>
+</DialogBackdrop>
   );
 }

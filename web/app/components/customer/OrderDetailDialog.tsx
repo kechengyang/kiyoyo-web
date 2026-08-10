@@ -5,6 +5,7 @@ import { salePrice } from "../../catalog";
 import { money } from "../../data";
 import type { Address, Lang, Order, Product } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 import { PickupQR } from "./primitives";
 
 export function OrderDetailDialog({
@@ -24,17 +25,14 @@ export function OrderDetailDialog({
   catalog: Product[];
 }) {
   return (
-<div
-  className="modal-backdrop order-detail-backdrop"
-  onMouseDown={(event) =>
-    event.currentTarget === event.target && setSelectedOrder(null)
-  }
+<DialogBackdrop
+  className="order-detail-backdrop"
+  closeOnBackdrop
+  labelledBy="order-detail-title"
+  onClose={() => setSelectedOrder(null)}
 >
   <section
     className="order-detail-modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="order-detail-title"
   >
     <button
       className="modal-close"
@@ -205,6 +203,6 @@ export function OrderDetailDialog({
       {t.close}
     </button>
   </section>
-</div>
+</DialogBackdrop>
   );
 }

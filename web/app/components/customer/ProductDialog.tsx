@@ -5,6 +5,7 @@ import { salePrice } from "../../catalog";
 import { money } from "../../data";
 import type { Lang, Product } from "../../types";
 import type { CustomerCopy } from "./copy";
+import { DialogBackdrop } from "./DialogBackdrop";
 import { Option, productSizeEntries } from "./primitives";
 
 export type DrinkCustomisation = {
@@ -27,12 +28,7 @@ export function ProductDialog({
   addProduct: () => void;
 }) {
   return (
-<div
-  className="modal-backdrop"
-  onMouseDown={(e) =>
-    e.currentTarget === e.target && setModalProduct(null)
-  }
->
+<DialogBackdrop closeOnBackdrop onClose={() => setModalProduct(null)}>
   <div className="product-modal">
     <button
       className="modal-close"
@@ -143,6 +139,6 @@ export function ProductDialog({
       </button>
     </div>
   </div>
-</div>
+</DialogBackdrop>
   );
 }
