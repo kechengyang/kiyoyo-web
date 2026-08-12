@@ -1,7 +1,9 @@
 # KIYOYO 用户登录模块设计与实施说明
 
-状态：已实施  
-最后更新：2026-08-12  
+状态：已实施
+
+最后更新：2026-08-12
+
 适用范围：顾客 Web、Commerce API、Cloud SQL、Firebase Authentication / Google Cloud Identity Platform
 
 ## 1. 目标与结论
