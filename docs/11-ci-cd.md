@@ -11,8 +11,7 @@
 - Web 与 API production dependencies 的 high/critical 漏洞审计。
 - Terraform 格式、provider 初始化和配置校验。
 
-`.github/workflows/codeql.yml` 还会在 PR、`main` 和每周一执行 JavaScript/TypeScript
-安全扫描；Dependabot 每周检查 Web、API 与 GitHub Actions 依赖更新。
+Dependabot 每周检查 Web、API 与 GitHub Actions 依赖更新。
 
 建议在 GitHub `main` branch protection 中要求以下 checks：
 
@@ -24,7 +23,6 @@
 - `Production dependency audit (web)`
 - `Production dependency audit (api)`
 - `Terraform format and validate`
-- `JavaScript and TypeScript security scan`
 
 同时启用：至少一个 approval、dismiss stale approvals、require conversation resolution、
 禁止 force push，并要求分支在合并前保持最新。
