@@ -3,7 +3,6 @@ export const copy = {
     nav: {
       home: "Home",
       shop: "Shop",
-      collection: "Saved",
       cart: "Cart",
       account: "Account",
     },
@@ -112,7 +111,6 @@ export const copy = {
     nav: {
       home: "首页",
       shop: "商城",
-      collection: "收藏",
       cart: "购物车",
       account: "我的",
     },

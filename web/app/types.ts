@@ -1,5 +1,5 @@
 export type Lang = "en" | "zh";
-export type Tab = "home" | "shop" | "collection" | "cart" | "account";
+export type Tab = "home" | "shop" | "cart" | "account";
 export type ProductKind = "drink" | "goods";
 export type ProductTagTone = "red" | "yellow" | "black" | "green";
 
