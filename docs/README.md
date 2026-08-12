@@ -1,6 +1,6 @@
 # KIYOYO 技术设计文档索引
 
-版本：MVP v1 · 2026-08-10
+版本：MVP v1 · 2026-08-12
 市场：Kenya / Nairobi · 币种 KES · 时区 Africa/Nairobi  
 架构原则：前后端分离、模块化单体、托管优先、按量付费、可逐步演进。
 
@@ -15,6 +15,7 @@
 7. [测试、监控与运营](./07-testing-operations.md)
 8. [本地开发与迁移](./08-local-development.md)
 9. [重构路线图与持续记忆](./09-refactor-roadmap.md)
+10. [Admin 门店角色与权限管理系统设计（Review 已通过）](./10-admin-rbac-system-design.md)
 
 ## 关键决策摘要
 
