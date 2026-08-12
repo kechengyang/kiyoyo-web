@@ -10,7 +10,7 @@ import {
 import {
   apiFetch,
   auth,
-  fetchCatalog,
+  fetchAdminCatalog,
   mapApiProduct,
   observeMember,
   sendMemberPasswordReset,
@@ -45,6 +45,30 @@ import { StoresView } from "./stores/StoresView";
 import { StoreEditorDialog } from "./stores/StoreEditorDialog";
 import { AdminSidebar, AdminTopbar } from "./shell/AdminShell";
 
+const uploadImageToSignedUrl = (
+  uploadUrl: string,
+  file: File,
+  onProgress: (percent: number) => void,
+) =>
+  new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", uploadUrl);
+    request.setRequestHeader("Content-Type", file.type);
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+    request.addEventListener("load", () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`Image upload failed (${request.status})`));
+    });
+    request.addEventListener("error", () =>
+      reject(new Error("Image upload failed. Check your connection and retry.")),
+    );
+    request.send(file);
+  });
+
 export default function AdminApp() {
   const [tab, setTab] = useState<AdminTab>("overview");
   const [catalog, setCatalog] = useCatalog();
@@ -78,6 +102,9 @@ export default function AdminApp() {
   const [productCategory, setProductCategory] = useState("all");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productError, setProductError] = useState("");
+  const [productBusy, setProductBusy] = useState(false);
+  const [productProgress, setProductProgress] = useState("");
+  const [productUploadPercent, setProductUploadPercent] = useState<number | null>(null);
   const [showTagManager, setShowTagManager] = useState(false);
   const [newTag, setNewTag] = useState<{ label: string; tone: ProductTagTone }>(
     { label: "", tone: "red" },
@@ -661,7 +688,7 @@ export default function AdminApp() {
           catalog_version: product.catalogVersion,
         }),
       });
-      setCatalog(await fetchCatalog());
+      setCatalog(await fetchAdminCatalog());
     } catch (error) {
       setProductError(
         error instanceof Error ? error.message : "Product could not be updated",
@@ -677,6 +704,28 @@ export default function AdminApp() {
       badge: undefined,
     });
     setProductError("");
+    setProductProgress("");
+    setProductUploadPercent(null);
+    setPendingImage(null);
+  };
+  const openNewProductEditor = () => {
+    setEditingProduct({
+      id: `draft-${crypto.randomUUID()}`,
+      kind: "drink",
+      category: drinkCategoryOrder[0],
+      name: "",
+      nameZh: "",
+      description: "",
+      descriptionZh: "",
+      price: 0,
+      sizePrices: { "One size": 0 },
+      image: "",
+      active: true,
+      discountPercent: 0,
+    });
+    setProductError("");
+    setProductProgress("");
+    setProductUploadPercent(null);
     setPendingImage(null);
   };
   const addTag = async () => {
@@ -719,7 +768,7 @@ export default function AdminApp() {
     try {
       await apiFetch(`/v1/admin/product-tags/${id}`, { method: "DELETE" });
       setProductTags(productTags.filter((tag) => tag.id !== id));
-      setCatalog(await fetchCatalog());
+      setCatalog(await fetchAdminCatalog());
     } catch (error) {
       setTagError(
         error instanceof Error ? error.message : "Tag could not be archived",
@@ -739,34 +788,66 @@ export default function AdminApp() {
       );
       return;
     }
-    if (!editingProduct.apiId || !editingProduct.catalogVersion) {
+    const isNew = !editingProduct.apiId;
+    if (isNew && !pendingImage) {
+      setProductError("Upload a product image before creating this product.");
+      return;
+    }
+    if (!isNew && (!editingProduct.apiId || !editingProduct.catalogVersion)) {
       setProductError("Refresh the cloud catalog before editing.");
       return;
     }
+    const productBody = {
+      name_en: editingProduct.name.trim(),
+      name_zh: editingProduct.nameZh.trim(),
+      description_en: editingProduct.description.trim(),
+      description_zh: editingProduct.descriptionZh.trim(),
+      category_slug: categorySlug(editingProduct.category),
+      base_price: editingProduct.price,
+      discount_percent: Math.max(
+        0,
+        Math.min(90, Number(editingProduct.discountPercent) || 0),
+      ),
+      tag_id: editingProduct.tagId ?? null,
+    };
+    setProductBusy(true);
+    setProductError("");
+    setProductUploadPercent(null);
     try {
-      const update = await apiFetch<{ data: { catalog_version: number } }>(
-        `/v1/admin/products/${editingProduct.apiId}`,
-        {
-          method: "PATCH",
+      let productId = editingProduct.apiId;
+      let catalogVersion = editingProduct.catalogVersion;
+      if (!productId) {
+        setProductProgress("Creating a private draft in Cloud SQL…");
+        const created = await apiFetch<{
+          data: { id: string; catalog_version: number };
+        }>("/v1/admin/products", {
+          method: "POST",
           body: JSON.stringify({
-            name_en: editingProduct.name,
-            name_zh: editingProduct.nameZh,
-            category_slug: categorySlug(editingProduct.category),
-            base_price: editingProduct.price,
-            discount_percent: Math.max(
-              0,
-              Math.min(90, Number(editingProduct.discountPercent) || 0),
-            ),
-            active: editingProduct.active !== false,
-            tag_id: editingProduct.tagId ?? null,
-            catalog_version: editingProduct.catalogVersion,
+            ...productBody,
+            kind: editingProduct.kind.toUpperCase(),
           }),
-        },
-      );
+        });
+        productId = created.data.id;
+        catalogVersion = created.data.catalog_version;
+        setEditingProduct((current) =>
+          current
+            ? {
+                ...current,
+                apiId: created.data.id,
+                catalogVersion: created.data.catalog_version,
+              }
+            : current,
+        );
+      }
+      if (!productId || !catalogVersion) {
+        throw new Error("The cloud product draft could not be prepared.");
+      }
       if (pendingImage) {
+        setProductProgress("Preparing secure Cloud Storage upload…");
+        setProductUploadPercent(0);
         const upload = await apiFetch<{
           data: { upload_url: string; object_key: string };
-        }>(`/v1/admin/products/${editingProduct.apiId}/media-upload`, {
+        }>(`/v1/admin/products/${productId}/media-upload`, {
           method: "POST",
           body: JSON.stringify({
             filename: pendingImage.name,
@@ -774,48 +855,84 @@ export default function AdminApp() {
             bytes: pendingImage.size,
           }),
         });
-        const uploaded = await fetch(upload.data.upload_url, {
-          method: "PUT",
-          headers: { "Content-Type": pendingImage.type },
-          body: pendingImage,
-        });
-        if (!uploaded.ok) throw new Error("Image upload failed");
-        await apiFetch(
-          `/v1/admin/products/${editingProduct.apiId}/media-confirm`,
+        setProductProgress("Uploading image to Cloud Storage…");
+        await uploadImageToSignedUrl(
+          upload.data.upload_url,
+          pendingImage,
+          setProductUploadPercent,
+        );
+        setProductProgress("Verifying uploaded image…");
+        const confirmed = await apiFetch<{
+          data: { image_key: string; catalog_version: number };
+        }>(
+          `/v1/admin/products/${productId}/media-confirm`,
           {
             method: "POST",
             body: JSON.stringify({
               object_key: upload.data.object_key,
-              catalog_version: update.data.catalog_version,
+              catalog_version: catalogVersion,
             }),
           },
         );
+        catalogVersion = confirmed.data.catalog_version;
+        setPendingImage(null);
+        setEditingProduct((current) =>
+          current
+            ? {
+                ...current,
+                imageKey: confirmed.data.image_key,
+                catalogVersion: confirmed.data.catalog_version,
+              }
+            : current,
+        );
       }
-      setCatalog(await fetchCatalog());
+      setProductProgress(
+        editingProduct.active === false
+          ? "Saving draft…"
+          : "Publishing to the storefront…",
+      );
+      await apiFetch(`/v1/admin/products/${productId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...productBody,
+          active: editingProduct.active !== false,
+          catalog_version: catalogVersion,
+        }),
+      });
+      setCatalog(await fetchAdminCatalog());
       setEditingProduct(null);
       setPendingImage(null);
       setProductError("");
+      setProductProgress("");
+      setProductUploadPercent(null);
     } catch (error) {
       setProductError(
         error instanceof Error ? error.message : "Product could not be saved",
       );
+      setProductProgress("");
+    } finally {
+      setProductBusy(false);
     }
   };
   const updateProductImage = (file?: File) => {
     if (!file || !editingProduct) return;
-    if (!file.type.startsWith("image/")) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setProductError("Choose a JPG, PNG or WebP image.");
       return;
     }
-    if (file.size > 1_500_000) {
-      setProductError("Use an image under 1.5 MB.");
+    if (file.size > 8_000_000) {
+      setProductError("Use an image under 8 MB.");
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       setPendingImage(file);
+      setProductUploadPercent(null);
+      setProductProgress("Ready to upload securely.");
       setEditingProduct((current) =>
-        current ? { ...current, image: String(reader.result) } : current,
+        current
+          ? { ...current, image: String(reader.result), imageKey: undefined }
+          : current,
       );
     };
     reader.onerror = () => setProductError("The image could not be read.");
@@ -1024,6 +1141,7 @@ export default function AdminApp() {
             shownProducts={shownProducts}
             toggleProduct={toggleProduct}
             openProductEditor={openProductEditor}
+            openNewProductEditor={openNewProductEditor}
           />
         )}
 
@@ -1073,6 +1191,9 @@ export default function AdminApp() {
           productTags={productTags}
           productError={productError}
           saveProduct={saveProduct}
+          productBusy={productBusy}
+          productProgress={productProgress}
+          productUploadPercent={productUploadPercent}
         />
       )}
       {editingCoupon && (

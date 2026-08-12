@@ -24,6 +24,7 @@ import type {
   Store,
   UserCoupon,
 } from "./types";
+import { mediaUrlFromBucketPath } from "./media";
 
 const deploymentEnvironment = process.env.NEXT_PUBLIC_KIYOYO_ENV ?? "dev";
 const devFallback = deploymentEnvironment === "dev";
@@ -149,7 +150,7 @@ type ApiProduct = {
   name_zh: string;
   description_en: string;
   description_zh: string;
-  image_key: string;
+  image_key: string | null;
   base_price: number;
   size_prices_json: Record<string, number>;
   discount_percent: number;
@@ -181,9 +182,7 @@ const tone = (value: ApiProduct["tag_tone"]): ProductTagTone | undefined =>
   value?.toLowerCase() as ProductTagTone | undefined;
 
 export function mapApiProduct(product: ApiProduct): Product {
-  const image = product.image_key.startsWith("gcs://")
-    ? `${API_BASE_URL}/v1/media/${btoa(product.image_key.split("/").slice(3).join("/")).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}`
-    : product.image_key;
+  const image = mediaUrlFromBucketPath(product.image_key, API_BASE_URL);
   return {
     id: product.external_code ?? product.id,
     apiId: product.id,
@@ -200,6 +199,7 @@ export function mapApiProduct(product: ApiProduct): Product {
     price: product.base_price,
     sizePrices: product.size_prices_json,
     image,
+    imageKey: product.image_key ?? undefined,
     badge: product.tag_label ?? undefined,
     badgeTone: tone(product.tag_tone),
     tagId: product.tag_id ?? undefined,
@@ -212,9 +212,16 @@ export function mapApiProduct(product: ApiProduct): Product {
 
 export async function fetchCatalog() {
   const payload = await apiFetch<{ data: ApiProduct[] }>(
-    "/v1/products?include_inactive=true",
+    "/v1/products",
     {},
     false,
+  );
+  return payload.data.map(mapApiProduct);
+}
+
+export async function fetchAdminCatalog() {
+  const payload = await apiFetch<{ data: ApiProduct[] }>(
+    "/v1/admin/products",
   );
   return payload.data.map(mapApiProduct);
 }
@@ -342,13 +349,7 @@ const orderChannel: Record<ApiOrderFulfillment["type"], Order["channel"]> = {
 };
 
 const mediaUrl = (imageKey: string | null) => {
-  if (!imageKey) return undefined;
-  if (!imageKey.startsWith("gcs://")) return imageKey;
-  const encoded = btoa(imageKey.split("/").slice(3).join("/"))
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
-  return `${API_BASE_URL}/v1/media/${encoded}`;
+  return mediaUrlFromBucketPath(imageKey, API_BASE_URL) || undefined;
 };
 
 const mapOrderAddress = (

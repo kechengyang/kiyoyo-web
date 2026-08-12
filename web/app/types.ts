@@ -22,6 +22,7 @@ export type Product = {
   price: number;
   sizePrices?: Record<string, number>;
   image: string;
+  imageKey?: string;
   badge?: string;
   badgeTone?: ProductTagTone;
   tagId?: string;

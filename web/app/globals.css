@@ -4778,6 +4778,9 @@ button {
   font-size: 9px;
   font-weight: 900;
 }
+.catalog-stats > button.new-product {
+  background: var(--red);
+}
 .tag-manager {
   margin: 0 0 22px;
   padding: 22px;
@@ -4973,6 +4976,17 @@ button {
   object-fit: cover;
   background: #eee;
 }
+.admin-product-placeholder {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: var(--cream);
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
 .admin-product-name strong,
 .admin-product-name small,
 .admin-price strong,
@@ -5134,6 +5148,16 @@ button {
   object-fit: cover;
   background: #ddd;
 }
+.product-image-placeholder {
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+  background: var(--cream);
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
 .product-image-editor label {
   border: 1px dashed #a9a099;
   min-height: 110px;
@@ -5158,6 +5182,31 @@ button {
 .product-image-editor input {
   font-size: 9px;
   max-width: 100%;
+}
+.admin-product-modal textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+.admin-product-modal .form-field > small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 8px;
+}
+.product-upload-status {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 800;
+}
+.product-upload-status progress {
+  width: 100%;
+  accent-color: var(--success);
 }
 .sale-preview {
   display: flex;
@@ -5354,6 +5403,10 @@ button {
     grid-template-columns: 1fr;
   }
   .product-image-editor img {
+    width: 100%;
+    height: 220px;
+  }
+  .product-image-placeholder {
     width: 100%;
     height: 220px;
   }

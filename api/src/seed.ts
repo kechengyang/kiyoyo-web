@@ -105,19 +105,22 @@ const menuProducts: ProductSeed[] = menuRows.map(([code, category, slug, name, n
   };
 });
 
+const goodsImage = (filename: string) =>
+  `gcs://${config.mediaBucket}/products/goods/${filename}`;
+
 const goods: ProductSeed[] = [
-  { code: "g1", kind: "GOODS", category: "fashion", slug: "kiyoyo-street-set", name: "KIYOYO Street Set", nameZh: "KIYOYO 街头套装", description: "A playful limited streetwear capsule.", descriptionZh: "趣味限定街头服饰系列。", prices: { "One size": 5490 }, image: "/images/goods/streetwear.png", badge: "DROP 01" },
-  { code: "g2", kind: "GOODS", category: "accessories", slug: "logo-charm-pack", name: "Logo Charm Pack", nameZh: "品牌挂件组合", description: "Bright tags, charms and key rings.", descriptionZh: "亮色吊牌、挂件与钥匙扣组合。", prices: { "One size": 1290 }, image: "/images/goods/accessories.png" },
-  { code: "g3", kind: "GOODS", category: "fashion", slug: "family-logo-apparel", name: "Family Logo Apparel", nameZh: "全家品牌服饰", description: "Everyday KIYOYO essentials for all sizes.", descriptionZh: "适合各种尺码的日常品牌服饰。", prices: { "One size": 3490 }, image: "/images/goods/apparel.png" },
-  { code: "g4", kind: "GOODS", category: "home", slug: "happy-living-collection", name: "Happy Living Collection", nameZh: "快乐家居系列", description: "Soft furnishings that bring the brand home.", descriptionZh: "把 KIYOYO 快乐带回家的软装系列。", prices: { "One size": 3990 }, image: "/images/goods/living.png", badge: "NEW" },
-  { code: "g5", kind: "GOODS", category: "home", slug: "kitchen-table-set", name: "Kitchen & Table Set", nameZh: "厨房餐桌套装", description: "Red-and-white kitchenware with character.", descriptionZh: "有趣的红白品牌厨房用品。", prices: { "One size": 2890 }, image: "/images/goods/kitchen.png" },
-  { code: "g6", kind: "GOODS", category: "home", slug: "creative-desk-kit", name: "Creative Desk Kit", nameZh: "创意桌面套装", description: "Make work and study a little more fun.", descriptionZh: "让工作和学习更有趣。", prices: { "One size": 1990 }, image: "/images/goods/desk.png" },
-  { code: "g7", kind: "GOODS", category: "outdoor", slug: "weekend-camping-kit", name: "Weekend Camping Kit", nameZh: "周末露营套装", description: "A bold campsite setup for city explorers.", descriptionZh: "为城市探险家准备的醒目露营装备。", prices: { "One size": 8990 }, image: "/images/goods/camping.png", badge: "ADVENTURE" },
-  { code: "g8", kind: "GOODS", category: "outdoor", slug: "kiyoyo-outdoor-club", name: "KIYOYO Outdoor Club", nameZh: "KIYOYO 户外俱乐部", description: "Outdoor essentials for the whole crew.", descriptionZh: "适合全员出行的户外必备系列。", prices: { "One size": 6490 }, image: "/images/goods/outdoor.png" },
-  { code: "g9", kind: "GOODS", category: "pets", slug: "little-buddy-set", name: "Little Buddy Set", nameZh: "萌宠伙伴套装", description: "Branded comfort and play for pets.", descriptionZh: "给宠物的品牌舒适与玩乐套装。", prices: { "One size": 2590 }, image: "/images/goods/pet.png", badge: "CUTE" },
-  { code: "g10", kind: "GOODS", category: "beauty", slug: "red-pop-nail-kit", name: "Red Pop Nail Kit", nameZh: "红色波普美甲套装", description: "A compact nail-care set in signature red.", descriptionZh: "标志红色便携美甲护理套装。", prices: { "One size": 1890 }, image: "/images/goods/beauty.png" },
-  { code: "g11", kind: "GOODS", category: "collectibles", slug: "brand-starter-kit", name: "Brand Starter Kit", nameZh: "品牌入门收藏套装", description: "Tags, cards and packaging for true fans.", descriptionZh: "为真爱粉准备的吊牌、卡片与包装收藏。", prices: { "One size": 990 }, image: "/images/goods/brand-kit.png" },
-  { code: "g12", kind: "GOODS", category: "sport", slug: "kiyoyo-sport-club", name: "KIYOYO Sport Club", nameZh: "KIYOYO 运动俱乐部", description: "Play-ready gear with an energetic identity.", descriptionZh: "充满活力、随时开玩的品牌运动装备。", prices: { "One size": 4290 }, image: "/images/goods/sport.png" },
+  { code: "g1", kind: "GOODS", category: "fashion", slug: "kiyoyo-street-set", name: "KIYOYO Street Set", nameZh: "KIYOYO 街头套装", description: "A playful limited streetwear capsule.", descriptionZh: "趣味限定街头服饰系列。", prices: { "One size": 5490 }, image: goodsImage("streetwear.png"), badge: "DROP 01" },
+  { code: "g2", kind: "GOODS", category: "accessories", slug: "logo-charm-pack", name: "Logo Charm Pack", nameZh: "品牌挂件组合", description: "Bright tags, charms and key rings.", descriptionZh: "亮色吊牌、挂件与钥匙扣组合。", prices: { "One size": 1290 }, image: goodsImage("accessories.png") },
+  { code: "g3", kind: "GOODS", category: "fashion", slug: "family-logo-apparel", name: "Family Logo Apparel", nameZh: "全家品牌服饰", description: "Everyday KIYOYO essentials for all sizes.", descriptionZh: "适合各种尺码的日常品牌服饰。", prices: { "One size": 3490 }, image: goodsImage("apparel.png") },
+  { code: "g4", kind: "GOODS", category: "home", slug: "happy-living-collection", name: "Happy Living Collection", nameZh: "快乐家居系列", description: "Soft furnishings that bring the brand home.", descriptionZh: "把 KIYOYO 快乐带回家的软装系列。", prices: { "One size": 3990 }, image: goodsImage("living.png"), badge: "NEW" },
+  { code: "g5", kind: "GOODS", category: "home", slug: "kitchen-table-set", name: "Kitchen & Table Set", nameZh: "厨房餐桌套装", description: "Red-and-white kitchenware with character.", descriptionZh: "有趣的红白品牌厨房用品。", prices: { "One size": 2890 }, image: goodsImage("kitchen.png") },
+  { code: "g6", kind: "GOODS", category: "home", slug: "creative-desk-kit", name: "Creative Desk Kit", nameZh: "创意桌面套装", description: "Make work and study a little more fun.", descriptionZh: "让工作和学习更有趣。", prices: { "One size": 1990 }, image: goodsImage("desk.png") },
+  { code: "g7", kind: "GOODS", category: "outdoor", slug: "weekend-camping-kit", name: "Weekend Camping Kit", nameZh: "周末露营套装", description: "A bold campsite setup for city explorers.", descriptionZh: "为城市探险家准备的醒目露营装备。", prices: { "One size": 8990 }, image: goodsImage("camping.png"), badge: "ADVENTURE" },
+  { code: "g8", kind: "GOODS", category: "outdoor", slug: "kiyoyo-outdoor-club", name: "KIYOYO Outdoor Club", nameZh: "KIYOYO 户外俱乐部", description: "Outdoor essentials for the whole crew.", descriptionZh: "适合全员出行的户外必备系列。", prices: { "One size": 6490 }, image: goodsImage("outdoor.png") },
+  { code: "g9", kind: "GOODS", category: "pets", slug: "little-buddy-set", name: "Little Buddy Set", nameZh: "萌宠伙伴套装", description: "Branded comfort and play for pets.", descriptionZh: "给宠物的品牌舒适与玩乐套装。", prices: { "One size": 2590 }, image: goodsImage("pet.png"), badge: "CUTE" },
+  { code: "g10", kind: "GOODS", category: "beauty", slug: "red-pop-nail-kit", name: "Red Pop Nail Kit", nameZh: "红色波普美甲套装", description: "A compact nail-care set in signature red.", descriptionZh: "标志红色便携美甲护理套装。", prices: { "One size": 1890 }, image: goodsImage("beauty.png") },
+  { code: "g11", kind: "GOODS", category: "collectibles", slug: "brand-starter-kit", name: "Brand Starter Kit", nameZh: "品牌入门收藏套装", description: "Tags, cards and packaging for true fans.", descriptionZh: "为真爱粉准备的吊牌、卡片与包装收藏。", prices: { "One size": 990 }, image: goodsImage("brand-kit.png") },
+  { code: "g12", kind: "GOODS", category: "sport", slug: "kiyoyo-sport-club", name: "KIYOYO Sport Club", nameZh: "KIYOYO 运动俱乐部", description: "Play-ready gear with an energetic identity.", descriptionZh: "充满活力、随时开玩的品牌运动装备。", prices: { "One size": 4290 }, image: goodsImage("sport.png") },
 ];
 
 async function main() {
@@ -161,6 +164,21 @@ async function main() {
         [product.code, product.kind, product.category, product.slug, product.name, product.nameZh, product.description, product.descriptionZh, product.image, basePrice, product.prices, product.badge ?? null],
       );
     }
+    await client.query(
+      `update products
+       set image_key = case
+         when image_key like '/images/drinks/%' then $1 || substring(image_key from length('/images/drinks/') + 1)
+         when image_key like '/images/goods/%' then $2 || substring(image_key from length('/images/goods/') + 1)
+         else image_key
+       end,
+       catalog_version=catalog_version+1,
+       updated_at=now()
+       where image_key like '/images/drinks/%' or image_key like '/images/goods/%'`,
+      [
+        `gcs://${config.mediaBucket}/products/legacy/drinks/`,
+        `gcs://${config.mediaBucket}/products/goods/`,
+      ],
+    );
     await client.query(
       "update products set active=false,catalog_version=catalog_version+1,updated_at=now() where kind='DRINK' and not (external_code=any($1::text[])) and active=true",
       [menuProducts.map((product) => product.code)],

@@ -9,7 +9,7 @@ export function ProductsView({
   catalog, productTags, showTagManager, setShowTagManager, newTag, setNewTag,
   addTag, tagError, deleteTag, productSearch, setProductSearch, productKind,
   setProductKind, productCategory, setProductCategory, categoryOptions,
-  shownProducts, toggleProduct, openProductEditor,
+  shownProducts, toggleProduct, openProductEditor, openNewProductEditor,
 }: {
   catalog: Product[];
   productTags: ProductTag[];
@@ -30,6 +30,7 @@ export function ProductsView({
   shownProducts: Product[];
   toggleProduct: (id: string) => void;
   openProductEditor: (product: Product) => void;
+  openNewProductEditor: () => void;
 }) {
   return (
 <section className="admin-panel wide product-management">
@@ -50,6 +51,9 @@ export function ProductsView({
       </span>
       <button onClick={() => setShowTagManager(!showTagManager)}>
         {showTagManager ? "Close tags" : "Manage tags"} →
+      </button>
+      <button className="new-product" onClick={openNewProductEditor}>
+        + New product
       </button>
     </div>
   </div>
@@ -174,7 +178,13 @@ export function ProductsView({
           className={product.active === false ? "offline" : ""}
         >
           <span className="admin-product-name">
-            <img src={product.image} alt="" />
+            {product.image ? (
+              <img src={product.image} alt="" />
+            ) : (
+              <span className="admin-product-placeholder" aria-hidden="true">
+                No image
+              </span>
+            )}
             <span>
               <strong>{product.name}</strong>
               <small>

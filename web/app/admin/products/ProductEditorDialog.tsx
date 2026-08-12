@@ -9,7 +9,7 @@ import { goodsCategoryOrder } from "../core/foundation";
 
 export function ProductEditorDialog({
   editingProduct, setEditingProduct, updateProductImage, productTags,
-  productError, saveProduct,
+  productError, saveProduct, productBusy, productProgress, productUploadPercent,
 }: {
   editingProduct: Product;
   setEditingProduct: Dispatch<SetStateAction<Product | null>>;
@@ -17,23 +17,33 @@ export function ProductEditorDialog({
   productTags: ProductTag[];
   productError: string;
   saveProduct: () => void;
+  productBusy: boolean;
+  productProgress: string;
+  productUploadPercent: number | null;
 }) {
+  const isNew = !editingProduct.apiId;
   return (
 <div className="modal-backdrop">
-  <div className="admin-product-modal">
+  <div className="admin-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-editor-title">
     <button
       className="modal-close"
       onClick={() => setEditingProduct(null)}
+      aria-label="Close product editor"
+      disabled={productBusy}
     >
       ×
     </button>
-    <span className="red-label">EDIT PRODUCT</span>
-    <h2>{editingProduct.name}</h2>
+    <span className="red-label">{isNew ? "NEW PRODUCT" : "EDIT PRODUCT"}</span>
+    <h2 id="product-editor-title">{editingProduct.name || "Create product"}</h2>
     <div className="product-image-editor">
-      <img src={editingProduct.image} alt="Product preview" />
+      {editingProduct.image ? (
+        <img src={editingProduct.image} alt="Product preview" />
+      ) : (
+        <div className="product-image-placeholder">Upload required</div>
+      )}
       <label>
-        <strong>Replace image</strong>
-        <span>JPG, PNG or WebP · signed Cloud Storage upload</span>
+        <strong>{editingProduct.image ? "Replace image" : "Upload image"}</strong>
+        <span>JPG, PNG or WebP · maximum 8 MB · secure Cloud Storage upload</span>
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
@@ -42,21 +52,35 @@ export function ProductEditorDialog({
       </label>
     </div>
     <label className="form-field">
-      <span>Image path / URL</span>
+      <span>Cloud Storage bucket path</span>
       <input
-        value={editingProduct.image}
-        onChange={(e) =>
-          setEditingProduct({
-            ...editingProduct,
-            image: e.target.value,
-          })
-        }
+        value={editingProduct.imageKey ?? (editingProduct.image ? "Pending secure upload" : "Upload required")}
+        readOnly
+        aria-describedby="bucket-path-help"
       />
+      <small id="bucket-path-help">The path is assigned by the API after GCS verifies the upload.</small>
     </label>
     <div className="form-split">
       <label className="form-field">
         <span>Product type</span>
-        <input value={editingProduct.kind} disabled />
+        {isNew ? (
+          <select
+            value={editingProduct.kind}
+            onChange={(event) => {
+              const kind = event.target.value as Product["kind"];
+              setEditingProduct({
+                ...editingProduct,
+                kind,
+                category: kind === "drink" ? drinkCategoryOrder[0] : goodsCategoryOrder[0],
+              });
+            }}
+          >
+            <option value="drink">Drink</option>
+            <option value="goods">Goods</option>
+          </select>
+        ) : (
+          <input value={editingProduct.kind} disabled />
+        )}
       </label>
       <label className="form-field">
         <span>Category</span>
@@ -88,6 +112,32 @@ export function ProductEditorDialog({
             </option>
           )}
         </select>
+      </label>
+    </div>
+    <div className="form-split">
+      <label className="form-field">
+        <span>English description</span>
+        <textarea
+          value={editingProduct.description}
+          onChange={(event) =>
+            setEditingProduct({
+              ...editingProduct,
+              description: event.target.value,
+            })
+          }
+        />
+      </label>
+      <label className="form-field">
+        <span>Chinese description</span>
+        <textarea
+          value={editingProduct.descriptionZh}
+          onChange={(event) =>
+            setEditingProduct({
+              ...editingProduct,
+              descriptionZh: event.target.value,
+            })
+          }
+        />
       </label>
     </div>
     <div className="form-split">
@@ -209,8 +259,18 @@ export function ProductEditorDialog({
       </span>
     </label>
     {productError && <div className="form-error">{productError}</div>}
-    <button className="primary full" onClick={saveProduct}>
-      Save & sync →
+    {productProgress && (
+      <div className="product-upload-status" role="status" aria-live="polite">
+        <span>{productProgress}</span>
+        {productUploadPercent != null && (
+          <progress max="100" value={productUploadPercent}>
+            {productUploadPercent}%
+          </progress>
+        )}
+      </div>
+    )}
+    <button className="primary full" onClick={saveProduct} disabled={productBusy}>
+      {productBusy ? "Saving…" : isNew ? "Create & sync →" : "Save & sync →"}
     </button>
     <small className="admin-sync-note">
       Product data is stored in Cloud SQL; uploaded images use the

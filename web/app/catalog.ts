@@ -8,6 +8,16 @@ import { fetchCatalog, fetchProductTags } from "./platform";
 export const CATALOG_STORAGE_KEY = "kiyoyo-catalog";
 export const PRODUCT_TAGS_STORAGE_KEY = "kiyoyo-product-tags";
 
+const isBucketCatalog = (value: unknown): value is Product[] =>
+  Array.isArray(value) &&
+  value.every(
+    (product) =>
+      product &&
+      typeof product === "object" &&
+      typeof (product as Product).imageKey === "string" &&
+      (product as Product).imageKey?.startsWith("gcs://"),
+  );
+
 export const defaultProductTags: ProductTag[] = [
   {
     id: "tag-new",
@@ -71,9 +81,13 @@ export function useCatalog() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CATALOG_STORAGE_KEY);
-      // Hydrate the local MVP catalog after server rendering.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (stored) setCatalog(JSON.parse(stored));
+      // Hydrate a verified bucket-backed catalog after server rendering.
+      if (stored) {
+        const parsed: unknown = JSON.parse(stored);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (isBucketCatalog(parsed)) setCatalog(parsed);
+        else localStorage.removeItem(CATALOG_STORAGE_KEY);
+      }
     } catch {
       /* keep seeded catalog */
     }
@@ -99,7 +113,8 @@ export function useCatalog() {
     const syncAcrossTabs = (event: StorageEvent) => {
       if (event.key !== CATALOG_STORAGE_KEY || !event.newValue) return;
       try {
-        setCatalog(JSON.parse(event.newValue));
+        const parsed: unknown = JSON.parse(event.newValue);
+        if (isBucketCatalog(parsed)) setCatalog(parsed);
       } catch {
         /* ignore invalid external value */
       }

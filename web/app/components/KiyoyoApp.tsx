@@ -1111,7 +1111,10 @@ export default function KiyoyoApp() {
       motion: "sundae",
     },
     {
-      image: "/images/goods/streetwear.png",
+      image:
+        products.find((product) => product.id === "g1")?.image ??
+        products.find((product) => product.kind === "goods")?.image ??
+        "",
       alt: "KIYOYO streetwear campaign",
       tag: lang === "zh" ? "03 / 新品系列" : "03 / NEW DROP",
       title: lang === "zh" ? "穿上好心情" : "Wear the mood",

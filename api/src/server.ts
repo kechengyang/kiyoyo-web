@@ -10,13 +10,19 @@ import { authenticate, requireAdmin, requireProfile } from "./auth.js";
 import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./crypto.js";
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
 
-const app = Fastify({ logger: true, genReqId: (request) => String(request.headers["x-request-id"] ?? randomUUID()) });
+const app = Fastify({
+  logger: true,
+  maxParamLength: 1_000,
+  genReqId: (request) =>
+    String(request.headers["x-request-id"] ?? randomUUID()),
+});
 const storage = new Storage({ projectId: config.projectId });
 
 await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, {
   origin: (origin, callback) => callback(null, !origin || config.allowedOrigins.includes(origin)),
   credentials: true,
+  methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
 });
 
 app.setErrorHandler((error, request, reply) => {
@@ -74,6 +80,35 @@ const productSelect = `select p.id,p.external_code,p.kind,p.category_slug,p.slug
   p.active,p.catalog_version,p.updated_at,t.id as tag_id,t.label as tag_label,t.tone as tag_tone
   from products p left join product_tags t on t.id=p.tag_id and t.active=true`;
 
+const productSlug = (name: string, category: string) => {
+  const stem = `${category}-${name}`
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+  return `${stem || "product"}-${randomUUID().slice(0, 8)}`;
+};
+
+const productWriteSchema = z.object({
+  name_en: z.string().trim().min(1).max(160),
+  name_zh: z.string().trim().min(1).max(160),
+  description_en: z.string().trim().max(2_000).default(""),
+  description_zh: z.string().trim().max(2_000).default(""),
+  category_slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80),
+  base_price: z.number().int().min(0),
+  discount_percent: z.number().int().min(0).max(90).default(0),
+  tag_id: z.string().uuid().nullable().default(null),
+});
+
+const assertActiveTag = async (tagId: string | null, reply: FastifyReply) => {
+  if (!tagId) return true;
+  const tag = await query("select 1 from product_tags where id=$1 and active=true", [tagId]);
+  if (tag.rowCount) return true;
+  reply.code(422).send({ error: { code: "TAG_INVALID", message: "Choose an active product tag" } });
+  return false;
+};
+
 const couponSelect = `select c.*,
   case
     when c.status='ARCHIVED' then 'ARCHIVED'
@@ -85,10 +120,9 @@ const couponSelect = `select c.*,
   end as effective_status`;
 
 app.get("/v1/products", async (request) => {
-  const input = z.object({ kind: z.enum(["DRINK", "GOODS", "drink", "goods"]).optional(), category: z.string().optional(), include_inactive: z.coerce.boolean().optional() }).parse(request.query);
+  const input = z.object({ kind: z.enum(["DRINK", "GOODS", "drink", "goods"]).optional(), category: z.string().optional() }).parse(request.query);
   const values: unknown[] = [];
-  const where: string[] = [];
-  if (!input.include_inactive) where.push("p.active=true");
+  const where: string[] = ["p.active=true"];
   if (input.kind) { values.push(input.kind.toUpperCase()); where.push(`p.kind=$${values.length}`); }
   if (input.category) { values.push(input.category.toLowerCase()); where.push(`p.category_slug=$${values.length}`); }
   const result = await query(`${productSelect}${where.length ? ` where ${where.join(" and ")}` : ""} order by p.kind,p.category_slug,p.name_en`, values);
@@ -552,18 +586,37 @@ app.get("/v1/admin/products", { preHandler: requireAdmin }, async (request) => {
   return { data: result.rows };
 });
 
+app.post("/v1/admin/products", { preHandler: requireAdmin }, async (request, reply) => {
+  const input = productWriteSchema.extend({ kind: z.enum(["DRINK", "GOODS"]) }).parse(request.body);
+  if (!(await assertActiveTag(input.tag_id, reply))) return;
+  try {
+    const result = await query(
+      `insert into products(kind,category_slug,slug,name_en,name_zh,description_en,description_zh,image_key,base_price,size_prices_json,discount_percent,tag_id,active,updated_by)
+       values($1,$2,$3,$4,$5,$6,$7,null,$8,$9,$10,$11,false,$12) returning *`,
+      [input.kind, input.category_slug, productSlug(input.name_en, input.category_slug), input.name_en, input.name_zh, input.description_en, input.description_zh, input.base_price, { "One size": input.base_price }, input.discount_percent, input.tag_id, request.actor!.userId],
+    );
+    await query("insert into audit_logs(actor_id,action,entity_type,entity_id,request_id) values($1,'PRODUCT_CREATED','product',$2,$3)", [request.actor!.userId, result.rows[0].id, request.id]);
+    return reply.code(201).send({ data: result.rows[0] });
+  } catch (error: any) {
+    if (error.code === "23505") return reply.code(409).send({ error: { code: "PRODUCT_EXISTS", message: "A product with this slug already exists" } });
+    throw error;
+  }
+});
+
 app.patch("/v1/admin/products/:id", { preHandler: requireAdmin }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-  const input = z.object({ name_en: z.string().min(1).max(160).optional(), name_zh: z.string().min(1).max(160).optional(), category_slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80).optional(), base_price: z.number().int().min(0).optional(), discount_percent: z.number().int().min(0).max(90).optional(), active: z.boolean().optional(), tag_id: z.string().uuid().nullable().optional(), image_key: z.string().max(500).optional(), catalog_version: z.number().int().positive() }).parse(request.body);
-  if (input.tag_id) {
-    const tag = await query("select 1 from product_tags where id=$1 and active=true", [input.tag_id]);
-    if (!tag.rowCount) return reply.code(422).send({ error: { code: "TAG_INVALID", message: "Choose an active product tag" } });
+  const input = productWriteSchema.partial().extend({ active: z.boolean().optional(), catalog_version: z.number().int().positive() }).parse(request.body);
+  if (Object.hasOwn(input, "tag_id") && !(await assertActiveTag(input.tag_id ?? null, reply))) return;
+  const current = await query<{ image_key: string | null; catalog_version: number }>("select image_key,catalog_version from products where id=$1", [id]);
+  if (!current.rowCount) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Product not found" } });
+  if (input.active === true && !current.rows[0].image_key?.startsWith(`gcs://${config.mediaBucket}/products/`)) {
+    return reply.code(422).send({ error: { code: "PRODUCT_IMAGE_REQUIRED", message: "Upload a product image to the KIYOYO media bucket before publishing" } });
   }
   const result = await query(
-    `update products set name_en=coalesce($2,name_en),name_zh=coalesce($3,name_zh),category_slug=coalesce($4,category_slug),base_price=coalesce($5,base_price),discount_percent=coalesce($6,discount_percent),
-      active=coalesce($7,active),tag_id=case when $8::boolean then $9::uuid else tag_id end,image_key=coalesce($10,image_key),catalog_version=catalog_version+1,updated_at=now(),updated_by=$11
-     where id=$1 and catalog_version=$12 returning *`,
-    [id, input.name_en ?? null, input.name_zh ?? null, input.category_slug ?? null, input.base_price ?? null, input.discount_percent ?? null, input.active ?? null, Object.hasOwn(input, "tag_id"), input.tag_id ?? null, input.image_key ?? null, request.actor!.userId, input.catalog_version],
+    `update products set name_en=coalesce($2,name_en),name_zh=coalesce($3,name_zh),description_en=coalesce($4,description_en),description_zh=coalesce($5,description_zh),category_slug=coalesce($6,category_slug),base_price=coalesce($7,base_price),discount_percent=coalesce($8,discount_percent),
+      active=coalesce($9,active),tag_id=case when $10::boolean then $11::uuid else tag_id end,catalog_version=catalog_version+1,updated_at=now(),updated_by=$12
+     where id=$1 and catalog_version=$13 returning *`,
+    [id, input.name_en ?? null, input.name_zh ?? null, input.description_en ?? null, input.description_zh ?? null, input.category_slug ?? null, input.base_price ?? null, input.discount_percent ?? null, input.active ?? null, Object.hasOwn(input, "tag_id"), input.tag_id ?? null, request.actor!.userId, input.catalog_version],
   );
   if (!result.rowCount) return reply.code(409).send({ error: { code: "VERSION_CONFLICT", message: "Product was changed by another admin; refresh and retry" } });
   await query("insert into audit_logs(actor_id,action,entity_type,entity_id,request_id) values($1,'PRODUCT_UPDATED','product',$2,$3)", [request.actor!.userId, id, request.id]);
@@ -586,10 +639,19 @@ app.post("/v1/admin/products/:id/media-confirm", { preHandler: requireAdmin }, a
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ object_key: z.string().startsWith(`products/${id}/`).max(500), catalog_version: z.number().int().positive() }).parse(request.body);
   const file = storage.bucket(config.mediaBucket).file(input.object_key);
-  const [exists] = await file.exists();
-  if (!exists) return reply.code(422).send({ error: { code: "UPLOAD_MISSING", message: "Uploaded image was not found" } });
+  const [metadata] = await file.getMetadata().catch(() => [null]);
+  if (!metadata) return reply.code(422).send({ error: { code: "UPLOAD_MISSING", message: "Uploaded image was not found" } });
+  const validContentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!metadata.contentType || !validContentTypes.has(metadata.contentType) || Number(metadata.size ?? 0) > 8_000_000) {
+    await file.delete({ ignoreNotFound: true });
+    return reply.code(422).send({ error: { code: "UPLOAD_INVALID", message: "Uploaded media must be a JPG, PNG or WebP image under 8 MB" } });
+  }
   const result = await query("update products set image_key=$2,catalog_version=catalog_version+1,updated_at=now(),updated_by=$3 where id=$1 and catalog_version=$4 returning *", [id, `gcs://${config.mediaBucket}/${input.object_key}`, request.actor!.userId, input.catalog_version]);
-  if (!result.rowCount) return reply.code(409).send({ error: { code: "VERSION_CONFLICT", message: "Product changed while the image was uploading; refresh and retry" } });
+  if (!result.rowCount) {
+    await file.delete({ ignoreNotFound: true });
+    return reply.code(409).send({ error: { code: "VERSION_CONFLICT", message: "Product changed while the image was uploading; refresh and retry" } });
+  }
+  await query("insert into audit_logs(actor_id,action,entity_type,entity_id,request_id,metadata_redacted_json) values($1,'PRODUCT_MEDIA_UPDATED','product',$2,$3,$4)", [request.actor!.userId, id, request.id, { object_key: input.object_key, content_type: metadata.contentType, bytes: Number(metadata.size ?? 0) }]);
   return { data: result.rows[0] };
 });
 

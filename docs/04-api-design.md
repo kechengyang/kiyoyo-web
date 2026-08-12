@@ -99,6 +99,7 @@
 - `POST /v1/admin/loyalty/adjustments` — 管理员，强制 reason。
 - `GET /v1/admin/stores`、`PATCH /v1/admin/stores/{id}`
 - `GET /v1/admin/products?kind=DRINK&status=ACTIVE&query=...`
+- `POST /v1/admin/products` — 创建不可见商品草稿；上传并确认 GCS 图片后才能发布。
 - `PATCH /v1/admin/products/{id}` — 名称、基础价、折扣和上架状态；要求 `If-Match`/version 防止覆盖他人修改。
 - `GET /v1/admin/product-tags`、`POST /v1/admin/product-tags` — 查询或创建可复用商品标签。
 - `PATCH /v1/admin/product-tags/{id}`、`DELETE /v1/admin/product-tags/{id}` — 修改或归档标签；归档时事务性解除商品关联。

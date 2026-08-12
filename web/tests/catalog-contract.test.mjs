@@ -7,6 +7,12 @@ const webMenuPath = fileURLToPath(new URL("../app/menu.ts", import.meta.url));
 const apiSeedPath = fileURLToPath(
   new URL("../../api/src/seed.ts", import.meta.url),
 );
+const apiServerPath = fileURLToPath(
+  new URL("../../api/src/server.ts", import.meta.url),
+);
+const webCatalogPath = fileURLToPath(
+  new URL("../app/catalog.ts", import.meta.url),
+);
 const menuAssetDirectory = new URL(
   "../public/images/drinks/menu/",
   import.meta.url,
@@ -45,4 +51,26 @@ test("every seeded drink has a committed customer image", () => {
       `Missing menu image for ${product.code}: ${product.image}`,
     );
   }
+});
+
+test("customer product seeds resolve images through GCS bucket paths", () => {
+  const menuSource = readFileSync(webMenuPath, "utf8");
+  const dataSource = readFileSync(
+    fileURLToPath(new URL("../app/data.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.match(menuSource, /seededProductMedia\(`products\/menu\/\$\{image\}`\)/);
+  assert.match(dataSource, /seededProductMedia\("products\/goods\//);
+  assert.doesNotMatch(menuSource, /image:\s*`\/images\/drinks\/menu\//);
+  assert.doesNotMatch(dataSource, /image:\s*"\/images\/goods\//);
+  assert.match(readFileSync(webCatalogPath, "utf8"), /isBucketCatalog/);
+});
+
+test("the media proxy accepts encoded UUID product paths", () => {
+  const apiServerSource = readFileSync(apiServerPath, "utf8");
+  assert.match(apiServerSource, /maxParamLength:\s*1_000/);
+  assert.match(
+    apiServerSource,
+    /methods:\s*\["GET",\s*"HEAD",\s*"POST",\s*"PATCH",\s*"DELETE",\s*"OPTIONS"\]/,
+  );
 });

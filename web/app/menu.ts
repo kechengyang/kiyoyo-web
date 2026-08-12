@@ -1,4 +1,5 @@
 import type { Product } from "./types";
+import { seededProductMedia } from "./media";
 
 type MenuSeed = readonly [
   code: string,
@@ -112,7 +113,7 @@ export const menuProducts: Product[] = seeds.map(
       descriptionZh,
       price: Math.min(...Object.values(sizePrices)),
       sizePrices,
-      image: `/images/drinks/menu/${image}`,
+      ...seededProductMedia(`products/menu/${image}`),
       badge,
     };
   },

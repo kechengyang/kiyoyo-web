@@ -148,7 +148,11 @@ export function HomeView({
   <section className="story-band">
     <div className="story-photo">
       <img
-        src="/images/goods/streetwear.png"
+        src={
+          products.find((product) => product.id === "g1")?.image ??
+          products.find((product) => product.kind === "goods")?.image ??
+          ""
+        }
         alt="KIYOYO streetwear"
       />
     </div>
