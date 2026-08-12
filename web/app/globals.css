@@ -2028,6 +2028,10 @@ button {
   padding: 20px;
   overflow: auto;
 }
+:where(button, a, [role="button"]):focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 3px;
+}
 .auth-modal,
 .profile-modal,
 .address-modal,
@@ -2043,6 +2047,10 @@ button {
 .auth-modal > .logo {
   color: var(--red);
   margin-bottom: 28px;
+}
+.auth-modal > .modal-close {
+  width: 44px;
+  height: 44px;
 }
 .auth-kicker {
   display: block;
@@ -2173,11 +2181,12 @@ button {
   font-size: 10px;
   margin: 10px 0;
 }
-.password-control {
+.form-field > .password-control {
   display: grid;
   grid-template-columns: 1fr auto;
   border: 1px solid #aaa19b;
   background: #fff;
+  margin-bottom: 0;
 }
 .password-control:focus-within {
   border: 2px solid var(--red);
@@ -2320,8 +2329,11 @@ button {
   margin-top: 12px;
 }
 .auth-switch {
-  display: block;
-  margin: 17px auto;
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  margin: 2px auto;
+  padding: 8px 12px;
   border: 0;
   background: none;
   font-size: 10px;
