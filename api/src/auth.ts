@@ -188,8 +188,8 @@ export async function ensureLegacyAdmin(userId: string, email: string | null, au
       );
       await client.query(
         `insert into audit_logs(actor_id,action,entity_type,entity_id,metadata_redacted_json)
-         values($1,'LEGACY_ADMIN_BACKFILLED','staff_account',$1,$2)`,
-        [userId, { username }],
+         values($1,'LEGACY_ADMIN_BACKFILLED','staff_account',$2,$3)`,
+        [userId, userId, { username }],
       );
     }
     await client.query("commit");
