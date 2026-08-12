@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { money } from "../../../data";
-import { signOutMember } from "../../../platform";
+import { signOutMember } from "../../../auth/service";
 import type {
   Address, AuthSession, CartItem, Lang, Order, Tab, UserCoupon, UserProfile,
 } from "../../../types";

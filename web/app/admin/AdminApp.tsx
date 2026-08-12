@@ -9,15 +9,17 @@ import {
 } from "../catalog";
 import {
   apiFetch,
-  auth,
   fetchAdminCatalog,
   mapApiProduct,
+} from "../platform";
+import { auth } from "../auth/firebase";
+import {
   observeMember,
   sendMemberPasswordReset,
   sendMemberVerification,
   signInMember,
   signOutMember,
-} from "../platform";
+} from "../auth/service";
 import type { Order, Product, ProductTagTone } from "../types";
 import type {
   AdminCoupon,

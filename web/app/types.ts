@@ -123,13 +123,7 @@ export type UserCoupon = Coupon & {
   redeemedAt: string | null;
 };
 
-export type AuthProvider = "password" | "google" | "facebook";
-
-export type AuthSession = {
-  id: string;
-  email: string;
-  provider: AuthProvider;
-};
+export type { AuthProvider, AuthSession } from "./auth/types";
 
 export type Address = {
   id: string;

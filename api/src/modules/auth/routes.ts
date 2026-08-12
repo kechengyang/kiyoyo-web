@@ -1,0 +1,17 @@
+import type { FastifyInstance } from "fastify";
+import { authenticate } from "./middleware.js";
+import { bootstrapSchema } from "./schemas.js";
+import { bootstrapUser } from "./service.js";
+
+export function registerAuthRoutes(app: FastifyInstance) {
+  app.post(
+    "/v1/auth/bootstrap",
+    { preHandler: authenticate },
+    async (request) => {
+      const input = bootstrapSchema.parse(request.body ?? {});
+      const actor = request.actor!;
+      const user = await bootstrapUser(actor, input);
+      return { data: user, permissions: { admin: actor.isAdmin } };
+    },
+  );
+}

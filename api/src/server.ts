@@ -6,7 +6,11 @@ import { Storage } from "@google-cloud/storage";
 import { z, ZodError } from "zod";
 import { config } from "./config.js";
 import { pool, query } from "./db.js";
-import { authenticate, requireAdmin, requireProfile } from "./auth.js";
+import {
+  requireAdmin,
+  requireProfile,
+} from "./modules/auth/middleware.js";
+import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./crypto.js";
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
 
@@ -160,19 +164,7 @@ app.get("/v1/media/:encodedKey", async (request, reply) => {
   return reply.send(file.createReadStream());
 });
 
-app.post("/v1/auth/bootstrap", { preHandler: authenticate }, async (request) => {
-  const input = z.object({ nickname: z.string().trim().min(1).max(80).optional(), locale: z.enum(["en", "zh"]).default("en") }).parse(request.body ?? {});
-  const actor = request.actor!;
-  const nickname = input.nickname ?? actor.email?.split("@")[0] ?? "KIYOYO Member";
-  const result = await query(
-    `insert into users(external_auth_id,auth_provider,email,nickname,locale)
-     values($1,'identity-platform',$2,$3,$4)
-     on conflict(external_auth_id) do update set email=excluded.email,updated_at=now()
-     returning id,external_auth_id,email,nickname,gender,birth_year,locale,status,created_at`,
-    [actor.authId, actor.email, nickname, input.locale],
-  );
-  return { data: result.rows[0], permissions: { admin: actor.isAdmin } };
-});
+registerAuthRoutes(app);
 
 app.get("/v1/me", { preHandler: requireProfile }, async (request) => {
   const result = await query("select id,email,nickname,gender,birth_year,locale,status,created_at,updated_at from users where id=$1", [request.actor!.userId]);

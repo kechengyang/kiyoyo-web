@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { sendMemberPasswordReset } from "../../../platform";
+import { sendMemberPasswordReset } from "../../../auth/service";
 import type { AuthProvider, Lang } from "../../../types";
 import type { CustomerCopy } from "../core/copy";
 import { DialogBackdrop } from "../shared/DialogBackdrop";

@@ -12,12 +12,14 @@ import {
   apiFetch,
   fetchMemberCoupons,
   fetchMemberOrders,
-  observeMember,
   pickupTokenFingerprint,
   reissuePickupToken,
+} from "../platform";
+import {
+  observeMember,
   sendMemberVerification,
   signInMember,
-} from "../platform";
+} from "../auth/service";
 import {
   categorySlug,
   drinkCategoryAnchor,
