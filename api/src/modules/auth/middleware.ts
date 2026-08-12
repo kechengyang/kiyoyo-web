@@ -7,6 +7,7 @@ import { getAuth } from "firebase-admin/auth";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../../config.js";
 import { findUserByAuthId } from "./repository.js";
+import type { ProviderIdentity, TrustedIdentity } from "./types.js";
 import "./types.js";
 
 if (getApps().length === 0) {
@@ -14,6 +15,53 @@ if (getApps().length === 0) {
     credential: applicationDefault(),
     projectId: config.projectId,
   });
+}
+
+const providerNames = {
+  password: "PASSWORD",
+  email: "PASSWORD",
+  "google.com": "GOOGLE",
+  "facebook.com": "FACEBOOK",
+} as const;
+
+export function trustedProviderIdentities(
+  decoded: TrustedIdentity,
+): ProviderIdentity[] {
+  const identities = decoded.firebase?.identities ?? {};
+  const providers = Object.entries(identities).flatMap(([name, subjects]) => {
+    const provider = providerNames[name as keyof typeof providerNames];
+    if (!provider || !Array.isArray(subjects)) return [];
+    return subjects
+      .filter((subject): subject is string => typeof subject === "string")
+      .map((subject) => ({
+        provider,
+        subject: provider === "PASSWORD" ? subject.toLowerCase() : subject,
+      }));
+  });
+  const signInProvider =
+    providerNames[
+      decoded.firebase?.sign_in_provider as keyof typeof providerNames
+    ];
+  if (
+    signInProvider &&
+    !providers.some((identity) => identity.provider === signInProvider)
+  ) {
+    providers.push({
+      provider: signInProvider,
+      subject:
+        signInProvider === "PASSWORD"
+          ? (decoded.email?.toLowerCase() ?? decoded.uid)
+          : decoded.uid,
+    });
+  }
+  return providers.filter(
+    (identity, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.provider === identity.provider &&
+          candidate.subject === identity.subject,
+      ) === index,
+  );
 }
 
 export async function authenticate(
@@ -36,6 +84,7 @@ export async function authenticate(
       authId: decoded.uid,
       email,
       emailVerified,
+      providers: trustedProviderIdentities(decoded),
       userId: user?.id ?? null,
       status: user?.status ?? null,
       isAdmin:
@@ -47,6 +96,22 @@ export async function authenticate(
       error: {
         code: "INVALID_TOKEN",
         message: "Session is invalid or expired",
+      },
+    });
+  }
+}
+
+export async function requireVerifiedEmail(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  await requireProfile(request, reply);
+  if (reply.sent) return;
+  if (!request.actor?.email || !request.actor.emailVerified) {
+    return reply.code(403).send({
+      error: {
+        code: "EMAIL_VERIFICATION_REQUIRED",
+        message: "Verify your email before checking out",
       },
     });
   }

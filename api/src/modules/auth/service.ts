@@ -12,5 +12,7 @@ export async function bootstrapUser(
     email: actor.email,
     nickname,
     locale: input.locale,
+    emailVerified: actor.emailVerified,
+    providers: actor.providers,
   });
 }
