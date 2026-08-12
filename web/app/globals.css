@@ -10,6 +10,7 @@
   --line: #d9d0c7;
   --muted: #726a64;
 }
+
 * {
   box-sizing: border-box;
 }
@@ -2164,6 +2165,154 @@ button {
   padding: 10px;
   font-size: 10px;
   margin: 10px 0;
+}
+.form-success {
+  background: #e2f4e9;
+  color: #0d6a3a;
+  padding: 10px;
+  font-size: 10px;
+  margin: 10px 0;
+}
+.password-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  border: 1px solid #aaa19b;
+  background: #fff;
+}
+.password-control:focus-within {
+  border: 2px solid var(--red);
+}
+.password-control input,
+.password-control input:focus {
+  border: 0;
+  min-width: 0;
+  padding: 11px 12px;
+}
+.password-control button {
+  min-width: 52px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+.password-help,
+.auth-terms {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.auth-terms { text-align: center; }
+.verification-gate > strong {
+  display: block;
+  margin: 20px 0;
+  overflow-wrap: anywhere;
+}
+.verification-banner {
+  max-width: 1000px;
+  margin: 20px auto 0;
+  padding: 18px 20px;
+  border: 1px solid #e4b923;
+  background: #fff7cf;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.verification-banner strong,
+.verification-banner span {
+  display: block;
+}
+.verification-banner span {
+  max-width: 620px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.verification-banner > div:last-child {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.verification-banner button {
+  min-height: 44px;
+}
+.provider-manager {
+  max-width: 1000px;
+  margin: 24px auto 55px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 28px;
+}
+.provider-manager h3 { margin: 5px 0; }
+.provider-manager > div:first-child p {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.provider-list > div {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+}
+.provider-list span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.provider-list span b {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.provider-list button,
+.provider-password .text-button {
+  min-width: 72px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 900;
+}
+.provider-list button:disabled { color: var(--muted); }
+.provider-password {
+  margin-top: 16px;
+  padding: 20px;
+  background: var(--cream);
+}
+.provider-password > div { display: flex; gap: 12px; }
+.auth-action-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--cream);
+}
+.auth-action-page .auth-modal { width: min(520px, 100%); }
+.auth-action-page h1 {
+  font-family: Arial Black, Impact, sans-serif;
+  font-size: 37px;
+  line-height: .95;
+  letter-spacing: -2px;
+  text-transform: uppercase;
+  margin: 12px 0;
+}
+.auth-action-link {
+  display: grid;
+  place-items: center;
+  text-decoration: none;
 }
 .auth-modal .primary,
 .profile-modal .primary,
@@ -5410,4 +5559,25 @@ button {
     width: 100%;
     height: 220px;
   }
+}
+
+@media (max-width: 600px) {
+  .modal-backdrop:has(.auth-modal) {
+    padding: 0;
+    place-items: stretch;
+  }
+  .modal-backdrop > .auth-modal {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: none;
+    padding: 48px 22px 32px;
+    border: 0;
+  }
+  .provider-manager { padding: 20px; }
+  .verification-banner { align-items: stretch; flex-direction: column; }
+  .verification-banner > div:last-child { flex-direction: column; }
+  .provider-list > div { align-items: flex-start; padding: 8px 0; }
+  .provider-list span { min-height: 44px; }
+  .auth-action-page { padding: 0; }
+  .auth-action-page .auth-modal { min-height: 100dvh; padding: 48px 22px; }
 }

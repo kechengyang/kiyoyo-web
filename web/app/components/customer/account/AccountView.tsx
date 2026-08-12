@@ -1,12 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
 import { money } from "../../../data";
-import { signOutMember } from "../../../auth/service";
 import type {
   Address, AuthSession, CartItem, Lang, Order, Tab, UserCoupon, UserProfile,
 } from "../../../types";
+import type { AuthErrorCode, AuthProvider } from "../../../auth/types";
 import type { CustomerCopy } from "../core/copy";
 import { couponStatusLabel } from "../core/foundation";
 import { Logo, SectionHead } from "../shared/primitives";
+import { ProviderManager } from "../auth/ProviderManager";
 
 export type AccountPanel = "coupons" | "rewards" | "history";
 
@@ -14,7 +15,9 @@ export function AccountView({
   t, lang, session, profile, openAuth, openProfile, openAddress,
   setDefaultAddress, accountPanel, setAccountPanel, couponsLoading,
   userCoupons, selectedCouponId, setSelectedCouponId, setCouponCodeInput,
-  setTab, cart, orders, openOrderDetails, setEditingOrderId, setSession, go,
+  setTab, cart, orders, openOrderDetails, setEditingOrderId, signOut,
+  authBusy, authError, linkProvider, linkPassword, unlinkProvider,
+  resendVerification, refreshVerification, go,
 }: {
   t: CustomerCopy;
   lang: Lang;
@@ -36,7 +39,14 @@ export function AccountView({
   orders: Order[];
   openOrderDetails: (order: Order) => void;
   setEditingOrderId: Dispatch<SetStateAction<string | null>>;
-  setSession: Dispatch<SetStateAction<AuthSession | null>>;
+  signOut: () => Promise<unknown>;
+  authBusy: boolean;
+  authError: AuthErrorCode | null;
+  linkProvider: (provider: "google" | "facebook") => Promise<unknown>;
+  linkPassword: (email: string, password: string) => Promise<unknown>;
+  unlinkProvider: (provider: AuthProvider) => Promise<unknown>;
+  resendVerification: () => Promise<unknown>;
+  refreshVerification: () => Promise<AuthSession | null>;
   go: (tab: Tab) => void;
 }) {
   return (
@@ -104,13 +114,36 @@ export function AccountView({
         <Logo />
         <i>VIP</i>
       </div>
+      {!session.emailVerified && (
+        <aside className="verification-banner" aria-live="polite">
+          <div>
+            <strong>{t.verifyEmail}</strong>
+            <span>{t.verifyEmailHelp}</span>
+          </div>
+          <div>
+            <button
+              disabled={authBusy}
+              onClick={() => void resendVerification().catch(() => undefined)}
+            >
+              {t.resendVerification}
+            </button>
+            <button
+              className="primary"
+              disabled={authBusy}
+              onClick={() => void refreshVerification().catch(() => undefined)}
+            >
+              {t.checkVerification}
+            </button>
+          </div>
+        </aside>
+      )}
       <section className="profile-panel">
         <div className="profile-head">
           <div>
             <span className="eyebrow">{t.profile}</span>
             <h2>{profile.nickname}</h2>
             <p>
-              {session.email} · {session.provider}
+              {session.email || "—"} · {session.providers.map((provider) => t.providerNames[provider]).join(" · ")}
             </p>
           </div>
           <button onClick={openProfile}>{t.editProfile} →</button>
@@ -128,7 +161,7 @@ export function AccountView({
             <span>
               {lang === "zh" ? "登录方式" : "Sign-in method"}
             </span>
-            <strong>{session.provider}</strong>
+            <strong>{session.providers.map((provider) => t.providerNames[provider]).join(", ")}</strong>
           </div>
         </div>
         <div className="address-head">
@@ -373,14 +406,21 @@ export function AccountView({
         </a>
         <button
           onClick={() => {
-            void signOutMember();
-            setSession(null);
-            go("home");
+            void signOut().then(() => go("home"));
           }}
         >
           {t.signOut}
         </button>
       </div>
+      <ProviderManager
+        session={session}
+        t={t}
+        busy={authBusy}
+        error={authError}
+        linkProvider={linkProvider}
+        linkPassword={linkPassword}
+        unlinkProvider={unlinkProvider}
+      />
     </>
   )}
 </section>

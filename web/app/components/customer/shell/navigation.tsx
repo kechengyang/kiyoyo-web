@@ -75,7 +75,7 @@ export function CustomerHeader({
             }
           >
             <span aria-hidden="true">
-              {session ? (profile.nickname || session.email).charAt(0).toUpperCase() : "○"}
+              {session ? (profile.nickname || session.email || "K").charAt(0).toUpperCase() : "○"}
             </span>
             <strong>
               {session

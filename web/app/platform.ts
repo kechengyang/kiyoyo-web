@@ -143,6 +143,21 @@ export async function fetchCatalog() {
   return payload.data.map(mapApiProduct);
 }
 
+export async function fetchMemberFavorites(): Promise<Product[]> {
+  const payload = await apiFetch<{ data: ApiProduct[] }>("/v1/me/favorites");
+  return payload.data.map(mapApiProduct);
+}
+
+export const saveMemberFavorite = (productId: string) =>
+  apiFetch<void>(`/v1/me/favorites/${encodeURIComponent(productId)}`, {
+    method: "PUT",
+  });
+
+export const removeMemberFavorite = (productId: string) =>
+  apiFetch<void>(`/v1/me/favorites/${encodeURIComponent(productId)}`, {
+    method: "DELETE",
+  });
+
 export async function fetchAdminCatalog() {
   const payload = await apiFetch<{ data: ApiProduct[] }>(
     "/v1/admin/products",
