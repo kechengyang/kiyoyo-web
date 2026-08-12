@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { signOutMember } from "../../platform";
+import { signOutMember } from "../../auth/service";
 import type { AdminSession, AdminTab } from "../core/types";
 
 const adminTabs: AdminTab[] = [

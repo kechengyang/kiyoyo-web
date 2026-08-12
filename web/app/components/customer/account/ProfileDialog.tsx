@@ -8,6 +8,7 @@ type ProfileForm = Pick<UserProfile, "nickname" | "gender" | "age">;
 export function ProfileDialog({
   setProfileModal, setPendingCheckout, profile, t, session, profileForm,
   setProfileForm, lang, saveProfile,
+  profileError,
 }: {
   setProfileModal: Dispatch<SetStateAction<boolean>>;
   setPendingCheckout: Dispatch<SetStateAction<boolean>>;
@@ -18,6 +19,7 @@ export function ProfileDialog({
   setProfileForm: Dispatch<SetStateAction<ProfileForm>>;
   lang: Lang;
   saveProfile: () => void;
+  profileError: string;
 }) {
   return (
 <DialogBackdrop
@@ -91,10 +93,12 @@ export function ProfileDialog({
         ? "年龄与性别用于会员分析和更合适的推荐，不会公开展示。"
         : "Age and gender help with member insights and recommendations. They are never shown publicly."}
     </small>
+    {profileError && <div className="form-error" role="alert">{profileError}</div>}
     <button
       className="primary full"
       disabled={
-        !profileForm.nickname.trim() || Number(profileForm.age) < 13
+        !profileForm.nickname.trim() ||
+        Boolean(profileForm.age && Number(profileForm.age) < 13)
       }
       onClick={saveProfile}
     >

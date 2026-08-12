@@ -52,3 +52,18 @@ production deploy step.
 
 Firebase Hosting uses `web/out`. From `web/`, run `npm run build`; do not deploy
 the vinext preview directory `web/dist`.
+
+## Customer authentication
+
+Terraform enables Identity Platform email/password authentication and owns the
+authorized Firebase domains. After apply, use `firebase_auth_handler_url` as the
+Google/Facebook OAuth callback and `customer_auth_action_url` for verification
+and password-reset email templates.
+
+Google/Facebook provider secrets are intentionally configured in the Firebase
+console or an approved secret-management workflow. Do not add OAuth client
+secrets to Terraform variables: the supported Identity Platform provider
+resource stores them in Terraform state. Enable email-enumeration protection
+and enforce the 10-character minimum password policy in each Identity Platform
+environment before opening registration. See
+`docs/11-customer-auth-module-design.md` for the complete release checklist.

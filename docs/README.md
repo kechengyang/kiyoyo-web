@@ -17,6 +17,7 @@
 9. [重构路线图与持续记忆](./09-refactor-roadmap.md)
 10. [Admin 门店角色与权限管理系统设计（Review 已通过）](./10-admin-rbac-system-design.md)
 11. [GitHub CI 与 GCP dev 持续部署](./11-ci-cd.md)
+12. [顾客登录模块设计与实施说明](./11-customer-auth-module-design.md)
 
 ## 关键决策摘要
 

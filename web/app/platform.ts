@@ -1,19 +1,5 @@
 "use client";
 
-import { initializeApp, getApps } from "firebase/app";
-import {
-  FacebookAuthProvider,
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  getAuth,
-  onAuthStateChanged,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  type User,
-} from "firebase/auth";
 import type {
   Address,
   Coupon,
@@ -25,6 +11,7 @@ import type {
   UserCoupon,
 } from "./types";
 import { mediaUrlFromBucketPath } from "./media";
+import { auth } from "./auth/firebase";
 
 const deploymentEnvironment = process.env.NEXT_PUBLIC_KIYOYO_ENV ?? "dev";
 const devFallback = deploymentEnvironment === "dev";
@@ -53,78 +40,6 @@ export const MAPS_BROWSER_KEY = publicConfigValue(
   process.env.NEXT_PUBLIC_MAPS_BROWSER_KEY,
   "AIzaSyAyhLUiDn0yl-RLfhanindAsJGsQrhfsrg",
 );
-
-const firebaseConfig = {
-  projectId: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    "kiyoyo",
-  ),
-  appId: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_APP_ID",
-    process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    "1:386290495601:web:47a307bc4965ddca752bd0",
-  ),
-  storageBucket: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    "kiyoyo.firebasestorage.app",
-  ),
-  apiKey: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_API_KEY",
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    "AIzaSyCpM9bXRBrObsN4u5_cUq0kragkI0fCdNI",
-  ),
-  authDomain: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
-    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    "kiyoyo.firebaseapp.com",
-  ),
-  messagingSenderId: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
-    process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-    "386290495601",
-  ),
-};
-
-const firebaseApp = getApps()[0] ?? initializeApp(firebaseConfig);
-export const auth = getAuth(firebaseApp);
-
-export type SignInKind = "password" | "google" | "facebook";
-
-export async function signInMember(
-  kind: SignInKind,
-  mode: "signin" | "signup",
-  email = "",
-  password = "",
-) {
-  if (kind === "google")
-    return (await signInWithPopup(auth, new GoogleAuthProvider())).user;
-  if (kind === "facebook")
-    return (await signInWithPopup(auth, new FacebookAuthProvider())).user;
-  return mode === "signup"
-    ? (await createUserWithEmailAndPassword(auth, email, password)).user
-    : (await signInWithEmailAndPassword(auth, email, password)).user;
-}
-
-export const staffIdentityAlias = (username: string) =>
-  `${username.trim().toLowerCase()}@staff.kiyoyo.internal`;
-
-export async function signInStaff(username: string, password: string) {
-  const login = username.trim().toLowerCase();
-  const identity = login.includes("@") ? login : staffIdentityAlias(login);
-  return (await signInWithEmailAndPassword(auth, identity, password)).user;
-}
-
-export const observeMember = (listener: (user: User | null) => void) =>
-  onAuthStateChanged(auth, listener);
-export const signOutMember = () => signOut(auth);
-export const sendMemberVerification = async () => {
-  if (!auth.currentUser) throw new Error("Sign in required");
-  await sendEmailVerification(auth.currentUser);
-};
-export const sendMemberPasswordReset = (email: string) =>
-  sendPasswordResetEmail(auth, email.trim().toLowerCase());
 
 export async function apiFetch<T>(
   path: string,
@@ -227,6 +142,21 @@ export async function fetchCatalog() {
   );
   return payload.data.map(mapApiProduct);
 }
+
+export async function fetchMemberFavorites(): Promise<Product[]> {
+  const payload = await apiFetch<{ data: ApiProduct[] }>("/v1/me/favorites");
+  return payload.data.map(mapApiProduct);
+}
+
+export const saveMemberFavorite = (productId: string) =>
+  apiFetch<void>(`/v1/me/favorites/${encodeURIComponent(productId)}`, {
+    method: "PUT",
+  });
+
+export const removeMemberFavorite = (productId: string) =>
+  apiFetch<void>(`/v1/me/favorites/${encodeURIComponent(productId)}`, {
+    method: "DELETE",
+  });
 
 export async function fetchAdminCatalog() {
   const payload = await apiFetch<{ data: ApiProduct[] }>(

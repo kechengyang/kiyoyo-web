@@ -11,10 +11,12 @@ import {
   apiFetch,
   fetchAdminCatalog,
   mapApiProduct,
+} from "../platform";
+import {
   observeMember,
   signInStaff,
   signOutMember,
-} from "../platform";
+} from "../auth/service";
 import type { Order, Product, ProductTagTone } from "../types";
 import type {
   AdminCoupon,

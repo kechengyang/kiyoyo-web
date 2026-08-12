@@ -11,13 +11,22 @@ import {
 import {
   apiFetch,
   fetchMemberCoupons,
+  fetchMemberFavorites,
   fetchMemberOrders,
-  observeMember,
   pickupTokenFingerprint,
+  removeMemberFavorite,
   reissuePickupToken,
-  sendMemberVerification,
-  signInMember,
+  saveMemberFavorite,
 } from "../platform";
+import { useCustomerAuth } from "../auth/useCustomerAuth";
+import {
+  FAVORITE_OWNER_KEY,
+  GUEST_FAVORITE_OWNER,
+  memberFavoriteOwner,
+  planFavoriteSync,
+  shouldClearFavoritesOnSignOut,
+} from "../auth/favoriteOwnership";
+import { shouldClearMemberData } from "../auth/state";
 import {
   categorySlug,
   drinkCategoryAnchor,
@@ -37,7 +46,8 @@ import { GlobalSearchDialog } from "./customer/shell/GlobalSearchDialog";
 import { ProductDialog } from "./customer/shop/ProductDialog";
 import { StoreDialog } from "./customer/fulfillment/StoreDialog";
 import { CheckoutDialog } from "./customer/cart/CheckoutDialog";
-import { AuthDialog } from "./customer/account/AuthDialog";
+import { AuthDialog } from "./customer/auth/AuthDialog";
+import { VerificationGate } from "./customer/auth/VerificationGate";
 import { ProfileDialog } from "./customer/account/ProfileDialog";
 import { AddressDialog } from "./customer/account/AddressDialog";
 import { OrderAddressDialog } from "./customer/orders/OrderAddressDialog";
@@ -50,8 +60,6 @@ import {
 } from "./customer/shell/navigation";
 import type {
   Address,
-  AuthProvider,
-  AuthSession,
   CartItem,
   Lang,
   Order,
@@ -63,6 +71,8 @@ import type {
 
 export default function KiyoyoApp() {
   const [lang, setLang] = useStoredState<Lang>("kiyoyo-lang", "en");
+  const customerAuth = useCustomerAuth(lang);
+  const session = customerAuth.session;
   const [catalog] = useCatalog();
   const [productTags] = useProductTags();
   const [tab, setTab] = useState<Tab>("home");
@@ -72,12 +82,10 @@ export default function KiyoyoApp() {
     "g1",
     "d6",
   ]);
+  const savedRef = useRef(saved);
+  const favoriteSyncMemberRef = useRef<string | null>(null);
   const [orders, setOrders] = useStoredState<Order[]>("kiyoyo-orders", []);
   const ordersRef = useRef<Order[]>(orders);
-  const [session, setSession] = useStoredState<AuthSession | null>(
-    "kiyoyo-session",
-    null,
-  );
   const [profile, setProfile] = useStoredState<UserProfile>(
     "kiyoyo-profile",
     emptyProfile,
@@ -113,9 +121,9 @@ export default function KiyoyoApp() {
     toppings: [] as string[],
   });
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
-  const [authForm, setAuthForm] = useState({ email: "", password: "" });
-  const [authError, setAuthError] = useState("");
+  const [verificationGate, setVerificationGate] = useState(false);
   const [profileModal, setProfileModal] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [profileForm, setProfileForm] = useState({
     nickname: "",
     gender: "" as UserProfile["gender"],
@@ -164,38 +172,94 @@ export default function KiyoyoApp() {
     ordersRef.current = orders;
   }, [orders]);
 
-  useEffect(
-    () =>
-      observeMember(async (user) => {
-        if (!user) {
-          setSession(null);
-          setOrders([]);
-          setUserCoupons([]);
-          setCouponsLoading(false);
-          setSelectedCouponId("");
-          return;
-        }
-        const providerId = user.providerData[0]?.providerId;
-        const provider: AuthProvider =
-          providerId === "google.com"
-            ? "google"
-            : providerId === "facebook.com"
-              ? "facebook"
-              : "password";
-        setSession({ id: user.uid, email: user.email ?? "", provider });
-        setCouponsLoading(true);
-        try {
-          await apiFetch("/v1/auth/bootstrap", {
-            method: "POST",
-            body: JSON.stringify({
-              nickname:
-                user.displayName ||
-                user.email?.split("@")[0] ||
-                "KIYOYO Member",
-              locale: lang,
-            }),
-          });
-          const [member, addressPayload, remoteOrders, remoteCoupons] = await Promise.all([
+  useEffect(() => {
+    savedRef.current = saved;
+  }, [saved]);
+
+  useEffect(() => {
+    if (
+      customerAuth.phase !== "authenticated" ||
+      !session ||
+      catalog.length === 0 ||
+      favoriteSyncMemberRef.current === session.memberId
+    )
+      return;
+    favoriteSyncMemberRef.current = session.memberId;
+    let cancelled = false;
+    void (async () => {
+      const plan = planFavoriteSync({
+        owner: window.localStorage.getItem(FAVORITE_OWNER_KEY),
+        memberId: session.memberId,
+        localIds: savedRef.current,
+      });
+      if (plan.resetLocal) {
+        savedRef.current = [];
+        setSaved([]);
+      }
+      window.localStorage.setItem(FAVORITE_OWNER_KEY, plan.targetOwner);
+      const localProducts = plan.uploadIds
+        .map((id) => catalog.find((product) => product.id === id))
+        .filter((product): product is Product => Boolean(product?.apiId));
+      try {
+        await Promise.all(
+          localProducts.map((product) => saveMemberFavorite(product.apiId!)),
+        );
+        const remoteProducts = await fetchMemberFavorites();
+        if (cancelled) return;
+        const merged = [
+          ...new Set([
+            ...plan.uploadIds,
+            ...remoteProducts.map((product) => product.id),
+          ]),
+        ];
+        savedRef.current = merged;
+        setSaved(merged);
+      } catch {
+        favoriteSyncMemberRef.current = null;
+        /* Local favourites remain available while remote sync is unavailable. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (favoriteSyncMemberRef.current === session.memberId) {
+        favoriteSyncMemberRef.current = null;
+      }
+    };
+  }, [catalog, customerAuth.phase, session, setSaved]);
+
+  useEffect(() => {
+    if (!shouldClearMemberData(customerAuth.phase)) return;
+    favoriteSyncMemberRef.current = null;
+    const owner = window.localStorage.getItem(FAVORITE_OWNER_KEY);
+    if (shouldClearFavoritesOnSignOut(owner)) {
+      savedRef.current = [];
+      setSaved([]);
+      window.localStorage.setItem(
+        FAVORITE_OWNER_KEY,
+        GUEST_FAVORITE_OWNER,
+      );
+    }
+  }, [customerAuth.phase, setSaved]);
+
+  useEffect(() => {
+    if (shouldClearMemberData(customerAuth.phase)) {
+      void Promise.resolve().then(() => {
+        setOrders([]);
+        setProfile(emptyProfile);
+        setUserCoupons([]);
+        setCouponsLoading(false);
+        setSelectedCouponId("");
+      });
+      return;
+    }
+    if (customerAuth.phase !== "authenticated" || !session) return;
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setCouponsLoading(true);
+      try {
+        const [member, addressPayload, remoteOrders, remoteCoupons] = await Promise.all([
             apiFetch<{
               data: {
                 nickname: string;
@@ -217,7 +281,8 @@ export default function KiyoyoApp() {
             }>("/v1/me/addresses"),
             fetchMemberOrders(),
             fetchMemberCoupons(),
-          ]);
+        ]);
+        if (cancelled) return;
           setUserCoupons(remoteCoupons);
           setCouponsLoading(false);
           const genderMap: Record<string, UserProfile["gender"]> = {
@@ -280,13 +345,15 @@ export default function KiyoyoApp() {
             ...mergedRemote,
             ...localOrders.filter((order) => !remoteIds.has(order.id)),
           ]);
-        } catch {
-          setCouponsLoading(false);
-          /* preserve the local fallback if the API is temporarily unavailable */
-        }
-      }),
-    [lang, setOrders, setProfile, setSession],
-  );
+      } catch {
+        if (!cancelled) setCouponsLoading(false);
+        /* preserve the local fallback if the API is temporarily unavailable */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerAuth.phase, session, setOrders, setProfile]);
 
   useEffect(() => {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -608,10 +675,27 @@ export default function KiyoyoApp() {
     setModalProduct(null);
   };
 
-  const toggleSave = (id: string) =>
-    setSaved(
-      saved.includes(id) ? saved.filter((x) => x !== id) : [...saved, id],
-    );
+  const toggleSave = (id: string) => {
+    const removing = saved.includes(id);
+    setSaved(removing ? saved.filter((x) => x !== id) : [...saved, id]);
+    const productId = catalog.find((product) => product.id === id)?.apiId;
+    if (session && productId) {
+      window.localStorage.setItem(
+        FAVORITE_OWNER_KEY,
+        memberFavoriteOwner(session.memberId),
+      );
+      void (removing
+        ? removeMemberFavorite(productId)
+        : saveMemberFavorite(productId)
+      ).catch(() => undefined);
+    }
+    if (!session) {
+      window.localStorage.setItem(
+        FAVORITE_OWNER_KEY,
+        GUEST_FAVORITE_OWNER,
+      );
+    }
+  };
   const updateQty = (key: string, delta: number) =>
     setCart(
       cart
@@ -625,89 +709,25 @@ export default function KiyoyoApp() {
 
   const openAuth = (mode: "signin" | "signup", afterCheckout = false) => {
     setAuthMode(mode);
-    setAuthError("");
+    customerAuth.clearError();
     setPendingCheckout(afterCheckout);
   };
 
-  const completeAuth = async (provider: AuthProvider) => {
-    const email =
-      provider === "password"
-        ? authForm.email.trim().toLowerCase()
-        : `${provider}.demo@kiyoyo.local`;
-    if (
-      provider === "password" &&
-      (!email.includes("@") || authForm.password.length < 6)
-    ) {
-      setAuthError(
-        lang === "zh"
-          ? "请输入有效邮箱，密码至少 6 位。"
-          : "Enter a valid email and a password of at least 6 characters.",
-      );
+  const completeAuth = (nextSession: typeof session) => {
+    if (!nextSession) return;
+    setAuthMode(null);
+    if (!pendingCheckout) return;
+    if (!nextSession.emailVerified) {
+      setVerificationGate(true);
       return;
     }
-    try {
-      const user = await signInMember(
-        provider,
-        authMode ?? "signin",
-        email,
-        authForm.password,
-      );
-      if (provider === "password" && authMode === "signup") {
-        await sendMemberVerification();
-      }
-      const providerId = user.providerData[0]?.providerId;
-      const actualProvider: AuthProvider =
-        providerId === "google.com"
-          ? "google"
-          : providerId === "facebook.com"
-            ? "facebook"
-            : "password";
-      setSession({
-        id: user.uid,
-        email: user.email ?? email,
-        provider: actualProvider,
-      } as AuthSession);
-      const bootstrap = await apiFetch<{
-        data: {
-          nickname: string;
-          gender: string | null;
-          birth_year: number | null;
-        };
-      }>("/v1/auth/bootstrap", {
-        method: "POST",
-        body: JSON.stringify({
-          nickname: user.displayName || email.split("@")[0],
-          locale: lang,
-        }),
-      });
-      setAuthMode(null);
-      setAuthForm({ email: "", password: "" });
-      if (!bootstrap.data.gender || !bootstrap.data.birth_year) {
-        const suggested = bootstrap.data.nickname.replace(/[._-]/g, " ");
-        setProfileForm({
-          nickname: suggested.charAt(0).toUpperCase() + suggested.slice(1),
-          gender: "",
-          age: "",
-        });
-        setProfileModal(true);
-      } else if (pendingCheckout) {
-        setCheckout(true);
-        setCheckoutChannel(null);
-        setPendingCheckout(false);
-      } else setPendingCheckout(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Sign in failed";
-      setAuthError(
-        message.includes("operation-not-allowed")
-          ? lang === "zh"
-            ? "此社交登录正在等待 OAuth 配置，请先使用邮箱登录。"
-            : "This social provider is awaiting OAuth setup. Please use email for now."
-          : message,
-      );
-    }
+    setCheckout(true);
+    setCheckoutChannel(null);
+    setPendingCheckout(false);
   };
 
   const openProfile = () => {
+    setProfileError("");
     setProfileForm({
       nickname: profile.nickname,
       gender: profile.gender,
@@ -719,9 +739,8 @@ export default function KiyoyoApp() {
   const saveProfile = async () => {
     if (
       !profileForm.nickname.trim() ||
-      !profileForm.age ||
-      Number(profileForm.age) < 13 ||
-      Number(profileForm.age) > 120
+      (profileForm.age &&
+        (Number(profileForm.age) < 13 || Number(profileForm.age) > 120))
     )
       return;
     const genderMap: Record<Exclude<UserProfile["gender"], "">, string> = {
@@ -736,7 +755,9 @@ export default function KiyoyoApp() {
         body: JSON.stringify({
           nickname: profileForm.nickname.trim(),
           gender: profileForm.gender ? genderMap[profileForm.gender] : null,
-          birth_year: new Date().getFullYear() - Number(profileForm.age),
+          birth_year: profileForm.age
+            ? new Date().getFullYear() - Number(profileForm.age)
+            : null,
           locale: lang,
         }),
       });
@@ -752,7 +773,7 @@ export default function KiyoyoApp() {
         setPendingCheckout(false);
       }
     } catch (error) {
-      setAuthError(
+      setProfileError(
         error instanceof Error ? error.message : "Profile could not be saved",
       );
     }
@@ -869,6 +890,11 @@ export default function KiyoyoApp() {
     if (hasUnavailable) return;
     if (!session) {
       openAuth("signin", true);
+      return;
+    }
+    if (!session.emailVerified) {
+      setPendingCheckout(true);
+      setVerificationGate(true);
       return;
     }
     setSelectedAddressId(
@@ -1249,7 +1275,14 @@ export default function KiyoyoApp() {
             orders={orders}
             openOrderDetails={openOrderDetails}
             setEditingOrderId={setEditingOrderId}
-            setSession={setSession}
+            signOut={customerAuth.signOut}
+            authBusy={customerAuth.busy}
+            authError={customerAuth.error}
+            linkProvider={customerAuth.linkProvider}
+            linkPassword={customerAuth.linkPassword}
+            unlinkProvider={customerAuth.unlinkProvider}
+            resendVerification={customerAuth.resendVerification}
+            refreshVerification={customerAuth.refresh}
             go={go}
           />
         )}
@@ -1338,16 +1371,43 @@ export default function KiyoyoApp() {
 
       {authMode && (
         <AuthDialog
-          authMode={authMode}
-          setAuthMode={setAuthMode}
-          setPendingCheckout={setPendingCheckout}
+          initialMode={authMode}
           t={t}
-          completeAuth={completeAuth}
-          authForm={authForm}
-          setAuthForm={setAuthForm}
-          authError={authError}
-          setAuthError={setAuthError}
-          lang={lang}
+          busy={customerAuth.busy}
+          error={customerAuth.error}
+          clearError={customerAuth.clearError}
+          onAuthenticate={customerAuth.signIn}
+          onPasswordReset={customerAuth.sendPasswordReset}
+          onSuccess={completeAuth}
+          onClose={() => {
+            setAuthMode(null);
+            setPendingCheckout(false);
+          }}
+        />
+      )}
+
+      {verificationGate && session && (
+        <VerificationGate
+          email={session.email}
+          t={t}
+          busy={customerAuth.busy}
+          error={customerAuth.error}
+          onClose={() => {
+            setVerificationGate(false);
+            setPendingCheckout(false);
+          }}
+          onResend={customerAuth.resendVerification}
+          onRefresh={async () => {
+            const refreshed = await customerAuth.refresh();
+            if (!refreshed?.emailVerified) return false;
+            setVerificationGate(false);
+            if (pendingCheckout) {
+              setCheckout(true);
+              setCheckoutChannel(null);
+              setPendingCheckout(false);
+            }
+            return true;
+          }}
         />
       )}
 
@@ -1362,6 +1422,7 @@ export default function KiyoyoApp() {
           setProfileForm={setProfileForm}
           lang={lang}
           saveProfile={saveProfile}
+          profileError={profileError}
         />
       )}
 

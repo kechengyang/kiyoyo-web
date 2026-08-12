@@ -2,7 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { getAuth } from "firebase-admin/auth";
 import { z } from "zod";
 import { pool, query } from "../db.js";
-import { requirePermission, requireRecentAdminAuth } from "../auth.js";
+import {
+  requirePermission,
+  requireRecentAdminAuth,
+} from "../modules/auth/middleware.js";
 import {
   isValidUsername,
   normalizeUsername,

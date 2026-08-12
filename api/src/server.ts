@@ -8,12 +8,13 @@ import { config } from "./config.js";
 import { pool, query } from "./db.js";
 import {
   actorCanAccessStore,
-  authenticate,
-  ensureLegacyAdmin,
   requireAdmin,
   requirePermission,
   requireProfile,
-} from "./auth.js";
+  requireVerifiedEmail,
+} from "./modules/auth/middleware.js";
+import { listActiveProviders } from "./modules/auth/repository.js";
+import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./crypto.js";
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
 import { registerAdminAccessRoutes } from "./admin/access-routes.js";
@@ -189,26 +190,20 @@ app.get("/v1/media/:encodedKey", async (request, reply) => {
   return reply.send(file.createReadStream());
 });
 
-app.post("/v1/auth/bootstrap", { preHandler: authenticate }, async (request) => {
-  const input = z.object({ nickname: z.string().trim().min(1).max(80).optional(), locale: z.enum(["en", "zh"]).default("en") }).parse(request.body ?? {});
-  const actor = request.actor!;
-  const nickname = input.nickname ?? actor.email?.split("@")[0] ?? "KIYOYO Member";
-  const result = await query(
-    `insert into users(external_auth_id,auth_provider,email,nickname,locale)
-     values($1,'identity-platform',$2,$3,$4)
-     on conflict(external_auth_id) do update set email=excluded.email,updated_at=now()
-     returning id,external_auth_id,email,nickname,gender,birth_year,locale,status,created_at`,
-    [actor.authId, actor.email, nickname, input.locale],
-  );
-  if (actor.legacyAdmin) {
-    await ensureLegacyAdmin(result.rows[0].id, actor.email, actor.authId);
-  }
-  return { data: result.rows[0], permissions: { admin: actor.isAdmin } };
-});
+registerAuthRoutes(app);
 
 app.get("/v1/me", { preHandler: requireProfile }, async (request) => {
-  const result = await query("select id,email,nickname,gender,birth_year,locale,status,created_at,updated_at from users where id=$1", [request.actor!.userId]);
-  return { data: result.rows[0], permissions: { admin: request.actor!.isAdmin } };
+  const result = await query("select id,email,nickname,gender,birth_year,locale,status,email_verified_at,last_login_at,created_at,updated_at from users where id=$1", [request.actor!.userId]);
+  const providers = await listActiveProviders(request.actor!.userId!);
+  return {
+    data: result.rows[0],
+    auth: {
+      uid: request.actor!.authId,
+      emailVerified: request.actor!.emailVerified,
+      providers,
+    },
+    permissions: { admin: request.actor!.isAdmin },
+  };
 });
 
 app.patch("/v1/me", { preHandler: requireProfile }, async (request) => {
@@ -336,7 +331,7 @@ const checkoutSchema = z.object({
   payment_method: z.object({ provider: z.literal("MOCK"), token: z.enum(["test_ok", "test_declined", "test_timeout"]) }),
 });
 
-app.post("/v1/checkouts", { preHandler: requireProfile }, async (request, reply) => {
+app.post("/v1/checkouts", { preHandler: requireVerifiedEmail }, async (request, reply) => {
   const input = checkoutSchema.parse(request.body);
   const idempotencyKey = String(request.headers["idempotency-key"] ?? "");
   if (!idempotencyKey) return reply.code(400).send({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Idempotency-Key header is required" } });

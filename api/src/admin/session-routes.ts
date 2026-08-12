@@ -1,7 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { query } from "../db.js";
-import { requirePermission, requireStaff } from "../auth.js";
+import {
+  requirePermission,
+  requireStaff,
+} from "../modules/auth/middleware.js";
 
 async function resolveOverviewScope(request: FastifyRequest, reply: FastifyReply) {
   const input = z.object({ store_id: z.string().optional() }).parse(request.query);

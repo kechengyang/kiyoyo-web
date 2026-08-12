@@ -50,6 +50,16 @@ output "firebase_web_app_id" {
   value = google_firebase_web_app.app.app_id
 }
 
+output "firebase_auth_handler_url" {
+  description = "OAuth callback to register with Google/Facebook providers"
+  value       = "https://${local.prefix}.firebaseapp.com/__/auth/handler"
+}
+
+output "customer_auth_action_url" {
+  description = "Custom email verification and password reset handler"
+  value       = "https://${google_firebase_hosting_site.app.site_id}.web.app/auth/action"
+}
+
 output "api_url" {
   value = google_cloud_run_v2_service.api.uri
 }
