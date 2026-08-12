@@ -2,9 +2,10 @@ import { money } from "../../data";
 import type { AdminCustomer } from "../core/types";
 import { PanelHead } from "../shared/primitives";
 
-export function CustomersView({ customers, openCustomer }: {
+export function CustomersView({ customers, openCustomer, canWrite }: {
   customers: AdminCustomer[];
   openCustomer: (customer: AdminCustomer) => void;
+  canWrite: boolean;
 }) {
   return (
 <section className="admin-panel wide">
@@ -36,7 +37,7 @@ export function CustomersView({ customers, openCustomer }: {
         </span>
         <strong>{money(c.lifetime_value)}</strong>
         <span>{c.order_count}</span>
-        <button onClick={() => void openCustomer(c)}>Manage →</button>
+        <button onClick={() => void openCustomer(c)}>{canWrite ? "Manage" : "View"} →</button>
       </div>
     ))}
   </div>

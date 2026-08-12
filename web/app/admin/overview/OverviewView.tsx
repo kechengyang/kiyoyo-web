@@ -1,112 +1,65 @@
 import { money } from "../../data";
 import type { Order, Product } from "../../types";
-import type { AdminCustomer, AdminStore, AdminTab } from "../core/types";
+import type { AdminOverview, AdminStore, AdminTab } from "../core/types";
 import { Metric, OrderTable, PanelHead } from "../shared/primitives";
 
-export function OverviewView({ orders, active, revenue, customers, setTab, catalog, adminStores, changeStatus }: {
-  orders: Order[];
-  active: Order[];
-  revenue: number;
-  customers: AdminCustomer[];
+export function OverviewView({
+  overview,
+  recentOrders,
+  setTab,
+  catalog,
+  adminStores,
+  changeStatus,
+  canManageOrders,
+}: {
+  overview: AdminOverview | null;
+  recentOrders: Order[];
   setTab: (tab: AdminTab) => void;
   catalog: Product[];
   adminStores: AdminStore[];
   changeStatus: (id: string, status: Order["status"]) => void;
+  canManageOrders: boolean;
 }) {
+  if (!overview) {
+    return <section className="admin-panel"><div className="admin-empty-state"><strong>Loading scoped overview…</strong><span>Statistics are calculated by the server for your authorised stores.</span></div></section>;
+  }
+  const metrics = overview.metrics;
+  const maximum = Math.max(1, ...overview.store_pulse.map((store) => store.order_count));
   return (
-<>
-  <section className="metric-grid">
-    <Metric
-      label="Recent orders"
-      value={String(orders.length)}
-      note={`${active.length} active now`}
-      trend="LIVE"
-    />
-    <Metric
-      label="Gross sales"
-      value={money(revenue)}
-      note="Mock payment value"
-      trend="TEST"
-    />
-    <Metric
-      label="Ready for pickup"
-      value={String(
-        orders.filter((o) => o.status === "Ready").length,
-      )}
-      note="Needs attention"
-      trend="LIVE"
-    />
-    <Metric
-      label="Members"
-      value={String(customers.length)}
-      note="Loaded from Cloud SQL"
-      trend="LIVE"
-    />
-  </section>
-  <div className="admin-two">
-    <section className="admin-panel">
-      <PanelHead
-        title="Live orders"
-        action="View all"
-        onAction={() => setTab("orders")}
-      />
-      <OrderTable
-        orders={orders.slice(0, 5)}
-        catalog={catalog}
-        stores={adminStores}
-        onStatus={changeStatus}
-      />
-    </section>
-    <section className="admin-panel store-pulse">
-      <PanelHead title="Store pulse" />
-      <div className="pulse-chart">
-        {adminStores.slice(0, 5).map((store) => {
-          const count = orders.filter(
-            (order) => order.storeId === store.code,
-          ).length;
-          const maximum = Math.max(
-            1,
-            ...adminStores.map(
-              (candidate) =>
-                orders.filter(
-                  (order) => order.storeId === candidate.code,
-                ).length,
-            ),
-          );
-          return (
-            <div key={store.id}>
-              <span>{store.area}</span>
-              <i>
-                <b style={{ height: `${(count / maximum) * 100}%` }} />
-              </i>
-              <strong>{count}</strong>
-            </div>
-          );
-        })}
+    <>
+      <div className="overview-scope-note" role="status">
+        <strong>{overview.scope.mode === "GLOBAL" ? "All Nairobi stores" : `Authorised stores · ${overview.scope.stores.length}`}</strong>
+        <span>{overview.scope.stores.map((store) => store.area).join(" · ")}</span>
       </div>
-      <small>Recent orders · live Cloud SQL data</small>
-    </section>
-  </div>
-  <section className="admin-panel quick">
-    <PanelHead title="Quick actions" />
-    <div>
-      <button onClick={() => setTab("products")}>
-        <i>◇</i>
-        <strong>Manage products</strong>
-        <span>Pricing, offers & images</span>
-      </button>
-      <button onClick={() => setTab("redeem")}>
-        <i>⌗</i>
-        <strong>Redeem pickup</strong>
-        <span>Verify one-time QR</span>
-      </button>
-      <button onClick={() => setTab("orders")}>
-        <i>▤</i>
-        <strong>Manage orders</strong>
-        <span>Update preparation status</span>
-      </button>
-    </div>
-  </section>
-</>
+      <section className="metric-grid">
+        <Metric label="Recent orders" value={String(metrics.order_count)} note={`${metrics.active_count} active now`} trend="LIVE" />
+        <Metric label="Gross sales" value={money(metrics.gross_sales)} note="Scoped item sales" trend="TEST" />
+        <Metric label="Ready for pickup" value={String(metrics.ready_count)} note="Needs attention" trend="LIVE" />
+        <Metric label="Members" value={String(metrics.customer_count)} note="Unique scoped customers" trend="LIVE" />
+      </section>
+      <div className="admin-two">
+        <section className="admin-panel">
+          <PanelHead title="Live orders" action="View assigned orders" onAction={() => setTab("orders")} />
+          <OrderTable orders={recentOrders} catalog={catalog} stores={adminStores} onStatus={changeStatus} readOnly={!canManageOrders} />
+        </section>
+        <section className="admin-panel store-pulse">
+          <PanelHead title="Store pulse" />
+          <div className="pulse-chart">
+            {overview.store_pulse.map((store) => (
+              <div key={store.id}><span>{store.area}</span><i><b style={{ height: `${(store.order_count / maximum) * 100}%` }} /></i><strong>{store.order_count}</strong></div>
+            ))}
+          </div>
+          <small>Authorised scope · live Cloud SQL data</small>
+        </section>
+      </div>
+      <section className="admin-panel quick">
+        <PanelHead title="Quick actions" />
+        <div>
+          <button onClick={() => setTab("products")}><i>◇</i><strong>View products</strong><span>Catalog and availability</span></button>
+          <button onClick={() => setTab("redeem")}><i>⌗</i><strong>Redeem pickup</strong><span>Verify one-time QR</span></button>
+          <button onClick={() => setTab("orders")}><i>▤</i><strong>Manage orders</strong><span>Update preparation status</span></button>
+        </div>
+      </section>
+    </>
   );
 }
