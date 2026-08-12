@@ -4,12 +4,14 @@ import { salePrice } from "../../../catalog";
 import { money } from "../../../data";
 import type { AuthSession, CartItem, Lang, Product } from "../../../types";
 import type { CustomerCopy } from "../core/copy";
+import { SavedShelf } from "../saved/SavedView";
 
 type DetailedCartItem = CartItem & { product: Product };
 
 export function CartView({
   t, lang, cart, cartCount, detailedCart, catalog, updateQty, subtotal,
-  hasUnavailable, beginCheckout, session, onExplore,
+  hasUnavailable, beginCheckout, session, onExplore, saved, products,
+  toggleSave, openProduct,
 }: {
   t: CustomerCopy;
   lang: Lang;
@@ -23,8 +25,13 @@ export function CartView({
   beginCheckout: () => void;
   session: AuthSession | null;
   onExplore: () => void;
+  saved: string[];
+  products: Product[];
+  toggleSave: (productId: string) => void;
+  openProduct: (product: Product) => void;
 }) {
   return (
+<>
 <section className="content-section cart-page">
   <div className="page-heading">
     <span className="sticker">{cartCount} ITEMS</span>
@@ -145,5 +152,15 @@ export function CartView({
     </div>
   )}
 </section>
+<SavedShelf
+  t={t}
+  lang={lang}
+  saved={saved}
+  products={products}
+  toggleSave={toggleSave}
+  openProduct={openProduct}
+  onExplore={onExplore}
+/>
+</>
   );
 }
