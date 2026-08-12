@@ -2,15 +2,27 @@ import type { FastifyInstance } from "fastify";
 import { authenticate } from "./middleware.js";
 import { bootstrapSchema } from "./schemas.js";
 import { bootstrapUser } from "./service.js";
+import type { AuthActor } from "./types.js";
 
-export function registerAuthRoutes(app: FastifyInstance) {
+type AuthRouteDependencies = {
+  authenticate: typeof authenticate;
+  bootstrapUser: (
+    actor: AuthActor,
+    input: { nickname?: string; locale: "en" | "zh" },
+  ) => Promise<Record<string, unknown>>;
+};
+
+export function registerAuthRoutes(
+  app: FastifyInstance,
+  dependencies: AuthRouteDependencies = { authenticate, bootstrapUser },
+) {
   app.post(
     "/v1/auth/bootstrap",
-    { preHandler: authenticate },
+    { preHandler: dependencies.authenticate },
     async (request) => {
       const input = bootstrapSchema.parse(request.body ?? {});
       const actor = request.actor!;
-      const user = await bootstrapUser(actor, input);
+      const user = await dependencies.bootstrapUser(actor, input);
       return {
         data: user,
         auth: {

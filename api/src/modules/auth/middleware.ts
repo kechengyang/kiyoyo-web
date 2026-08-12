@@ -7,7 +7,7 @@ import { getAuth } from "firebase-admin/auth";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../../config.js";
 import { findUserByAuthId } from "./repository.js";
-import type { ProviderIdentity, TrustedIdentity } from "./types.js";
+import type { AuthActor, ProviderIdentity, TrustedIdentity } from "./types.js";
 import "./types.js";
 
 if (getApps().length === 0) {
@@ -107,14 +107,20 @@ export async function requireVerifiedEmail(
 ) {
   await requireProfile(request, reply);
   if (reply.sent) return;
-  if (!request.actor?.email || !request.actor.emailVerified) {
+  const verificationError = verifiedEmailError(request.actor);
+  if (verificationError) {
     return reply.code(403).send({
-      error: {
-        code: "EMAIL_VERIFICATION_REQUIRED",
-        message: "Verify your email before checking out",
-      },
+      error: verificationError,
     });
   }
+}
+
+export function verifiedEmailError(actor: AuthActor | undefined) {
+  if (actor?.email && actor.emailVerified) return null;
+  return {
+    code: "EMAIL_VERIFICATION_REQUIRED" as const,
+    message: "Verify your email before checking out",
+  };
 }
 
 export async function requireProfile(
