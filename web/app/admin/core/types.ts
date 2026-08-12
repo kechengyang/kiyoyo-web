@@ -5,7 +5,115 @@ export type AdminTab =
   | "coupons"
   | "redeem"
   | "customers"
-  | "stores";
+  | "stores"
+  | "admin";
+
+export type StaffRole = "ADMIN" | "OPERATOR";
+
+export type AdminPermission =
+  | "overview.read"
+  | "orders.read"
+  | "orders.transition"
+  | "redeem.verify"
+  | "redeem.execute"
+  | "customers.read"
+  | "customers.write"
+  | "customers.password_set"
+  | "products.read"
+  | "products.write"
+  | "products.publish"
+  | "product_tags.write"
+  | "coupons.read"
+  | "coupons.write"
+  | "coupons.publish"
+  | "customer_coupons.issue"
+  | "customer_coupons.revoke"
+  | "stores.read"
+  | "stores.write"
+  | "access.read"
+  | "access.create"
+  | "access.update"
+  | "access.remove"
+  | "access.password_set"
+  | "audit.read";
+
+export type AdminSession = {
+  user_id: string;
+  username: string;
+  role: StaffRole;
+  permissions: AdminPermission[];
+  stores: Array<{
+    id: string;
+    code: string;
+    name: string;
+    area: string;
+    status: "ACTIVE" | "INACTIVE" | "COMING_SOON";
+    pickup_enabled: boolean;
+    delivery_enabled: boolean;
+  }>;
+  legacy: boolean;
+};
+
+export type AdminOverview = {
+  scope: {
+    mode: "GLOBAL" | "ASSIGNED";
+    stores: Array<{ id: string; code: string; name: string; area: string }>;
+  };
+  metrics: {
+    order_count: number;
+    active_count: number;
+    ready_count: number;
+    customer_count: number;
+    gross_sales: number;
+  };
+  recent_orders: Array<{
+    order_number: string;
+    created_at: string;
+    status: string;
+    type: string;
+    fulfillment_id: string;
+    store_code: string | null;
+    total: number;
+    items: Array<{
+      id: string;
+      product_id: string | null;
+      product_code: string | null;
+      quantity: number;
+      customization: Record<string, unknown>;
+    }>;
+  }>;
+  store_pulse: Array<{
+    id: string;
+    code: string;
+    name: string;
+    area: string;
+    order_count: number;
+  }>;
+};
+
+export type StaffAccessPeriod = {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  end_reason: string | null;
+  started_by: string | null;
+  ended_by: string | null;
+};
+
+export type StaffAccount = {
+  user_id: string;
+  username: string;
+  nickname: string;
+  role: StaffRole;
+  status: "ACTIVE" | "REMOVED";
+  access_started_at: string;
+  access_ended_at: string | null;
+  access_end_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  stores: Array<{ id: string; code: string; name: string; area: string }>;
+  access_periods: StaffAccessPeriod[];
+};
 
 export type AdminCustomer = {
   id: string;

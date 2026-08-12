@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { signOutMember } from "../../platform";
-import type { AdminTab } from "../core/types";
+import type { AdminSession, AdminTab } from "../core/types";
 
 const adminTabs: AdminTab[] = [
   "overview",
@@ -10,6 +10,7 @@ const adminTabs: AdminTab[] = [
   "redeem",
   "customers",
   "stores",
+  "admin",
 ];
 
 const adminTabIcons: Record<AdminTab, string> = {
@@ -20,18 +21,21 @@ const adminTabIcons: Record<AdminTab, string> = {
   redeem: "⌗",
   customers: "☺",
   stores: "⌖",
+  admin: "⚿",
 };
 
 export function AdminSidebar({
   tab,
   setTab,
   activeCount,
-  adminEmail,
+  session,
+  allowedTabs,
 }: {
   tab: AdminTab;
   setTab: (tab: AdminTab) => void;
   activeCount: number;
-  adminEmail: string;
+  session: AdminSession;
+  allowedTabs: AdminTab[];
 }) {
   return (
     <aside className="admin-sidebar">
@@ -40,7 +44,7 @@ export function AdminSidebar({
         <small>OPERATIONS</small>
       </div>
       <nav>
-        {adminTabs.map((item) => (
+        {adminTabs.filter((item) => allowedTabs.includes(item)).map((item) => (
           <button
             key={item}
             className={tab === item ? "active" : ""}
@@ -54,10 +58,14 @@ export function AdminSidebar({
       </nav>
       <Link href="/">← Customer store</Link>
       <div className="admin-user">
-        <i>{(adminEmail || "KI").slice(0, 2).toUpperCase()}</i>
+        <i>{session.username.slice(0, 2).toUpperCase()}</i>
         <span>
-          <strong>{adminEmail}</strong>
-          <small>Nairobi HQ</small>
+          <strong>{session.username}</strong>
+          <small>
+            {session.role === "ADMIN"
+              ? "Admin · All stores"
+              : `Operator · ${session.stores.length} ${session.stores.length === 1 ? "store" : "stores"}`}
+          </small>
         </span>
       </div>
     </aside>
@@ -68,15 +76,17 @@ export function AdminTopbar({
   tab,
   cloudStatus,
   activeCount,
+  scopeLabel,
 }: {
   tab: AdminTab;
   cloudStatus: string;
   activeCount: number;
+  scopeLabel: string;
 }) {
   return (
     <header className="admin-top">
       <div>
-        <small>KIYOYO / NAIROBI</small>
+        <small>KIYOYO / {scopeLabel}</small>
         <h1>{tab}</h1>
       </div>
       <div>

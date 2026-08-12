@@ -6,9 +6,18 @@ import { Storage } from "@google-cloud/storage";
 import { z, ZodError } from "zod";
 import { config } from "./config.js";
 import { pool, query } from "./db.js";
-import { authenticate, requireAdmin, requireProfile } from "./auth.js";
+import {
+  actorCanAccessStore,
+  authenticate,
+  ensureLegacyAdmin,
+  requireAdmin,
+  requirePermission,
+  requireProfile,
+} from "./auth.js";
 import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./crypto.js";
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
+import { registerAdminAccessRoutes } from "./admin/access-routes.js";
+import { registerAdminSessionRoutes } from "./admin/session-routes.js";
 
 const app = Fastify({
   logger: true,
@@ -24,6 +33,9 @@ await app.register(cors, {
   credentials: true,
   methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
 });
+
+registerAdminSessionRoutes(app);
+registerAdminAccessRoutes(app);
 
 app.setErrorHandler((error, request, reply) => {
   if (error instanceof ZodError) {
@@ -52,6 +64,23 @@ app.get("/v1/app-config", async () => ({
 
 const storeSelect = `select id,code,name,area,address,phone,lat::float,lng::float,timezone,status,pickup_enabled,delivery_enabled,location_verified,opening_hours_json
   from stores where status in ('ACTIVE','COMING_SOON')`;
+
+const resolveAuthorisedStore = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+  reference: string,
+) => {
+  const result = await query<{ id: string }>(
+    "select id::text from stores where id::text=$1 or code=$1",
+    [reference],
+  );
+  const storeId = result.rows[0]?.id;
+  if (!storeId || !actorCanAccessStore(request, storeId)) {
+    reply.code(404).send({ error: { code: "NOT_FOUND", message: "Store not found" } });
+    return null;
+  }
+  return storeId;
+};
 
 app.get("/v1/stores", async (request) => {
   const input = z.object({ lat: z.coerce.number().optional(), lng: z.coerce.number().optional() }).parse(request.query);
@@ -171,6 +200,9 @@ app.post("/v1/auth/bootstrap", { preHandler: authenticate }, async (request) => 
      returning id,external_auth_id,email,nickname,gender,birth_year,locale,status,created_at`,
     [actor.authId, actor.email, nickname, input.locale],
   );
+  if (actor.legacyAdmin) {
+    await ensureLegacyAdmin(result.rows[0].id, actor.email, actor.authId);
+  }
   return { data: result.rows[0], permissions: { admin: actor.isAdmin } };
 });
 
@@ -581,12 +613,12 @@ app.post("/v1/me/orders/:orderNumber/pickup-token", { preHandler: requireProfile
   }
 });
 
-app.get("/v1/admin/products", { preHandler: requireAdmin }, async (request) => {
+app.get("/v1/admin/products", { preHandler: requirePermission("products.read") }, async () => {
   const result = await query(`${productSelect} order by p.updated_at desc`);
   return { data: result.rows };
 });
 
-app.post("/v1/admin/products", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/products", { preHandler: requirePermission("products.write") }, async (request, reply) => {
   const input = productWriteSchema.extend({ kind: z.enum(["DRINK", "GOODS"]) }).parse(request.body);
   if (!(await assertActiveTag(input.tag_id, reply))) return;
   try {
@@ -603,7 +635,7 @@ app.post("/v1/admin/products", { preHandler: requireAdmin }, async (request, rep
   }
 });
 
-app.patch("/v1/admin/products/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.patch("/v1/admin/products/:id", { preHandler: requirePermission("products.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = productWriteSchema.partial().extend({ active: z.boolean().optional(), catalog_version: z.number().int().positive() }).parse(request.body);
   if (Object.hasOwn(input, "tag_id") && !(await assertActiveTag(input.tag_id ?? null, reply))) return;
@@ -623,7 +655,7 @@ app.patch("/v1/admin/products/:id", { preHandler: requireAdmin }, async (request
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/products/:id/media-upload", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/products/:id/media-upload", { preHandler: requirePermission("products.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ filename: z.string().trim().min(1).max(180), content_type: z.enum(["image/jpeg", "image/png", "image/webp"]), bytes: z.number().int().positive().max(8_000_000) }).parse(request.body);
   const product = await query("select 1 from products where id=$1", [id]);
@@ -635,7 +667,7 @@ app.post("/v1/admin/products/:id/media-upload", { preHandler: requireAdmin }, as
   return { data: { upload_url: uploadUrl, object_key: objectKey, expires_in_seconds: 600 } };
 });
 
-app.post("/v1/admin/products/:id/media-confirm", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/products/:id/media-confirm", { preHandler: requirePermission("products.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ object_key: z.string().startsWith(`products/${id}/`).max(500), catalog_version: z.number().int().positive() }).parse(request.body);
   const file = storage.bucket(config.mediaBucket).file(input.object_key);
@@ -655,12 +687,12 @@ app.post("/v1/admin/products/:id/media-confirm", { preHandler: requireAdmin }, a
   return { data: result.rows[0] };
 });
 
-app.get("/v1/admin/product-tags", { preHandler: requireAdmin }, async () => {
+app.get("/v1/admin/product-tags", { preHandler: requirePermission("products.read") }, async () => {
   const result = await query("select * from product_tags order by active desc,label");
   return { data: result.rows };
 });
 
-app.post("/v1/admin/product-tags", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/product-tags", { preHandler: requirePermission("product_tags.write") }, async (request, reply) => {
   const input = z.object({ label: z.string().trim().min(1).max(30), tone: z.enum(["RED", "YELLOW", "BLACK", "GREEN"]) }).parse(request.body);
   try {
     const result = await query("insert into product_tags(label,tone,created_by) values($1,$2,$3) returning *", [input.label.toUpperCase(), input.tone, request.actor!.userId]);
@@ -671,7 +703,7 @@ app.post("/v1/admin/product-tags", { preHandler: requireAdmin }, async (request,
   }
 });
 
-app.patch("/v1/admin/product-tags/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.patch("/v1/admin/product-tags/:id", { preHandler: requirePermission("product_tags.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ label: z.string().trim().min(1).max(30).optional(), tone: z.enum(["RED", "YELLOW", "BLACK", "GREEN"]).optional(), active: z.boolean().optional() }).parse(request.body);
   const result = await query("update product_tags set label=coalesce($2,label),tone=coalesce($3,tone),active=coalesce($4,active),updated_at=now() where id=$1 returning *", [id, input.label?.toUpperCase() ?? null, input.tone ?? null, input.active ?? null]);
@@ -679,7 +711,7 @@ app.patch("/v1/admin/product-tags/:id", { preHandler: requireAdmin }, async (req
   return { data: result.rows[0] };
 });
 
-app.delete("/v1/admin/product-tags/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.delete("/v1/admin/product-tags/:id", { preHandler: requirePermission("product_tags.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const client = await pool.connect();
   try {
@@ -730,7 +762,7 @@ const couponCreateSchema = z.object({
   }
 });
 
-app.get("/v1/admin/coupons", { preHandler: requireAdmin }, async () => {
+app.get("/v1/admin/coupons", { preHandler: requirePermission("coupons.read") }, async () => {
   const result = await query(
     `${couponSelect},
        (select count(*)::int from user_coupons uc where uc.coupon_id=c.id) as issued_count,
@@ -741,7 +773,7 @@ app.get("/v1/admin/coupons", { preHandler: requireAdmin }, async () => {
   return { data: result.rows };
 });
 
-app.post("/v1/admin/coupons", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/coupons", { preHandler: requirePermission("coupons.write") }, async (request, reply) => {
   const input = couponCreateSchema.parse(request.body);
   try {
     const result = await query(
@@ -760,7 +792,7 @@ app.post("/v1/admin/coupons", { preHandler: requireAdmin }, async (request, repl
   }
 });
 
-app.patch("/v1/admin/coupons/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.patch("/v1/admin/coupons/:id", { preHandler: requirePermission("coupons.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = couponCreateSchema.and(z.object({ version: z.number().int().positive() })).parse(request.body);
   const redeemed = await query("select 1 from coupon_redemptions where coupon_id=$1 and status='REDEEMED' limit 1", [id]);
@@ -784,7 +816,7 @@ app.patch("/v1/admin/coupons/:id", { preHandler: requireAdmin }, async (request,
   }
 });
 
-app.post("/v1/admin/coupons/:id/publish", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/coupons/:id/publish", { preHandler: requirePermission("coupons.publish") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const result = await query(
     `update coupons set status=case when starts_at>now() then 'SCHEDULED' else 'ACTIVE' end,issuance_enabled=true,redemption_enabled=true,
@@ -797,7 +829,7 @@ app.post("/v1/admin/coupons/:id/publish", { preHandler: requireAdmin }, async (r
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/coupons/:id/stop-distribution", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/coupons/:id/stop-distribution", { preHandler: requirePermission("coupons.publish") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const result = await query("update coupons set issuance_enabled=false,version=version+1,updated_by=$2,updated_at=now() where id=$1 and status not in ('DRAFT','ARCHIVED') returning *", [id, request.actor!.userId]);
   if (!result.rowCount) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Published coupon not found" } });
@@ -805,7 +837,7 @@ app.post("/v1/admin/coupons/:id/stop-distribution", { preHandler: requireAdmin }
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/coupons/:id/disable", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/coupons/:id/disable", { preHandler: requirePermission("coupons.publish") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const { reason } = z.object({ reason: z.string().trim().min(3).max(240) }).parse(request.body);
   const result = await query("update coupons set status='PAUSED',issuance_enabled=false,redemption_enabled=false,version=version+1,updated_by=$2,updated_at=now() where id=$1 and status<>'ARCHIVED' returning *", [id, request.actor!.userId]);
@@ -814,7 +846,7 @@ app.post("/v1/admin/coupons/:id/disable", { preHandler: requireAdmin }, async (r
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/coupons/:id/archive", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/coupons/:id/archive", { preHandler: requirePermission("coupons.publish") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const result = await query("update coupons set status='ARCHIVED',issuance_enabled=false,redemption_enabled=false,version=version+1,updated_by=$2,updated_at=now() where id=$1 returning *", [id, request.actor!.userId]);
   if (!result.rowCount) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Coupon not found" } });
@@ -822,7 +854,9 @@ app.post("/v1/admin/coupons/:id/archive", { preHandler: requireAdmin }, async (r
   return { data: result.rows[0] };
 });
 
-app.get("/v1/admin/orders", { preHandler: requireAdmin }, async () => {
+app.get("/v1/admin/orders", { preHandler: requirePermission("orders.read") }, async (request) => {
+  const staff = request.actor!.staff!;
+  const scope = staff.role === "ADMIN" ? null : staff.storeIds;
   const result = await query(
     `select o.order_number,o.total,o.payment_status,o.is_test,o.created_at,u.nickname,u.email,
             f.id as fulfillment_id,f.type,f.status,f.address_snapshot_json,
@@ -838,12 +872,15 @@ app.get("/v1/admin/orders", { preHandler: requireAdmin }, async () => {
               where oi.fulfillment_group_id=f.id
             ),'[]'::jsonb) as items
      from orders o join users u on u.id=o.user_id join fulfillment_groups f on f.order_id=o.id
-     left join stores s on s.id=f.store_id order by o.created_at desc limit 100`,
+     left join stores s on s.id=f.store_id
+     where ($1::uuid[] is null or f.store_id=any($1::uuid[]))
+     order by o.created_at desc limit 100`,
+    [scope],
   );
   return { data: result.rows };
 });
 
-app.get("/v1/admin/customers", { preHandler: requireAdmin }, async (request) => {
+app.get("/v1/admin/customers", { preHandler: requirePermission("customers.read") }, async (request) => {
   const input = z.object({ query: z.string().max(100).optional() }).parse(request.query);
   const term = input.query ? `%${input.query}%` : null;
   const result = await query(
@@ -855,7 +892,7 @@ app.get("/v1/admin/customers", { preHandler: requireAdmin }, async (request) => 
   return { data: result.rows };
 });
 
-app.get("/v1/admin/customers/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.get("/v1/admin/customers/:id", { preHandler: requirePermission("customers.read") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const [member, addresses, orders, coupons] = await Promise.all([
     query("select id,email,nickname,gender,birth_year,locale,status,created_at,updated_at from users where id=$1", [id]),
@@ -882,7 +919,7 @@ app.get("/v1/admin/customers/:id", { preHandler: requireAdmin }, async (request,
   return { data: { ...member.rows[0], addresses: addresses.rows, orders: orders.rows, coupons: coupons.rows } };
 });
 
-app.patch("/v1/admin/customers/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.patch("/v1/admin/customers/:id", { preHandler: requirePermission("customers.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ nickname: z.string().trim().min(1).max(80).optional(), status: z.enum(["ACTIVE", "SUSPENDED"]).optional() }).parse(request.body);
   const result = await query("update users set nickname=coalesce($2,nickname),status=coalesce($3,status),updated_at=now() where id=$1 returning id,email,nickname,status,updated_at", [id, input.nickname ?? null, input.status ?? null]);
@@ -891,7 +928,7 @@ app.patch("/v1/admin/customers/:id", { preHandler: requireAdmin }, async (reques
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/customers/:id/coupons", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/customers/:id/coupons", { preHandler: requirePermission("customer_coupons.issue") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ coupon_id: z.string().uuid(), expires_at: z.string().datetime({ offset: true }).optional() }).parse(request.body);
   const couponResult = await query<CouponRow>(
@@ -941,7 +978,7 @@ app.post("/v1/admin/customers/:id/coupons", { preHandler: requireAdmin }, async 
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 });
 
-app.post("/v1/admin/user-coupons/:id/revoke", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/user-coupons/:id/revoke", { preHandler: requirePermission("customer_coupons.revoke") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const { reason } = z.object({ reason: z.string().trim().min(3).max(240) }).parse(request.body);
   const result = await query(
@@ -961,7 +998,7 @@ app.get("/v1/admin/stores", { preHandler: requireAdmin }, async () => {
   return { data: result.rows };
 });
 
-app.patch("/v1/admin/stores/:id", { preHandler: requireAdmin }, async (request, reply) => {
+app.patch("/v1/admin/stores/:id", { preHandler: requirePermission("stores.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string() }).parse(request.params);
   const input = z.object({ name: z.string().trim().min(1).max(120).optional(), address: z.string().trim().min(3).max(240).optional(), phone: z.string().max(30).nullable().optional(), lat: z.number().min(-90).max(90).nullable().optional(), lng: z.number().min(-180).max(180).nullable().optional(), status: z.enum(["ACTIVE", "INACTIVE", "COMING_SOON"]).optional(), pickup_enabled: z.boolean().optional(), delivery_enabled: z.boolean().optional(), location_verified: z.boolean().optional() }).parse(request.body);
   const result = await query(
@@ -979,7 +1016,7 @@ app.patch("/v1/admin/stores/:id", { preHandler: requireAdmin }, async (request, 
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/fulfillments/:id/transition", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/fulfillments/:id/transition", { preHandler: requirePermission("orders.transition") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = z.object({ to: z.enum(["PLACED", "CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"]), reason: z.string().max(200).optional() }).parse(request.body);
   const allowed: Record<string, string[]> = {
@@ -993,8 +1030,12 @@ app.post("/v1/admin/fulfillments/:id/transition", { preHandler: requireAdmin }, 
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const current = await client.query("select status from fulfillment_groups where id=$1 for update", [id]);
+    const current = await client.query("select status,store_id::text from fulfillment_groups where id=$1 for update", [id]);
     if (!current.rowCount) { await client.query("rollback"); return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Fulfillment not found" } }); }
+    if (!current.rows[0].store_id || !actorCanAccessStore(request, current.rows[0].store_id)) {
+      await client.query("rollback");
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Fulfillment not found" } });
+    }
     if (!allowed[current.rows[0].status]?.includes(input.to)) { await client.query("rollback"); return reply.code(409).send({ error: { code: "INVALID_TRANSITION", message: `Cannot move ${current.rows[0].status} to ${input.to}` } }); }
     const result = await client.query("update fulfillment_groups set status=$2 where id=$1 returning id,status", [id, input.to]);
     await client.query("insert into status_events(fulfillment_group_id,from_status,to_status,actor_id,reason) values($1,$2,$3,$4,$5)", [id, current.rows[0].status, input.to, request.actor!.userId, input.reason ?? null]);
@@ -1003,21 +1044,25 @@ app.post("/v1/admin/fulfillments/:id/transition", { preHandler: requireAdmin }, 
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 });
 
-app.post("/v1/admin/pickups/verify", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/pickups/verify", { preHandler: requirePermission("redeem.verify") }, async (request, reply) => {
   const input = z.object({ token: z.string().min(20), store_id: z.string() }).parse(request.body);
+  const storeId = await resolveAuthorisedStore(request, reply, input.store_id);
+  if (!storeId) return;
   if (!verifyPickupSignature(input.token)) return reply.code(422).send({ error: { code: "TOKEN_INVALID", message: "Pickup code is invalid" } });
   const result = await query(
     `select o.order_number,f.id as fulfillment_id,f.status,pt.expires_at,pt.redeemed_at,s.code as store_code
      from pickup_tokens pt join fulfillment_groups f on f.id=pt.fulfillment_group_id join orders o on o.id=f.order_id join stores s on s.id=f.store_id
      where pt.token_hash=$1 and (s.id::text=$2 or s.code=$2)`,
-    [hashPickupToken(input.token), input.store_id],
+    [hashPickupToken(input.token), storeId],
   );
   if (!result.rowCount) return reply.code(404).send({ error: { code: "TOKEN_NOT_FOUND", message: "Pickup code does not match this store" } });
   return { data: result.rows[0] };
 });
 
-app.post("/v1/admin/pickups/redeem", { preHandler: requireAdmin }, async (request, reply) => {
+app.post("/v1/admin/pickups/redeem", { preHandler: requirePermission("redeem.execute") }, async (request, reply) => {
   const input = z.object({ token: z.string().min(20), store_id: z.string() }).parse(request.body);
+  const authorisedStoreId = await resolveAuthorisedStore(request, reply, input.store_id);
+  if (!authorisedStoreId) return;
   if (!verifyPickupSignature(input.token)) return reply.code(422).send({ error: { code: "TOKEN_INVALID", message: "Pickup code is invalid" } });
   const client = await pool.connect();
   try {
@@ -1026,7 +1071,7 @@ app.post("/v1/admin/pickups/redeem", { preHandler: requireAdmin }, async (reques
       `select pt.id,pt.fulfillment_group_id,pt.expires_at,pt.redeemed_at,s.id as store_id,o.order_number,f.status
        from pickup_tokens pt join fulfillment_groups f on f.id=pt.fulfillment_group_id join stores s on s.id=f.store_id join orders o on o.id=f.order_id
        where pt.token_hash=$1 and (s.id::text=$2 or s.code=$2) for update of pt,f`,
-      [hashPickupToken(input.token), input.store_id],
+      [hashPickupToken(input.token), authorisedStoreId],
     );
     const pickup = result.rows[0];
     if (!pickup) { await client.query("rollback"); return reply.code(404).send({ error: { code: "TOKEN_NOT_FOUND", message: "Pickup code does not match this store" } }); }

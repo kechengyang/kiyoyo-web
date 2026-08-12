@@ -107,6 +107,15 @@ export async function signInMember(
     : (await signInWithEmailAndPassword(auth, email, password)).user;
 }
 
+export const staffIdentityAlias = (username: string) =>
+  `${username.trim().toLowerCase()}@staff.kiyoyo.internal`;
+
+export async function signInStaff(username: string, password: string) {
+  const login = username.trim().toLowerCase();
+  const identity = login.includes("@") ? login : staffIdentityAlias(login);
+  return (await signInWithEmailAndPassword(auth, identity, password)).user;
+}
+
 export const observeMember = (listener: (user: User | null) => void) =>
   onAuthStateChanged(auth, listener);
 export const signOutMember = () => signOut(auth);

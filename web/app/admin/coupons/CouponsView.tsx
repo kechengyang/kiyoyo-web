@@ -5,13 +5,14 @@ import type { AdminCoupon } from "../core/types";
 
 export type CouponAction = "publish" | "stop-distribution" | "disable" | "archive";
 
-export function CouponsView({ coupons, setCouponError, setEditingCoupon, couponError, couponBusy, runCouponAction }: {
+export function CouponsView({ coupons, setCouponError, setEditingCoupon, couponError, couponBusy, runCouponAction, canWrite }: {
   coupons: AdminCoupon[];
   setCouponError: Dispatch<SetStateAction<string>>;
   setEditingCoupon: Dispatch<SetStateAction<AdminCoupon | null>>;
   couponError: string;
   couponBusy: boolean;
   runCouponAction: (coupon: AdminCoupon, action: CouponAction) => void;
+  canWrite: boolean;
 }) {
   return (
 <section className="admin-panel wide coupon-management">
@@ -24,10 +25,10 @@ export function CouponsView({ coupons, setCouponError, setEditingCoupon, couponE
     <div className="catalog-stats">
       <span><b>{coupons.filter((coupon) => coupon.effective_status === "ACTIVE").length}</b> active</span>
       <span><b>{coupons.reduce((sum, coupon) => sum + coupon.redeemed_count, 0)}</b> used</span>
-      <button onClick={() => {
+      {canWrite && <button onClick={() => {
         setCouponError("");
         setEditingCoupon(newCouponDraft());
-      }}>+ Create coupon</button>
+      }}>+ Create coupon</button>}
     </div>
   </div>
   {couponError && <div className="form-error" role="alert">{couponError}</div>}
@@ -71,6 +72,8 @@ export function CouponsView({ coupons, setCouponError, setEditingCoupon, couponE
           <small>{money(coupon.discount_total)} discounted</small>
         </span>
         <span className="coupon-row-actions">
+          {!canWrite && <small>Viewer</small>}
+          {canWrite && <>
           <button onClick={() => {
             setCouponError("");
             setEditingCoupon({ ...coupon });
@@ -90,6 +93,7 @@ export function CouponsView({ coupons, setCouponError, setEditingCoupon, couponE
           {coupon.effective_status !== "ARCHIVED" && (!coupon.redemption_enabled || coupon.effective_status === "ENDED") && (
             <button disabled={couponBusy} onClick={() => void runCouponAction(coupon, "archive")}>Archive</button>
           )}
+          </>}
         </span>
       </article>
     )) : (
