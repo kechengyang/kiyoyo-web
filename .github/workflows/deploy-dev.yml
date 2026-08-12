@@ -1,0 +1,195 @@
+name: Deploy dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component to deploy
+        required: true
+        default: all
+        type: choice
+        options: [all, web, api]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: kiyoyo
+  GCP_REGION: europe-west1
+  FIREBASE_SITE: kiyoyo-dev
+  CLOUD_RUN_SERVICE: kiyoyo-dev-api
+  MIGRATION_JOB: kiyoyo-dev-migrate
+  ARTIFACT_REPOSITORY: kiyoyo-dev
+
+jobs:
+  changes:
+    name: Detect changed components
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.components.outputs.web }}
+      api: ${{ steps.components.outputs.api }}
+      infrastructure: ${{ steps.components.outputs.infrastructure }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - id: components
+        name: Select components
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_COMPONENT: ${{ inputs.component }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            case "$REQUESTED_COMPONENT" in
+              all)
+                printf 'web=true\napi=true\ninfrastructure=false\n' >> "$GITHUB_OUTPUT"
+                ;;
+              web)
+                printf 'web=true\napi=false\ninfrastructure=false\n' >> "$GITHUB_OUTPUT"
+                ;;
+              api)
+                printf 'web=false\napi=true\ninfrastructure=false\n' >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          elif [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+            printf 'web=true\napi=true\ninfrastructure=false\n' >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" |
+              node scripts/ci/changed-components.mjs
+          fi
+
+  deploy-web:
+    name: Deploy Web to Firebase dev
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: dev
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install Web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build static Web
+        working-directory: web
+        run: npm run build -- --webpack
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - name: Deploy Firebase Hosting
+        run: >-
+          npx --yes firebase-tools@15.24.0 deploy
+          --only hosting
+          --project "$GCP_PROJECT_ID"
+          --non-interactive
+      - name: Smoke test Web
+        run: |
+          curl --fail --silent --show-error --retry 8 --retry-all-errors \
+            --retry-delay 5 "https://${FIREBASE_SITE}.web.app/" > /dev/null
+          curl --fail --silent --show-error --retry 8 --retry-all-errors \
+            --retry-delay 5 "https://${FIREBASE_SITE}.web.app/admin" > /dev/null
+
+  deploy-api:
+    name: Deploy API to Cloud Run dev
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: dev
+    steps:
+      - uses: actions/checkout@v6
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - id: image
+        name: Build and push immutable API image
+        env:
+          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/api:${{ github.sha }}
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker build --tag "$IMAGE_URI" api
+          docker push "$IMAGE_URI"
+          printf 'uri=%s\n' "$IMAGE_URI" >> "$GITHUB_OUTPUT"
+      - name: Run database migrations
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          gcloud run jobs update "$MIGRATION_JOB" \
+            --image "$IMAGE_URI" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --quiet
+          gcloud run jobs execute "$MIGRATION_JOB" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --wait
+      - id: deploy
+        name: Deploy Cloud Run service
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          image: ${{ steps.image.outputs.uri }}
+          region: ${{ env.GCP_REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - name: Smoke test API
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-all-errors \
+            --retry-delay 5 "$SERVICE_URL/health" > /dev/null
+          curl --fail --silent --show-error --retry 12 --retry-all-errors \
+            --retry-delay 5 "$SERVICE_URL/readyz" > /dev/null
+
+  summary:
+    name: Deployment summary
+    needs: [changes, deploy-web, deploy-api]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require successful requested deployments
+        env:
+          WEB_CHANGED: ${{ needs.changes.outputs.web }}
+          API_CHANGED: ${{ needs.changes.outputs.api }}
+          INFRA_CHANGED: ${{ needs.changes.outputs.infrastructure }}
+          WEB_RESULT: ${{ needs.deploy-web.result }}
+          API_RESULT: ${{ needs.deploy-api.result }}
+        run: |
+          if [[ "$WEB_CHANGED" == "true" && "$WEB_RESULT" != "success" ]]; then
+            echo "Web deployment did not succeed: $WEB_RESULT" >&2
+            exit 1
+          fi
+          if [[ "$API_CHANGED" == "true" && "$API_RESULT" != "success" ]]; then
+            echo "API deployment did not succeed: $API_RESULT" >&2
+            exit 1
+          fi
+          if [[ "$INFRA_CHANGED" == "true" ]]; then
+            echo "Infrastructure changed; CI validated it, but application deploy does not auto-apply Terraform."
+          fi
