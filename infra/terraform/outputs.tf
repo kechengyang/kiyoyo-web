@@ -38,6 +38,10 @@ output "deployer_service_account" {
   value = google_service_account.deployer.email
 }
 
+output "github_workload_identity_provider" {
+  value = google_iam_workload_identity_pool_provider.github_actions.name
+}
+
 output "firebase_hosting_url" {
   value = "https://${google_firebase_hosting_site.app.site_id}.web.app"
 }

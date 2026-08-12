@@ -87,6 +87,15 @@ export const observeMember = (listener: (user: User | null) => void) =>
 
 export const signOutMember = () => signOut(auth);
 
+export const staffIdentityAlias = (username: string) =>
+  `${username.trim().toLowerCase()}@staff.kiyoyo.internal`;
+
+export async function signInStaff(username: string, password: string) {
+  const login = username.trim().toLowerCase();
+  const identity = login.includes("@") ? login : staffIdentityAlias(login);
+  return (await signInWithEmailAndPassword(auth, identity, password)).user;
+}
+
 export const consumeRedirectResult = () => getRedirectResult(auth);
 
 export const sendMemberVerification = async (returnTo = "/") => {

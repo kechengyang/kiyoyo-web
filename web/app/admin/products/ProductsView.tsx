@@ -10,6 +10,7 @@ export function ProductsView({
   addTag, tagError, deleteTag, productSearch, setProductSearch, productKind,
   setProductKind, productCategory, setProductCategory, categoryOptions,
   shownProducts, toggleProduct, openProductEditor, openNewProductEditor,
+  canWrite,
 }: {
   catalog: Product[];
   productTags: ProductTag[];
@@ -31,6 +32,7 @@ export function ProductsView({
   toggleProduct: (id: string) => void;
   openProductEditor: (product: Product) => void;
   openNewProductEditor: () => void;
+  canWrite: boolean;
 }) {
   return (
 <section className="admin-panel wide product-management">
@@ -49,15 +51,11 @@ export function ProductsView({
       <span>
         <b>{productTags.length}</b> tags
       </span>
-      <button onClick={() => setShowTagManager(!showTagManager)}>
-        {showTagManager ? "Close tags" : "Manage tags"} →
-      </button>
-      <button className="new-product" onClick={openNewProductEditor}>
-        + New product
-      </button>
+      {canWrite && <button onClick={() => setShowTagManager(!showTagManager)}>{showTagManager ? "Close tags" : "Manage tags"} →</button>}
+      {canWrite && <button className="new-product" onClick={openNewProductEditor}>+ New product</button>}
     </div>
   </div>
-  {showTagManager && (
+  {canWrite && showTagManager && (
     <section className="tag-manager">
       <div>
         <span className="red-label">TAG LIBRARY</span>
@@ -212,21 +210,10 @@ export function ProductsView({
             )}
           </span>
           <span>
-            <button
-              className={`publish-toggle ${product.active === false ? "off" : ""}`}
-              onClick={() => toggleProduct(product.id)}
-            >
-              <i />
-              {product.active === false ? "Offline" : "Live"}
-            </button>
+            {canWrite ? <button className={`publish-toggle ${product.active === false ? "off" : ""}`} onClick={() => toggleProduct(product.id)}><i />{product.active === false ? "Offline" : "Live"}</button> : <em className={`catalog-viewer-status ${product.active === false ? "offline" : "live"}`}>{product.active === false ? "Offline" : "Live"}</em>}
           </span>
           <span>
-            <button
-              className="edit-product"
-              onClick={() => openProductEditor(product)}
-            >
-              Edit →
-            </button>
+            {canWrite ? <button className="edit-product" onClick={() => openProductEditor(product)}>Edit →</button> : <small>Viewer</small>}
           </span>
         </article>
       );

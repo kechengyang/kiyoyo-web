@@ -12,18 +12,18 @@ import {
   fetchAdminCatalog,
   mapApiProduct,
 } from "../platform";
-import { auth } from "../auth/firebase";
 import {
   observeMember,
-  sendMemberPasswordReset,
-  sendMemberVerification,
-  signInMember,
+  signInStaff,
   signOutMember,
 } from "../auth/service";
 import type { Order, Product, ProductTagTone } from "../types";
 import type {
   AdminCoupon,
   AdminCustomer,
+  AdminOverview,
+  AdminPermission,
+  AdminSession,
   AdminState,
   AdminStore,
   AdminTab,
@@ -46,6 +46,29 @@ import { CustomerEditorDialog } from "./customers/CustomerEditorDialog";
 import { StoresView } from "./stores/StoresView";
 import { StoreEditorDialog } from "./stores/StoreEditorDialog";
 import { AdminSidebar, AdminTopbar } from "./shell/AdminShell";
+import { AccessManagementView } from "./access/AccessManagementView";
+
+type ApiAdminOrder = AdminOverview["recent_orders"][number];
+
+const mapAdminOrder = (order: ApiAdminOrder): Order => ({
+  id: order.order_number,
+  fulfillmentId: order.fulfillment_id,
+  createdAt: order.created_at,
+  status: `${order.status.charAt(0)}${order.status.slice(1).toLowerCase()}` as Order["status"],
+  channel: `${order.type.charAt(0)}${order.type.slice(1).toLowerCase()}` as Order["channel"],
+  storeId: order.store_code ?? "delivery",
+  total: order.total,
+  pickupCode: "SERVER",
+  items: order.items.map((item) => ({
+    key: item.id,
+    productId: item.product_code ?? item.product_id ?? "archived",
+    quantity: item.quantity,
+    size: typeof item.customization.size === "string" ? item.customization.size : undefined,
+    sugar: typeof item.customization.sugar === "string" ? item.customization.sugar : undefined,
+    ice: typeof item.customization.ice === "string" ? item.customization.ice : undefined,
+    toppings: Array.isArray(item.customization.toppings) ? item.customization.toppings as string[] : undefined,
+  })),
+});
 
 const uploadImageToSignedUrl = (
   uploadUrl: string,
@@ -76,6 +99,8 @@ export default function AdminApp() {
   const [catalog, setCatalog] = useCatalog();
   const [productTags, setProductTags] = useProductTags();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [session, setSession] = useState<AdminSession | null>(null);
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
   const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
@@ -87,9 +112,8 @@ export default function AdminApp() {
   const [couponBusy, setCouponBusy] = useState(false);
   const [issueCouponId, setIssueCouponId] = useState("");
   const [adminState, setAdminState] = useState<AdminState>("loading");
-  const [adminAuth, setAdminAuth] = useState({ email: "", password: "" });
+  const [adminAuth, setAdminAuth] = useState({ username: "", password: "" });
   const [adminAuthError, setAdminAuthError] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
   const [scan, setScan] = useState("");
   const [scanResult, setScanResult] = useState<{
     ok: boolean;
@@ -126,7 +150,8 @@ export default function AdminApp() {
       observeMember(async (user) => {
         if (!user) {
           setAdminState("anonymous");
-          setAdminEmail("");
+          setSession(null);
+          setOverview(null);
           setOrders([]);
           setCustomers([]);
           setCoupons([]);
@@ -134,7 +159,6 @@ export default function AdminApp() {
           return;
         }
         setAdminState("loading");
-        setAdminEmail(user.email ?? "");
         try {
           await apiFetch("/v1/auth/bootstrap", {
             method: "POST",
@@ -144,6 +168,8 @@ export default function AdminApp() {
               locale: "en",
             }),
           });
+          const sessionPayload = await apiFetch<{ data: AdminSession }>("/v1/admin/session");
+          const staffSession = sessionPayload.data;
           const [
             productPayload,
             tagPayload,
@@ -151,6 +177,7 @@ export default function AdminApp() {
             customerPayload,
             couponPayload,
             storePayload,
+            overviewPayload,
           ] = await Promise.all([
             apiFetch<{ data: Parameters<typeof mapApiProduct>[0][] }>(
               "/v1/admin/products",
@@ -163,27 +190,11 @@ export default function AdminApp() {
                 created_at: string;
               }>;
             }>("/v1/admin/product-tags"),
-            apiFetch<{
-              data: Array<{
-                order_number: string;
-                created_at: string;
-                status: string;
-                type: string;
-                fulfillment_id: string;
-                store_code: string | null;
-                total: number;
-                items: Array<{
-                  id: string;
-                  product_id: string | null;
-                  product_code: string | null;
-                  quantity: number;
-                  customization: Record<string, unknown>;
-                }>;
-              }>;
-            }>("/v1/admin/orders"),
+            apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
             apiFetch<{ data: AdminCustomer[] }>("/v1/admin/customers"),
             apiFetch<{ data: AdminCoupon[] }>("/v1/admin/coupons"),
-            apiFetch<{ data: AdminStore[] }>("/v1/admin/stores"),
+            apiFetch<{ data: AdminStore[] }>(staffSession.role === "ADMIN" ? "/v1/admin/stores" : "/v1/admin/context/stores"),
+            apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
           ]);
           setCatalog(productPayload.data.map(mapApiProduct));
           setProductTags(
@@ -194,43 +205,14 @@ export default function AdminApp() {
               createdAt: tag.created_at,
             })),
           );
-          const cloudOrders: Order[] = orderPayload.data.map((order) => ({
-            id: order.order_number,
-            fulfillmentId: order.fulfillment_id,
-            createdAt: order.created_at,
-            status:
-              `${order.status.charAt(0)}${order.status.slice(1).toLowerCase()}` as Order["status"],
-            channel:
-              `${order.type.charAt(0)}${order.type.slice(1).toLowerCase()}` as Order["channel"],
-            storeId: order.store_code ?? "delivery",
-            total: order.total,
-            pickupCode: "SERVER",
-            items: order.items.map((item) => ({
-              key: item.id,
-              productId: item.product_code ?? item.product_id ?? "archived",
-              quantity: item.quantity,
-              size:
-                typeof item.customization.size === "string"
-                  ? item.customization.size
-                  : undefined,
-              sugar:
-                typeof item.customization.sugar === "string"
-                  ? item.customization.sugar
-                  : undefined,
-              ice:
-                typeof item.customization.ice === "string"
-                  ? item.customization.ice
-                  : undefined,
-              toppings: Array.isArray(item.customization.toppings)
-                ? (item.customization.toppings as string[])
-                : undefined,
-            })),
-          }));
+          const cloudOrders = orderPayload.data.map(mapAdminOrder);
           setOrders(cloudOrders);
+          setOverview(overviewPayload.data);
+          setSession(staffSession);
           setCustomers(customerPayload.data);
           setCoupons(couponPayload.data);
           setAdminStores(storePayload.data);
-          setCloudStatus(`Connected as ${user.email}`);
+          setCloudStatus(`Connected as ${staffSession.username}`);
           setAdminState("ready");
         } catch (error) {
           const message =
@@ -238,7 +220,7 @@ export default function AdminApp() {
           setCloudStatus(message);
           setAdminAuthError(message);
           setAdminState(
-            message.includes("Admin access") || message.includes("Verify your email")
+            message.includes("staff access") || message.includes("role") || message.includes("permission")
               ? "forbidden"
               : "error",
           );
@@ -295,41 +277,15 @@ export default function AdminApp() {
 
   const signInAdmin = async () => {
     setAdminAuthError("");
-    if (!adminAuth.email.includes("@") || adminAuth.password.length < 6) {
-      setAdminAuthError("Enter your admin email and password.");
+    if (adminAuth.username.trim().length < 3 || adminAuth.password.length < 6) {
+      setAdminAuthError("Enter your username and password.");
       return;
     }
     try {
-      await signInMember(
-        "password",
-        "signin",
-        adminAuth.email.trim(),
-        adminAuth.password,
-      );
+      await signInStaff(adminAuth.username, adminAuth.password);
     } catch (error) {
       setAdminAuthError(
         error instanceof Error ? error.message : "Admin sign-in failed",
-      );
-    }
-  };
-
-  const resetAdminPassword = async () => {
-    const email = adminAuth.email.trim();
-    setAdminAuthError("");
-    if (!email.includes("@")) {
-      setAdminAuthError("Enter your admin email first.");
-      return;
-    }
-    try {
-      await sendMemberPasswordReset(email);
-      setAdminAuthError(
-        "If this administrator account exists, a password reset email has been sent.",
-      );
-    } catch (error) {
-      setAdminAuthError(
-        error instanceof Error
-          ? error.message
-          : "Password reset email could not be sent",
       );
     }
   };
@@ -340,7 +296,18 @@ export default function AdminApp() {
     [orders, storeFilter],
   );
   const active = orders.filter((o) => o.status !== "Completed");
-  const revenue = orders.reduce((sum, o) => sum + o.total, 0);
+  const can = (permission: AdminPermission) => session?.permissions.includes(permission) ?? false;
+  const allowedTabs = useMemo<AdminTab[]>(() => {
+    if (!session) return [];
+    const tabs: AdminTab[] = ["overview", "orders", "products", "coupons", "redeem", "customers"];
+    if (session.role === "ADMIN") tabs.push("stores", "admin");
+    return tabs;
+  }, [session]);
+  const recentOverviewOrders = useMemo(
+    () => overview?.recent_orders.map(mapAdminOrder) ?? [],
+    [overview],
+  );
+
   const categoryOptions = useMemo(() => {
     const preferred =
       productKind === "drink"
@@ -426,6 +393,27 @@ export default function AdminApp() {
       setCloudStatus(
         error instanceof Error ? error.message : "Customer could not be saved",
       );
+    }
+  };
+
+  const setCustomerPassword = async (
+    password: string,
+    passwordConfirm: string,
+    reason: string,
+  ) => {
+    if (!selectedCustomer) return;
+    setCouponError("");
+    setCouponBusy(true);
+    try {
+      await apiFetch(`/v1/admin/users/${selectedCustomer.id}/password`, {
+        method: "POST",
+        body: JSON.stringify({ password, password_confirm: passwordConfirm, reason }),
+      });
+      setCloudStatus("Customer password updated and existing sessions revoked");
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : "Password could not be set");
+    } finally {
+      setCouponBusy(false);
     }
   };
 
@@ -979,7 +967,7 @@ export default function AdminApp() {
     }
   };
 
-  if (adminState !== "ready") {
+  if (adminState !== "ready" || !session) {
     return (
       <main className="admin-gate">
         <section>
@@ -997,17 +985,16 @@ export default function AdminApp() {
           {adminState === "anonymous" ? (
             <>
               <p>
-                Use a verified KIYOYO administrator account. Customer accounts
-                cannot access operations data.
+                Use your KIYOYO staff username and password. Password recovery is handled by an Admin.
               </p>
               <label className="form-field">
-                <span>Email</span>
+                <span>Username / 用户名</span>
                 <input
-                  type="email"
-                  autoComplete="email"
-                  value={adminAuth.email}
+                  type="text"
+                  autoComplete="username"
+                  value={adminAuth.username}
                   onChange={(event) =>
-                    setAdminAuth({ ...adminAuth, email: event.target.value })
+                    setAdminAuth({ ...adminAuth, username: event.target.value })
                   }
                 />
               </label>
@@ -1028,15 +1015,8 @@ export default function AdminApp() {
               <button className="primary full" onClick={() => void signInAdmin()}>
                 Sign in securely →
               </button>
-              <button
-                className="admin-gate-secondary"
-                onClick={() => void resetAdminPassword()}
-              >
-                Forgot password? Send reset email
-              </button>
               <p className="admin-login-note">
-                KIYOYO does not store or display administrator passwords. A
-                real administrator account must use an inbox you control.
+                KIYOYO does not store or display passwords. Contact an Admin to set a new password.
               </p>
             </>
           ) : adminState === "loading" ? (
@@ -1045,27 +1025,8 @@ export default function AdminApp() {
             <>
               <p>
                 {adminAuthError ||
-                  `${adminEmail || "This account"} is not an authorised administrator.`}
+                  `This account does not have active KIYOYO staff access.`}
               </p>
-              {auth.currentUser && !auth.currentUser.emailVerified && (
-                <button
-                  className="primary full"
-                  onClick={async () => {
-                    try {
-                      await sendMemberVerification();
-                      setAdminAuthError("Verification email sent.");
-                    } catch (error) {
-                      setAdminAuthError(
-                        error instanceof Error
-                          ? error.message
-                          : "Verification email could not be sent",
-                      );
-                    }
-                  }}
-                >
-                  Send verification email →
-                </button>
-              )}
               <button
                 className="admin-gate-secondary"
                 onClick={() => void signOutMember()}
@@ -1089,25 +1050,26 @@ export default function AdminApp() {
         tab={tab}
         setTab={setTab}
         activeCount={active.length}
-        adminEmail={adminEmail}
+        session={session}
+        allowedTabs={allowedTabs}
       />
       <main className="admin-main">
         <AdminTopbar
           tab={tab}
           cloudStatus={cloudStatus}
           activeCount={active.length}
+          scopeLabel={session.role === "ADMIN" ? "NAIROBI" : session.stores.map((store) => store.area).join(" + ")}
         />
 
         {tab === "overview" && (
           <OverviewView
-            orders={orders}
-            active={active}
-            revenue={revenue}
-            customers={customers}
+            overview={overview}
+            recentOrders={recentOverviewOrders}
             setTab={setTab}
             catalog={catalog}
             adminStores={adminStores}
             changeStatus={changeStatus}
+            canManageOrders={session.role === "ADMIN"}
           />
         )}
 
@@ -1144,6 +1106,7 @@ export default function AdminApp() {
             toggleProduct={toggleProduct}
             openProductEditor={openProductEditor}
             openNewProductEditor={openNewProductEditor}
+            canWrite={can("products.write")}
           />
         )}
 
@@ -1155,6 +1118,7 @@ export default function AdminApp() {
             couponError={couponError}
             couponBusy={couponBusy}
             runCouponAction={runCouponAction}
+            canWrite={can("coupons.write")}
           />
         )}
 
@@ -1175,7 +1139,7 @@ export default function AdminApp() {
         )}
 
         {tab === "customers" && (
-          <CustomersView customers={customers} openCustomer={openCustomer} />
+          <CustomersView customers={customers} openCustomer={openCustomer} canWrite={can("customers.write")} />
         )}
 
         {tab === "stores" && (
@@ -1184,8 +1148,9 @@ export default function AdminApp() {
             setEditingStore={setEditingStore}
           />
         )}
+        {tab === "admin" && <AccessManagementView session={session} stores={adminStores} />}
       </main>
-      {editingProduct && (
+      {editingProduct && can("products.write") && (
         <ProductEditorDialog
           editingProduct={editingProduct}
           setEditingProduct={setEditingProduct}
@@ -1198,7 +1163,7 @@ export default function AdminApp() {
           productUploadPercent={productUploadPercent}
         />
       )}
-      {editingCoupon && (
+      {editingCoupon && can("coupons.write") && (
         <CouponEditorDialog
           editingCoupon={editingCoupon}
           setEditingCoupon={setEditingCoupon}
@@ -1221,9 +1186,12 @@ export default function AdminApp() {
           couponError={couponError}
           revokeUserCoupon={revokeUserCoupon}
           saveCustomer={saveCustomer}
+          canWrite={can("customers.write")}
+          canSetPassword={can("customers.password_set")}
+          setCustomerPassword={setCustomerPassword}
         />
       )}
-      {editingStore && (
+      {editingStore && can("stores.write") && (
         <StoreEditorDialog
           editingStore={editingStore}
           setEditingStore={setEditingStore}

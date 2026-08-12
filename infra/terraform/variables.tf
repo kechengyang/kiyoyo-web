@@ -104,3 +104,14 @@ variable "admin_emails" {
     error_message = "Every admin_emails value must be a valid email address."
   }
 }
+
+variable "github_repository" {
+  description = "GitHub owner/repository allowed to deploy through Workload Identity Federation."
+  type        = string
+  default     = "kechengyang/kiyoyo-web"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must use the owner/repository format."
+  }
+}

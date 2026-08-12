@@ -1,8 +1,8 @@
 # 10 · Admin 门店角色与权限管理系统设计
 
-状态：**Review 已通过，尚未实施**  
-版本：Approved v1 · 2026-08-12  
-适用范围：KIYOYO Admin Web、Cloud Run API、Cloud SQL PostgreSQL、Firebase Authentication / Identity Platform  
+状态：**已实施，待部署**
+版本：Implemented v1 · 2026-08-12
+适用范围：KIYOYO Admin Web、Cloud Run API、Cloud SQL PostgreSQL、Firebase Authentication / Identity Platform
 时区：Africa/Nairobi
 
 ## 1. 目标与非目标
@@ -495,4 +495,4 @@ Role 变化前显示影响摘要，例如：“Changing to Operator removes Prod
 3. **移除访问语义**：软移除后台访问权，不删除 Identity 或业务账号；保留权限生效时间、失效时间、操作者、原因和完整审计。
 4. **密码管理**：所有密码由 Admin 直接设置，不使用邮件邀请、验证、找回或重置流程。
 
-设计 Review 已通过；进入实现仍需用户明确下达执行指令。本轮只更新设计文档，不修改业务代码、数据库或云端账号。
+设计 Review 已通过，并已按本文档完成代码、迁移、权限契约测试与前端回归验证；云端迁移和部署不在本次提交范围内。

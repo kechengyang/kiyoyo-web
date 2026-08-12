@@ -1,10 +1,11 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { money } from "../../data";
 import type { AdminCoupon, AdminCustomer, CustomerDetail } from "../core/types";
 
 export function CustomerEditorDialog({
   selectedCustomer, setSelectedCustomer, issueCouponId, setIssueCouponId,
   coupons, couponBusy, issueCoupon, couponError, revokeUserCoupon, saveCustomer,
+  canWrite, canSetPassword, setCustomerPassword,
 }: {
   selectedCustomer: CustomerDetail;
   setSelectedCustomer: Dispatch<SetStateAction<CustomerDetail | null>>;
@@ -16,7 +17,14 @@ export function CustomerEditorDialog({
   couponError: string;
   revokeUserCoupon: (userCouponId: string) => void;
   saveCustomer: () => void;
+  canWrite: boolean;
+  canSetPassword: boolean;
+  setCustomerPassword: (password: string, passwordConfirm: string, reason: string) => void;
 }) {
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [passwordReason, setPasswordReason] = useState("");
   return (
 <div className="modal-backdrop">
   <section className="admin-record-modal">
@@ -33,6 +41,7 @@ export function CustomerEditorDialog({
       <label className="form-field">
         <span>Nickname</span>
         <input
+          disabled={!canWrite}
           value={selectedCustomer.nickname}
           onChange={(event) =>
             setSelectedCustomer({
@@ -45,6 +54,7 @@ export function CustomerEditorDialog({
       <label className="form-field">
         <span>Account status</span>
         <select
+          disabled={!canWrite}
           value={selectedCustomer.status}
           onChange={(event) =>
             setSelectedCustomer({
@@ -97,7 +107,7 @@ export function CustomerEditorDialog({
       )}
     </div>
     <h3>Coupons</h3>
-    <div className="customer-coupon-issuer">
+    {canWrite && <div className="customer-coupon-issuer">
       <select
         aria-label="Coupon to issue"
         value={issueCouponId}
@@ -120,7 +130,7 @@ export function CustomerEditorDialog({
       <button disabled={!issueCouponId || couponBusy || selectedCustomer.status !== "ACTIVE"} onClick={() => void issueCoupon()}>
         {couponBusy ? "Issuing…" : "Issue coupon"}
       </button>
-    </div>
+    </div>}
     {couponError && <div className="form-error" role="alert">{couponError}</div>}
     <div className="record-list compact customer-coupon-list">
       {selectedCustomer.coupons.length ? (
@@ -129,7 +139,7 @@ export function CustomerEditorDialog({
             <strong>{coupon.name_en} · {coupon.code}</strong>
             <span>{coupon.wallet_status}</span>
             <small>Expires {new Date(coupon.expires_at).toLocaleDateString("en-KE")}</small>
-            {coupon.status === "ISSUED" && coupon.wallet_status !== "EXPIRED" && (
+            {canWrite && coupon.status === "ISSUED" && coupon.wallet_status !== "EXPIRED" && (
               <button className="danger-text" disabled={couponBusy} onClick={() => void revokeUserCoupon(coupon.user_coupon_id)}>Revoke</button>
             )}
           </article>
@@ -152,9 +162,21 @@ export function CustomerEditorDialog({
         <small>No orders yet.</small>
       )}
     </div>
-    <button className="primary full" onClick={() => void saveCustomer()}>
-      Save customer →
-    </button>
+    {canSetPassword && <section className="customer-password-admin">
+      <button className="admin-gate-secondary" onClick={() => setShowPasswordForm(!showPasswordForm)}>{showPasswordForm ? "Cancel password change" : "Set customer password"}</button>
+      {showPasswordForm && <div className="customer-password-fields">
+        <div className="form-split">
+          <label className="form-field"><span>New password / 新密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <label className="form-field"><span>Confirm password / 确认密码</span><input type="password" autoComplete="new-password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} /></label>
+        </div>
+        <label className="form-field"><span>Reason / 原因</span><textarea value={passwordReason} onChange={(event) => setPasswordReason(event.target.value)} /></label>
+        <button disabled={couponBusy || password.length < 12 || password !== passwordConfirm || passwordReason.trim().length < 3} onClick={() => {
+          setCustomerPassword(password, passwordConfirm, passwordReason);
+          setPassword(""); setPasswordConfirm(""); setPasswordReason(""); setShowPasswordForm(false);
+        }}>Set password and revoke sessions</button>
+      </div>}
+    </section>}
+    {canWrite && <button className="primary full" onClick={() => void saveCustomer()}>Save customer →</button>}
   </section>
 </div>
   );

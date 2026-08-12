@@ -47,11 +47,13 @@ export function OrderTable({
   catalog,
   stores,
   onStatus,
+  readOnly = false,
 }: {
   orders: Order[];
   catalog: Product[];
   stores: AdminStore[];
   onStatus: (id: string, status: Order["status"]) => void;
+  readOnly?: boolean;
 }) {
   return (
     <div className="order-table">
@@ -91,18 +93,22 @@ export function OrderTable({
             ))}
           </span>
           <strong>{money(o.total)}</strong>
-          <select
-            className={`status-select s-${o.status.toLowerCase()}`}
-            value={o.status}
-            onChange={(e) => onStatus(o.id, e.target.value as Order["status"])}
-          >
-            <option>Placed</option>
-            <option>Confirmed</option>
-            <option>Preparing</option>
-            <option>Ready</option>
-            <option>Completed</option>
-            <option>Cancelled</option>
-          </select>
+          {readOnly ? (
+            <em className={`status-select readonly s-${o.status.toLowerCase()}`}>{o.status}</em>
+          ) : (
+            <select
+              className={`status-select s-${o.status.toLowerCase()}`}
+              value={o.status}
+              onChange={(e) => onStatus(o.id, e.target.value as Order["status"])}
+            >
+              <option>Placed</option>
+              <option>Confirmed</option>
+              <option>Preparing</option>
+              <option>Ready</option>
+              <option>Completed</option>
+              <option>Cancelled</option>
+            </select>
+          )}
         </div>
       ))}
     </div>
