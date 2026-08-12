@@ -18,8 +18,6 @@ if (getApps().length === 0) {
 }
 
 const providerNames = {
-  password: "PASSWORD",
-  email: "PASSWORD",
   "google.com": "GOOGLE",
   "facebook.com": "FACEBOOK",
 } as const;
@@ -33,27 +31,8 @@ export function trustedProviderIdentities(
     if (!provider || !Array.isArray(subjects)) return [];
     return subjects
       .filter((subject): subject is string => typeof subject === "string")
-      .map((subject) => ({
-        provider,
-        subject: provider === "PASSWORD" ? subject.toLowerCase() : subject,
-      }));
+      .map((subject) => ({ provider, subject }));
   });
-  const signInProvider =
-    providerNames[
-      decoded.firebase?.sign_in_provider as keyof typeof providerNames
-    ];
-  if (
-    signInProvider &&
-    !providers.some((identity) => identity.provider === signInProvider)
-  ) {
-    providers.push({
-      provider: signInProvider,
-      subject:
-        signInProvider === "PASSWORD"
-          ? (decoded.email?.toLowerCase() ?? decoded.uid)
-          : decoded.uid,
-    });
-  }
   return providers.filter(
     (identity, index, all) =>
       all.findIndex(

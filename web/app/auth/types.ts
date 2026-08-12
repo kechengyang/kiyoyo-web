@@ -21,5 +21,6 @@ export type AuthErrorCode =
   | "popup"
   | "provider"
   | "rateLimit"
+  | "recentLogin"
   | "weakPassword"
   | "unknown";

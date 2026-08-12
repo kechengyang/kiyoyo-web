@@ -105,8 +105,8 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 | --- | --- | --- |
 | `id` | uuid | identity 记录主键 |
 | `user_id` | uuid FK | 指向 `users.id`，会员删除时级联 |
-| `provider` | text | `PASSWORD`、`GOOGLE`、`FACEBOOK` |
-| `provider_subject` | text | Firebase trusted identity subject；密码方式为规范化邮箱 |
+| `provider` | text | 约束预留 `PASSWORD`、`GOOGLE`、`FACEBOOK`；当前只同步可信的 Google/Facebook identity |
+| `provider_subject` | text | Firebase token 中对应 social provider 的可信 subject |
 | `linked_at` | timestamptz | 首次关联时间 |
 | `last_seen_at` | timestamptz | 最近一次 bootstrap 看见时间 |
 | `unlinked_at` | timestamptz, nullable | 解除关联时间；为空表示有效 |
@@ -115,8 +115,11 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 
 - 同一会员同一时间每种 provider 只能有一个有效 identity；
 - 同一 provider subject 同一时间只能属于一个会员；
+- identity 已属于其他会员时整个 bootstrap 事务失败，禁止静默转移 `user_id`；
 - 解除关联使用 `unlinked_at` 留审计轨迹，不物理删除；
 - migration 只增加字段和表，不删除旧结构。
+
+通用 `firebase.identities.email` 只表示账号带邮箱，不表示账号设置了密码，因此不能映射为 `PASSWORD`。密码登录方式是否存在由浏览器 Firebase User 的 `providerData` 展示，KIYOYO 数据库不持久化密码 identity。
 
 ## 6. 核心流程
 
@@ -125,7 +128,7 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 1. 前端校验邮箱、密码确认和项目密码策略。
 2. Firebase 创建身份并立即发送验证邮件。
 3. Web 取得 ID token，调用 `POST /v1/auth/bootstrap`。
-4. API 从 token 同步 uid、邮箱、验证状态和 provider identities。
+4. API 从 token 同步 uid、邮箱、验证状态和可信的 social provider identities。
 5. 用户可继续浏览、收藏和维护购物车；结账前必须验证邮箱。
 
 密码仅从浏览器发送给 Google Identity Toolkit，不经过 KIYOYO API。
@@ -144,11 +147,13 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 
 前端在开始结账时检查 `emailVerified`，API 在 `POST /v1/checkouts` 再次执行 `requireVerifiedEmail`。未验证时返回稳定错误码 `EMAIL_VERIFICATION_REQUIRED`。
 
-验证完成后，Web reload Firebase 用户并强制刷新 ID token，再 bootstrap。购物车、门店、语言、游客收藏和 pending checkout 不被清空，用户可回到原结账流程。
+验证完成后，Web reload Firebase 用户并强制刷新 ID token，再 bootstrap。购物车、门店、语言、游客收藏和 pending checkout 不被清空，用户可回到原结账流程。API bootstrap 暂时失败时进入独立错误状态，不按“已登出”清除本地订单兜底数据。
 
 ### 6.5 登录方式管理
 
-Account security 展示三种 provider。用户可增加 Google、Facebook 或密码方式；只有存在至少两种有效方式时才允许移除。页面不直接调用 Firebase SDK，所有动作通过 auth hook 完成。
+Account security 展示三种 provider。用户可增加 Google、Facebook 或密码方式；只有存在至少两种有效方式时才允许移除。页面不直接调用 Firebase SDK，所有动作通过 auth hook 完成。账号冲突不会跨对话框暂存 OAuth credential；用户使用原方式登录后，再从 Account security 主动关联新方式。
+
+本地收藏带有 `guest` 或 `member:<id>` owner。只有明确标记为 `guest` 的收藏会在登录时合并一次；其他会员或未知旧缓存不会上传到当前账号。真实 Firebase 登出会清理会员收藏缓存并切回 guest owner。
 
 ## 7. API 契约
 
@@ -173,7 +178,7 @@ Content-Type: application/json
   "auth": {
     "uid": "firebase-uid",
     "emailVerified": true,
-    "providers": ["PASSWORD", "GOOGLE"]
+    "providers": ["GOOGLE"]
   },
   "permissions": {
     "admin": false
@@ -181,7 +186,7 @@ Content-Type: application/json
 }
 ```
 
-受保护请求使用短期 Firebase ID token。API 不接受 refresh token，也不从请求体相信用户邮箱、provider 或 uid。
+受保护请求使用短期 Firebase ID token。API 不接受 refresh token，也不从请求体相信用户邮箱、provider 或 uid。`auth.providers` 是 API 从 token 同步到业务库的 social identities，不作为 Account 页面完整登录方式列表；完整列表由 Firebase SDK `providerData` 提供。
 
 ## 8. 安全规则
 

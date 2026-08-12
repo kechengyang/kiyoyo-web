@@ -44,4 +44,20 @@ test("checkout verification and local-state preservation remain explicit", () =>
   assert.match(app, /fetchMemberFavorites/);
   assert.doesNotMatch(app, /setCart\(\[\]\).*setSession/s);
   assert.match(hook, /removeItem\("kiyoyo-session"\)/);
+  assert.match(hook, /setPhase\("bootstrapError"\)/);
+  assert.match(app, /shouldClearMemberData\(customerAuth\.phase\)/);
+  assert.doesNotMatch(serviceSource(), /pendingLinkCredential/);
+});
+
+function serviceSource() {
+  return source("../app/auth/service.ts");
+}
+
+test("verification errors remain visible and handled", () => {
+  const gate = source(
+    "../app/components/customer/auth/VerificationGate.tsx",
+  );
+  assert.match(gate, /role="alert"/);
+  assert.match(gate, /verificationNotComplete/);
+  assert.match(gate, /\.catch\(\(\) => undefined\)/);
 });

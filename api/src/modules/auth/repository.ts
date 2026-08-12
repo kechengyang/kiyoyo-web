@@ -51,13 +51,18 @@ export async function upsertUser(input: {
          where user_id=$1 and provider=$2 and provider_subject<>$3 and unlinked_at is null`,
         [user.id, identity.provider, identity.subject],
       );
-      await client.query(
+      const identityResult = await client.query(
         `insert into user_identities(user_id,provider,provider_subject)
          values($1,$2,$3)
          on conflict(provider,provider_subject) where unlinked_at is null
-         do update set user_id=excluded.user_id,last_seen_at=now(),unlinked_at=null`,
+         do update set last_seen_at=now()
+         where user_identities.user_id=excluded.user_id
+         returning user_id`,
         [user.id, identity.provider, identity.subject],
       );
+      if (!identityResult.rowCount) {
+        throw new Error("IDENTITY_ALREADY_LINKED_TO_ANOTHER_USER");
+      }
     }
     await client.query("commit");
     return user;

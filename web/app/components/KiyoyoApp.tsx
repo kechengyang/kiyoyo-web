@@ -20,6 +20,14 @@ import {
 } from "../platform";
 import { useCustomerAuth } from "../auth/useCustomerAuth";
 import {
+  FAVORITE_OWNER_KEY,
+  GUEST_FAVORITE_OWNER,
+  memberFavoriteOwner,
+  planFavoriteSync,
+  shouldClearFavoritesOnSignOut,
+} from "../auth/favoriteOwnership";
+import { shouldClearMemberData } from "../auth/state";
+import {
   categorySlug,
   drinkCategoryAnchor,
   drinkMenuTagRank,
@@ -75,6 +83,7 @@ export default function KiyoyoApp() {
     "d6",
   ]);
   const savedRef = useRef(saved);
+  const favoriteSyncMemberRef = useRef<string | null>(null);
   const [orders, setOrders] = useStoredState<Order[]>("kiyoyo-orders", []);
   const ordersRef = useRef<Order[]>(orders);
   const [profile, setProfile] = useStoredState<UserProfile>(
@@ -168,10 +177,27 @@ export default function KiyoyoApp() {
   }, [saved]);
 
   useEffect(() => {
-    if (!session || catalog.length === 0) return;
+    if (
+      customerAuth.phase !== "authenticated" ||
+      !session ||
+      catalog.length === 0 ||
+      favoriteSyncMemberRef.current === session.memberId
+    )
+      return;
+    favoriteSyncMemberRef.current = session.memberId;
     let cancelled = false;
     void (async () => {
-      const localProducts = savedRef.current
+      const plan = planFavoriteSync({
+        owner: window.localStorage.getItem(FAVORITE_OWNER_KEY),
+        memberId: session.memberId,
+        localIds: savedRef.current,
+      });
+      if (plan.resetLocal) {
+        savedRef.current = [];
+        setSaved([]);
+      }
+      window.localStorage.setItem(FAVORITE_OWNER_KEY, plan.targetOwner);
+      const localProducts = plan.uploadIds
         .map((id) => catalog.find((product) => product.id === id))
         .filter((product): product is Product => Boolean(product?.apiId));
       try {
@@ -180,24 +206,43 @@ export default function KiyoyoApp() {
         );
         const remoteProducts = await fetchMemberFavorites();
         if (cancelled) return;
-        setSaved([
+        const merged = [
           ...new Set([
-            ...savedRef.current,
+            ...plan.uploadIds,
             ...remoteProducts.map((product) => product.id),
           ]),
-        ]);
+        ];
+        savedRef.current = merged;
+        setSaved(merged);
       } catch {
+        favoriteSyncMemberRef.current = null;
         /* Local favourites remain available while remote sync is unavailable. */
       }
     })();
     return () => {
       cancelled = true;
+      if (favoriteSyncMemberRef.current === session.memberId) {
+        favoriteSyncMemberRef.current = null;
+      }
     };
-  }, [catalog, session, setSaved]);
+  }, [catalog, customerAuth.phase, session, setSaved]);
 
   useEffect(() => {
-    if (!customerAuth.ready) return;
-    if (!session) {
+    if (!shouldClearMemberData(customerAuth.phase)) return;
+    favoriteSyncMemberRef.current = null;
+    const owner = window.localStorage.getItem(FAVORITE_OWNER_KEY);
+    if (shouldClearFavoritesOnSignOut(owner)) {
+      savedRef.current = [];
+      setSaved([]);
+      window.localStorage.setItem(
+        FAVORITE_OWNER_KEY,
+        GUEST_FAVORITE_OWNER,
+      );
+    }
+  }, [customerAuth.phase, setSaved]);
+
+  useEffect(() => {
+    if (shouldClearMemberData(customerAuth.phase)) {
       void Promise.resolve().then(() => {
         setOrders([]);
         setProfile(emptyProfile);
@@ -207,6 +252,7 @@ export default function KiyoyoApp() {
       });
       return;
     }
+    if (customerAuth.phase !== "authenticated" || !session) return;
     let cancelled = false;
     void (async () => {
       await Promise.resolve();
@@ -307,7 +353,7 @@ export default function KiyoyoApp() {
     return () => {
       cancelled = true;
     };
-  }, [customerAuth.ready, session, setOrders, setProfile]);
+  }, [customerAuth.phase, session, setOrders, setProfile]);
 
   useEffect(() => {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -634,10 +680,20 @@ export default function KiyoyoApp() {
     setSaved(removing ? saved.filter((x) => x !== id) : [...saved, id]);
     const productId = catalog.find((product) => product.id === id)?.apiId;
     if (session && productId) {
+      window.localStorage.setItem(
+        FAVORITE_OWNER_KEY,
+        memberFavoriteOwner(session.memberId),
+      );
       void (removing
         ? removeMemberFavorite(productId)
         : saveMemberFavorite(productId)
       ).catch(() => undefined);
+    }
+    if (!session) {
+      window.localStorage.setItem(
+        FAVORITE_OWNER_KEY,
+        GUEST_FAVORITE_OWNER,
+      );
     }
   };
   const updateQty = (key: string, delta: number) =>
@@ -1335,6 +1391,7 @@ export default function KiyoyoApp() {
           email={session.email}
           t={t}
           busy={customerAuth.busy}
+          error={customerAuth.error}
           onClose={() => {
             setVerificationGate(false);
             setPendingCheckout(false);

@@ -29,13 +29,12 @@ test("trustedProviderIdentities maps and deduplicates Firebase identities", () =
   });
 
   assert.deepEqual(providers, [
-    { provider: "PASSWORD", subject: "member@example.com" },
     { provider: "GOOGLE", subject: "google-subject-1" },
     { provider: "FACEBOOK", subject: "facebook-subject-1" },
   ]);
 });
 
-test("trustedProviderIdentities falls back to the current provider", () => {
+test("trustedProviderIdentities does not infer password from email claims", () => {
   const providers = trustedProviderIdentities({
     uid: "firebase-user-2",
     email: "member@example.com",
@@ -43,9 +42,7 @@ test("trustedProviderIdentities falls back to the current provider", () => {
     firebase: { sign_in_provider: "password", identities: {} },
   });
 
-  assert.deepEqual(providers, [
-    { provider: "PASSWORD", subject: "member@example.com" },
-  ]);
+  assert.deepEqual(providers, []);
 });
 
 test("verified email gate returns the stable checkout error", () => {
@@ -102,7 +99,7 @@ test("bootstrap route validates input and returns compatible auth metadata", asy
     authId: "firebase-route-user",
     email: "route@example.com",
     emailVerified: true,
-    providers: [{ provider: "PASSWORD" as const, subject: "route@example.com" }],
+    providers: [{ provider: "GOOGLE" as const, subject: "google-route-user" }],
     userId: null,
     status: null,
     isAdmin: false,
@@ -129,11 +126,24 @@ test("bootstrap route validates input and returns compatible auth metadata", asy
     auth: {
       uid: actor.authId,
       emailVerified: true,
-      providers: ["PASSWORD"],
+      providers: ["GOOGLE"],
     },
     permissions: { admin: false },
   });
   await app.close();
+});
+
+test("identity repository never transfers an active identity between users", async () => {
+  const repository = await readFile(
+    resolve(process.cwd(), "src/modules/auth/repository.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(repository, /set user_id=excluded\.user_id/);
+  assert.match(
+    repository,
+    /where user_identities\.user_id=excluded\.user_id/,
+  );
+  assert.match(repository, /IDENTITY_ALREADY_LINKED_TO_ANOTHER_USER/);
 });
 
 test("customer auth migration is forward-only and enforces active identities", async () => {

@@ -14,6 +14,7 @@ export function authErrorCode(error: unknown): AuthErrorCode {
     "auth/operation-not-allowed": "provider",
     "auth/popup-blocked": "popup",
     "auth/popup-closed-by-user": "cancelled",
+    "auth/requires-recent-login": "recentLogin",
     "auth/too-many-requests": "rateLimit",
     "auth/weak-password": "weakPassword",
   };

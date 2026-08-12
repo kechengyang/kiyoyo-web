@@ -10,7 +10,6 @@ import {
   confirmPasswordReset,
   createUserWithEmailAndPassword,
   getRedirectResult,
-  linkWithCredential,
   linkWithPopup,
   onAuthStateChanged,
   reload,
@@ -24,14 +23,14 @@ import {
   unlink,
   validatePassword,
   verifyPasswordResetCode,
-  type AuthCredential,
   type User,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { auth, firebaseApiKey } from "./firebase";
+import { identityToolkitFirebaseCode } from "./identityToolkitErrors";
+import { providersFromProviderData } from "./providers";
 import type { AuthMode, AuthProvider } from "./types";
 
-let pendingLinkCredential: AuthCredential | null = null;
 const persistenceReady = setPersistence(auth, browserLocalPersistence);
 
 const providerInstance = (provider: Exclude<AuthProvider, "password">) => {
@@ -51,14 +50,7 @@ const actionSettings = (returnTo = "/") => ({
 });
 
 export function providersFromUser(user: User): AuthProvider[] {
-  return user.providerData
-    .map((profile) => {
-      if (profile.providerId === "google.com") return "google";
-      if (profile.providerId === "facebook.com") return "facebook";
-      if (profile.providerId === "password") return "password";
-      return null;
-    })
-    .filter((provider): provider is AuthProvider => provider !== null);
+  return providersFromProviderData(user.providerData);
 }
 
 export async function signInMember(
@@ -72,21 +64,8 @@ export async function signInMember(
     const provider = providerInstance(kind);
     try {
       const result = await signInWithPopup(auth, provider);
-      if (pendingLinkCredential) {
-        await linkWithCredential(result.user, pendingLinkCredential);
-        pendingLinkCredential = null;
-      }
       return result.user;
     } catch (error) {
-      if (
-        error instanceof FirebaseError &&
-        error.code === "auth/account-exists-with-different-credential"
-      ) {
-        pendingLinkCredential =
-          kind === "google"
-            ? GoogleAuthProvider.credentialFromError(error)
-            : FacebookAuthProvider.credentialFromError(error);
-      }
       if (
         error instanceof FirebaseError &&
         error.code === "auth/popup-blocked"
@@ -100,10 +79,6 @@ export async function signInMember(
   const user = mode === "signup"
     ? (await createUserWithEmailAndPassword(auth, email, password)).user
     : (await signInWithEmailAndPassword(auth, email, password)).user;
-  if (pendingLinkCredential) {
-    await linkWithCredential(user, pendingLinkCredential);
-    pendingLinkCredential = null;
-  }
   return user;
 }
 
@@ -151,18 +126,31 @@ export async function linkMemberProvider(
 export async function linkMemberPassword(email: string, password: string) {
   if (!auth.currentUser) throw new Error("Sign in required");
   const idToken = await auth.currentUser.getIdToken();
-  const response = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(firebaseApiKey)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken, email, password, returnSecureToken: true }),
-    },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(firebaseApiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          email,
+          password,
+          returnSecureToken: true,
+        }),
+      },
+    );
+  } catch (error) {
+    throw new FirebaseError(
+      "auth/network-request-failed",
+      error instanceof Error ? error.message : "Could not reach sign-in service",
+    );
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     throw new FirebaseError(
-      "auth/credential-already-in-use",
+      identityToolkitFirebaseCode(payload?.error?.message),
       payload?.error?.message ?? "Could not add password sign-in",
     );
   }

@@ -16,7 +16,9 @@ import {
   signInMember,
   signOutMember,
   unlinkMemberProvider,
+  providersFromUser,
 } from "./service";
+import type { AuthPhase } from "./state";
 import type {
   AuthErrorCode,
   AuthMode,
@@ -33,15 +35,10 @@ type BootstrapResponse = {
   };
 };
 
-const providerName = {
-  PASSWORD: "password",
-  GOOGLE: "google",
-  FACEBOOK: "facebook",
-} as const;
-
 export function useCustomerAuth(lang: Lang) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [ready, setReady] = useState(false);
+  const [phase, setPhase] = useState<AuthPhase>("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AuthErrorCode | null>(null);
 
@@ -49,9 +46,12 @@ export function useCustomerAuth(lang: Lang) {
     async (user: User | null) => {
       if (!user) {
         setSession(null);
+        setPhase("signedOut");
         setReady(true);
         return null;
       }
+      setPhase("loading");
+      setSession((current) => (current?.uid === user.uid ? current : null));
       const payload = await apiFetch<BootstrapResponse>("/v1/auth/bootstrap", {
         method: "POST",
         body: JSON.stringify({
@@ -65,10 +65,12 @@ export function useCustomerAuth(lang: Lang) {
         memberId: payload.data.id,
         email: user.email,
         emailVerified: payload.auth.emailVerified,
-        providers: payload.auth.providers.map((provider) => providerName[provider]),
+        providers: providersFromUser(user),
         status: payload.data.status,
       };
       setSession(nextSession);
+      setError(null);
+      setPhase("authenticated");
       setReady(true);
       return nextSession;
     },
@@ -81,6 +83,7 @@ export function useCustomerAuth(lang: Lang) {
     return observeMember((user) => {
       void syncUser(user).catch((syncError) => {
         setError(authErrorCode(syncError));
+        setPhase("bootstrapError");
         setReady(true);
       });
     });
@@ -125,6 +128,7 @@ export function useCustomerAuth(lang: Lang) {
 
   return {
     session,
+    phase,
     ready,
     busy,
     error,
