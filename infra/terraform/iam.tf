@@ -26,6 +26,7 @@ resource "google_project_iam_member" "api_project_roles" {
   for_each = toset([
     "roles/cloudsql.client",
     "roles/cloudtasks.enqueuer",
+    "roles/firebaseauth.viewer",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
   ])
