@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Git Workflow"
+  short_description: "Route major work to worktrees and small fixes to branches"
+  default_prompt: "Use $manage-feature-workflow to implement this change with the correct branch, worktree, test, commit, and PR workflow."
