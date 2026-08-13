@@ -64,6 +64,71 @@ export async function apiFetch<T>(
   return payload as T;
 }
 
+export type AdminOrderStreamEvent =
+  | { type: "ready"; orderNumbers: string[] }
+  | { type: "new-order"; orderNumber: string };
+
+const parseAdminOrderEvent = (frame: string): AdminOrderStreamEvent | null => {
+  let eventName = "message";
+  const data: string[] = [];
+  frame.split("\n").forEach((line) => {
+    if (line.startsWith("event:")) eventName = line.slice(6).trim();
+    if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+  });
+  if (!data.length) return null;
+  try {
+    const payload = JSON.parse(data.join("\n"));
+    if (eventName === "ready" && Array.isArray(payload.order_numbers)) {
+      return {
+        type: "ready",
+        orderNumbers: payload.order_numbers.filter(
+          (value: unknown): value is string => typeof value === "string",
+        ),
+      };
+    }
+    if (eventName === "new-order" && typeof payload.orderNumber === "string") {
+      return { type: "new-order", orderNumber: payload.orderNumber };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+export async function streamAdminOrderEvents(
+  signal: AbortSignal,
+  onEvent: (event: AdminOrderStreamEvent) => void | Promise<void>,
+) {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Sign in required");
+  const response = await fetch(`${API_BASE_URL}/v1/admin/order-events`, {
+    headers: {
+      Accept: "text/event-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) throw new Error(`Order event stream failed (${response.status})`);
+  if (!response.body) throw new Error("Order event stream is unavailable");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (!signal.aborted) {
+    const { done, value } = await reader.read();
+    buffer = `${buffer}${decoder.decode(value, { stream: !done })}`.replaceAll("\r\n", "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const event = parseAdminOrderEvent(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      if (event) await onEvent(event);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+}
+
 type ApiProduct = {
   id: string;
   external_code: string | null;

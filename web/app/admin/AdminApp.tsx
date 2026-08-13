@@ -11,6 +11,7 @@ import {
   apiFetch,
   fetchAdminCatalog,
   mapApiProduct,
+  streamAdminOrderEvents,
 } from "../platform";
 import {
   observeMember,
@@ -36,6 +37,11 @@ import {
 } from "./core/foundation";
 import { OverviewView } from "./overview/OverviewView";
 import { OrdersView } from "./orders/OrdersView";
+import {
+  NewOrderAlert,
+  type NewOrderNotice,
+  useNewOrderChime,
+} from "./orders/NewOrderNotifications";
 import { ProductsView } from "./products/ProductsView";
 import { ProductEditorDialog } from "./products/ProductEditorDialog";
 import { CouponsView } from "./coupons/CouponsView";
@@ -49,6 +55,7 @@ import { AdminSidebar, AdminTopbar } from "./shell/AdminShell";
 import { AccessManagementView } from "./access/AccessManagementView";
 
 type ApiAdminOrder = AdminOverview["recent_orders"][number];
+type ApiOrderAlert = { order_number: string; created_at: string };
 
 const mapAdminOrder = (order: ApiAdminOrder): Order => ({
   id: order.order_number,
@@ -139,11 +146,21 @@ export default function AdminApp() {
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [cloudStatus, setCloudStatus] = useState("Connecting to KIYOYO Cloud…");
   const [scannerActive, setScannerActive] = useState(false);
+  const [newOrderNotice, setNewOrderNotice] = useState<NewOrderNotice | null>(null);
+  const [orderAlertsConnected, setOrderAlertsConnected] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerStreamRef = useRef<MediaStream | null>(null);
   const couponDialogRef = useRef<HTMLElement>(null);
   const couponReturnFocusRef = useRef<HTMLElement | null>(null);
   const couponEditorOpen = Boolean(editingCoupon);
+  const knownOrderIdsRef = useRef(new Set<string>());
+  const noticeSequenceRef = useRef(0);
+  const { playChime, soundEnabled, soundReady, toggleSound } = useNewOrderChime();
+  const playChimeRef = useRef(playChime);
+
+  useEffect(() => {
+    playChimeRef.current = playChime;
+  }, [playChime]);
 
   useEffect(
     () =>
@@ -156,6 +173,8 @@ export default function AdminApp() {
           setCustomers([]);
           setCoupons([]);
           setAdminStores([]);
+          knownOrderIdsRef.current.clear();
+          setNewOrderNotice(null);
           return;
         }
         setAdminState("loading");
@@ -178,6 +197,7 @@ export default function AdminApp() {
             couponPayload,
             storePayload,
             overviewPayload,
+            orderAlertPayload,
           ] = await Promise.all([
             apiFetch<{ data: Parameters<typeof mapApiProduct>[0][] }>(
               "/v1/admin/products",
@@ -195,6 +215,7 @@ export default function AdminApp() {
             apiFetch<{ data: AdminCoupon[] }>("/v1/admin/coupons"),
             apiFetch<{ data: AdminStore[] }>(staffSession.role === "ADMIN" ? "/v1/admin/stores" : "/v1/admin/context/stores"),
             apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
+            apiFetch<{ data: ApiOrderAlert[] }>("/v1/admin/order-alerts"),
           ]);
           setCatalog(productPayload.data.map(mapApiProduct));
           setProductTags(
@@ -212,6 +233,8 @@ export default function AdminApp() {
           setCustomers(customerPayload.data);
           setCoupons(couponPayload.data);
           setAdminStores(storePayload.data);
+          knownOrderIdsRef.current = new Set(orderAlertPayload.data.map((order) => order.order_number));
+          setOrderAlertsConnected(true);
           setCloudStatus(`Connected as ${staffSession.username}`);
           setAdminState("ready");
         } catch (error) {
@@ -228,6 +251,66 @@ export default function AdminApp() {
       }),
     [setCatalog, setProductTags],
   );
+
+  useEffect(() => {
+    if (adminState !== "ready" || !session) return;
+    const controller = new AbortController();
+    const waitForReconnect = (delay: number) =>
+      new Promise<void>((resolve) => {
+        const finish = () => {
+          window.clearTimeout(timer);
+          controller.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = window.setTimeout(finish, delay);
+        controller.signal.addEventListener("abort", finish, { once: true });
+      });
+    const handleOrderNumbers = async (orderNumbers: string[]) => {
+      const newOrderNumbers = orderNumbers.filter(
+        (orderNumber) => !knownOrderIdsRef.current.has(orderNumber),
+      );
+      if (!newOrderNumbers.length) {
+        orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
+        return;
+      }
+      const [orderPayload, overviewPayload] = await Promise.all([
+        apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
+        apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
+      ]);
+      setOrders(orderPayload.data.map(mapAdminOrder));
+      setOverview(overviewPayload.data);
+      orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
+      noticeSequenceRef.current += 1;
+      setNewOrderNotice({
+        sequence: noticeSequenceRef.current,
+        orderNumber: newOrderNumbers[0],
+        orderCount: newOrderNumbers.length,
+      });
+      void playChimeRef.current();
+    };
+    const connect = async () => {
+      let retryDelay = 1_000;
+      while (!controller.signal.aborted) {
+        try {
+          await streamAdminOrderEvents(controller.signal, async (event) => {
+            setOrderAlertsConnected(true);
+            await handleOrderNumbers(
+              event.type === "ready" ? event.orderNumbers : [event.orderNumber],
+            );
+          });
+          retryDelay = 1_000;
+          if (!controller.signal.aborted) await waitForReconnect(250);
+        } catch {
+          if (controller.signal.aborted) return;
+          setOrderAlertsConnected(false);
+          await waitForReconnect(retryDelay);
+          retryDelay = Math.min(retryDelay * 2, 15_000);
+        }
+      }
+    };
+    void connect();
+    return () => controller.abort();
+  }, [adminState, session]);
 
   useEffect(
     () => () => {
@@ -1059,6 +1142,10 @@ export default function AdminApp() {
           cloudStatus={cloudStatus}
           activeCount={active.length}
           scopeLabel={session.role === "ADMIN" ? "NAIROBI" : session.stores.map((store) => store.area).join(" + ")}
+          orderAlertsConnected={orderAlertsConnected}
+          soundEnabled={soundEnabled}
+          soundReady={soundReady}
+          toggleSound={() => void toggleSound()}
         />
 
         {tab === "overview" && (
@@ -1196,6 +1283,16 @@ export default function AdminApp() {
           editingStore={editingStore}
           setEditingStore={setEditingStore}
           saveStore={saveStore}
+        />
+      )}
+      {newOrderNotice && (
+        <NewOrderAlert
+          notice={newOrderNotice}
+          onDismiss={() => setNewOrderNotice(null)}
+          onViewOrder={() => {
+            setTab("orders");
+            setNewOrderNotice(null);
+          }}
         />
       )}
     </div>

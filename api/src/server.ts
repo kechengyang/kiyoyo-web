@@ -19,6 +19,13 @@ import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./cry
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
 import { registerAdminAccessRoutes } from "./admin/access-routes.js";
 import { registerAdminSessionRoutes } from "./admin/session-routes.js";
+import {
+  closeOrderEventListener,
+  ensureOrderEventListener,
+  notifyOrderCreated,
+  subscribeToOrderEvents,
+  type OrderCreatedEvent,
+} from "./order-events.js";
 
 const app = Fastify({
   logger: true,
@@ -506,6 +513,11 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedEmail }, async (request, 
       await client.query("insert into pickup_tokens(fulfillment_group_id,token_hash,expires_at) values($1,$2,$3)", [fulfillment.rows[0].id, pickup.hash, expiresAt]);
       pickupQrPayload = pickup.token;
     }
+    await notifyOrderCreated(client, {
+      orderNumber: order.rows[0].order_number,
+      createdAt: new Date(order.rows[0].created_at).toISOString(),
+      storeId: store.rows[0]?.id ?? null,
+    });
     await client.query("commit");
     return reply.code(201).send({ data: { ...order.rows[0], coupon_code: appliedCoupon?.code ?? null, fulfillment: fulfillment.rows[0], pickup_qr_payload: pickupQrPayload } });
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
@@ -849,6 +861,89 @@ app.post("/v1/admin/coupons/:id/archive", { preHandler: requirePermission("coupo
   return { data: result.rows[0] };
 });
 
+const loadAdminOrderAlerts = (scope: string[] | null) =>
+  query<{ order_number: string; created_at: Date }>(
+    `select o.order_number,o.created_at
+       from orders o
+      where exists (
+        select 1 from fulfillment_groups f
+         where f.order_id=o.id
+           and ($1::uuid[] is null or f.store_id=any($1::uuid[]))
+      )
+      order by o.created_at desc,o.order_number desc
+      limit 100`,
+    [scope],
+  );
+
+app.get("/v1/admin/order-alerts", { preHandler: requirePermission("orders.read") }, async (request) => {
+  const staff = request.actor!.staff!;
+  const scope = staff.role === "ADMIN" ? null : staff.storeIds;
+  const result = await loadAdminOrderAlerts(scope);
+  return { data: result.rows };
+});
+
+app.get("/v1/admin/order-events", { preHandler: requirePermission("orders.read") }, async (request, reply) => {
+  const staff = request.actor!.staff!;
+  const scope = staff.role === "ADMIN" ? null : staff.storeIds;
+  await ensureOrderEventListener();
+
+  const queuedEvents: OrderCreatedEvent[] = [];
+  let streaming = false;
+  let closed = false;
+  const isAuthorised = (event: OrderCreatedEvent) =>
+    scope === null || (event.storeId !== null && scope.includes(event.storeId));
+  const writeEvent = (event: string, data: unknown, id?: string) => {
+    if (closed || reply.raw.destroyed) return;
+    if (id) reply.raw.write(`id: ${id}\n`);
+    reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  const receiveOrder = (event: OrderCreatedEvent) => {
+    if (!isAuthorised(event)) return;
+    if (!streaming) queuedEvents.push(event);
+    else writeEvent("new-order", event, event.orderNumber);
+  };
+  const unsubscribe = subscribeToOrderEvents(receiveOrder);
+
+  try {
+    const baseline = await loadAdminOrderAlerts(scope);
+    const origin = request.headers.origin;
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+      ...(origin && config.allowedOrigins.includes(origin)
+        ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
+        : {}),
+    });
+    reply.raw.flushHeaders();
+    const baselineIds = new Set(baseline.rows.map((order) => order.order_number));
+    writeEvent("ready", { order_numbers: [...baselineIds] });
+    streaming = true;
+    queuedEvents
+      .filter((event) => !baselineIds.has(event.orderNumber))
+      .forEach((event) => writeEvent("new-order", event, event.orderNumber));
+
+    const heartbeat = setInterval(() => {
+      if (!closed && !reply.raw.destroyed) reply.raw.write(": heartbeat\n\n");
+    }, 15_000);
+    const refreshAccess = setTimeout(() => reply.raw.end(), 60_000);
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      clearTimeout(refreshAccess);
+      unsubscribe();
+    };
+    request.raw.once("close", cleanup);
+    reply.raw.once("close", cleanup);
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
+});
+
 app.get("/v1/admin/orders", { preHandler: requirePermission("orders.read") }, async (request) => {
   const staff = request.actor!.staff!;
   const scope = staff.role === "ADMIN" ? null : staff.storeIds;
@@ -1080,6 +1175,9 @@ app.post("/v1/admin/pickups/redeem", { preHandler: requirePermission("redeem.exe
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 });
 
-app.addHook("onClose", async () => { await pool.end(); });
+app.addHook("onClose", async () => {
+  await closeOrderEventListener();
+  await pool.end();
+});
 
 await app.listen({ port: config.port, host: config.host });
