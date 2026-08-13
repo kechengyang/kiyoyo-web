@@ -4404,61 +4404,27 @@ button {
   width: min(1280px, 100%);
   margin: 0 auto;
 }
-.admin-home-intro {
-  min-height: 142px;
-  padding: 28px 32px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 32px;
-}
-.admin-home-intro small,
 .admin-management-intro > small {
   color: var(--red);
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 1.8px;
 }
-.admin-home-intro h2,
 .admin-management-intro h2 {
   margin: 8px 0 6px;
   font-size: clamp(25px, 3vw, 38px);
   letter-spacing: -1.2px;
 }
-.admin-home-intro p,
 .admin-management-intro p {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
 }
-.admin-home-scope {
-  min-width: 210px;
-  padding-left: 24px;
-  border-left: 1px solid var(--line);
-  text-align: right;
-}
-.admin-home-scope span,
-.admin-home-scope strong {
-  display: block;
-}
-.admin-home-scope span {
-  color: var(--success);
-  font-size: 9px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-.admin-home-scope strong {
-  margin-top: 5px;
-  font-size: 11px;
-}
 .admin-launch-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  margin-top: 16px;
 }
 .admin-launch-card {
   min-height: 268px;
@@ -5972,9 +5938,7 @@ button {
     font-size: 0;
   }
   .admin-top button { min-height: 44px; margin-left: 5px; }
-  .admin-home-intro { min-height: 0; padding: 22px; align-items: flex-start; flex-direction: column; gap: 20px; }
-  .admin-home-scope { width: 100%; min-width: 0; padding: 14px 0 0; border-top: 1px solid var(--line); border-left: 0; text-align: left; }
-  .admin-launch-grid { grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
+  .admin-launch-grid { grid-template-columns: 1fr; gap: 10px; }
   .admin-launch-card { min-height: 218px; padding: 20px; grid-template-columns: 50px 1fr; gap: 16px; }
   .admin-launch-icon { width: 50px; height: 50px; }
   .admin-launch-copy strong { font-size: 28px; }
