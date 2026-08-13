@@ -81,23 +81,7 @@ export function AdminHomeView({
   };
 
   return (
-    <section className="admin-home" aria-labelledby="admin-home-title">
-      <header className="admin-home-intro">
-        <div>
-          <small>STAFF HOME / 员工首页</small>
-          <h2 id="admin-home-title">What do you need to do?</h2>
-          <p>Choose a task to get straight to work. / 请选择今天要处理的工作。</p>
-        </div>
-        <div className="admin-home-scope" role="status">
-          <span>{session.role === "ADMIN" ? "Admin" : "Store staff"}</span>
-          <strong>
-            {session.role === "ADMIN"
-              ? "All Nairobi stores"
-              : session.stores.map((store) => store.area).join(" · ")}
-          </strong>
-        </div>
-      </header>
-
+    <section className="admin-home" aria-label="Staff tasks / 员工操作">
       <div className="admin-launch-grid">
         {cards.map((card) => (
           <button

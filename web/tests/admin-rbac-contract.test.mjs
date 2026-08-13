@@ -19,6 +19,8 @@ test("Admin shell exposes the task home and management only through allowed tabs
   assert.match(home, /Orders/);
   assert.match(home, /Customers/);
   assert.match(home, /adminOnly: true/);
+  assert.doesNotMatch(home, /What do you need to do/);
+  assert.doesNotMatch(home, /admin-home-intro/);
   assert.match(management, /Users & access/);
 });
 
