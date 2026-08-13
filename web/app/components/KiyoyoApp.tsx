@@ -39,7 +39,6 @@ import { useStoredState } from "./customer/core/useStoredState";
 import { copy } from "./customer/core/copy";
 import { HomeView } from "./customer/home/HomeView";
 import { ShopView } from "./customer/shop/ShopView";
-import { SavedView } from "./customer/saved/SavedView";
 import { CartView } from "./customer/cart/CartView";
 import { AccountView } from "./customer/account/AccountView";
 import { GlobalSearchDialog } from "./customer/shell/GlobalSearchDialog";
@@ -1224,18 +1223,6 @@ export default function KiyoyoApp() {
           />
         )}
 
-        {tab === "collection" && (
-          <SavedView
-            t={t}
-            lang={lang}
-            saved={saved}
-            products={products}
-            toggleSave={toggleSave}
-            openProduct={openProduct}
-            onExplore={() => go("shop")}
-          />
-        )}
-
         {tab === "cart" && (
           <CartView
             t={t}
@@ -1250,6 +1237,10 @@ export default function KiyoyoApp() {
             beginCheckout={beginCheckout}
             session={session}
             onExplore={() => go("shop")}
+            saved={saved}
+            products={products}
+            toggleSave={toggleSave}
+            openProduct={openProduct}
           />
         )}
 
