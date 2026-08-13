@@ -10,7 +10,7 @@
 本设计在现有 Admin 中增加两种固定角色，并把门店范围作为后端强制执行的授权边界：
 
 - `ADMIN`：拥有全部 Admin 权限；可以创建 `username + password` 后台用户、变更角色与门店授权、移除后台访问权，并可以为任意密码账号直接设置新密码。
-- `OPERATOR`：由 Admin 创建并绑定一个或多个门店；可以查看授权门店 Overview、完整处理授权门店订单和核销；只读查看 Customer、Product、Coupon。
+- `OPERATOR`：由 Admin 创建并绑定一个或多个门店；可以完整处理授权门店订单和核销，并只读查看 Customer；不访问经营概览、Product、Coupon 或其他管理模块。
 - 当前 dev 测试账号 `admin-dev@kiyoyo.test` 作为兼容登录名，在迁移后必须默认拥有 `ADMIN` 角色。新建后台账号不要求真实邮箱。账号密码继续只存在于 Identity Platform 和受控交付渠道，不写入数据库、Git 或本文档。
 
 本期不做：
@@ -51,12 +51,12 @@
 
 | Admin 模块 | ADMIN | OPERATOR | Operator 范围与说明 |
 | --- | --- | --- | --- |
-| Overview | Full / Global | Viewer | **只能显示当前 Operator 已授权门店的统计数据**；订单量、营收、待取餐、客户数、订单摘要和趋势均按门店 scope 计算，Overview 内不提供状态修改 |
+| Overview | Full / Global | No access | Operator 的 Home 只显示当前任务入口，不加载经营概览或营收数据 |
 | Orders | Full / Global | Full | 只列出、查看和更新已授权门店履约订单 |
 | Redeem | Full / Global | Full | 只可验证和核销已授权门店 pickup token |
 | Customers | Full / Global | Viewer / Global | 可只读查看全部 Customer；不能编辑、停用、发券、撤券或设置密码 |
-| Products & Tags | Full / Global | Viewer / Global | 可搜索、筛选、查看商品详情；不能新建、编辑、上下架、改价、改图或管理标签 |
-| Coupons | Full / Global | Viewer / Global | 可查看规则、状态和汇总；不能新建、编辑、发布、暂停、归档、发券或撤券 |
+| Products & Tags | Full / Global | No access | 只在 Admin 管理入口内显示 |
+| Coupons | Full / Global | No access | 只在 Admin 管理入口内显示 |
 | Stores | Full / Global | No management | Operator 只在上下文选择器看到已授权门店，不显示 Stores 管理 Tab |
 | Admin / 权限管理 | Full / Global | No access | 仅 Admin 可见；管理后台账号、角色、门店授权和密码设置 |
 | Audit logs | Viewer / Global | No access | Admin 只读查看敏感操作审计 |
@@ -65,7 +65,7 @@
 
 | Permission code | ADMIN | OPERATOR | Scope |
 | --- | :---: | :---: | --- |
-| `overview.read` | ✓ | ✓ | Admin global；Operator 只能读取 assigned stores 的服务端统计结果 |
+| `overview.read` | ✓ | — | Admin global |
 | `orders.read` | ✓ | ✓ | Admin global；Operator assigned stores |
 | `orders.transition` | ✓ | ✓ | Admin global；Operator assigned stores |
 | `redeem.verify` | ✓ | ✓ | Admin global；Operator assigned stores |
@@ -73,11 +73,11 @@
 | `customers.read` | ✓ | ✓ | Global；Operator viewer 不受门店 scope 限制 |
 | `customers.write` | ✓ | — | Global |
 | `customers.password_set` | ✓ | — | Global；仅 password provider 账号 |
-| `products.read` | ✓ | ✓ | Global |
+| `products.read` | ✓ | — | Global |
 | `products.write` | ✓ | — | Global |
 | `products.publish` | ✓ | — | Global |
 | `product_tags.write` | ✓ | — | Global |
-| `coupons.read` | ✓ | ✓ | Global |
+| `coupons.read` | ✓ | — | Global |
 | `coupons.write` | ✓ | — | Global |
 | `coupons.publish` | ✓ | — | Global |
 | `customer_coupons.issue` | ✓ | — | Global |
@@ -268,10 +268,9 @@ type Actor = {
 - 单实体读取/写入：从数据库实体关系解析真实 `store_id`，不信任请求 body 中自报的门店。
 - Orders：通过 `fulfillment_groups.store_id` 限制读取与状态流转。
 - Redeem：先检查请求门店属于 actor，再在同一事务中验证 token 所属门店和核销状态。
-- Overview：使用单独的 scoped aggregation endpoint。Recent orders、Active orders、Gross sales、Ready for pickup、Customers/Members、Live orders、Store pulse 和所有趋势/对比的 SQL 查询都必须带 actor 的 store scope；不允许 Operator 获取任何全局统计后再由前端裁剪。
-- 单店 Operator 的 Overview 固定显示该门店，并明确展示门店名称。若一个 Operator 获得多个门店，可选择某一授权门店或查看“全部已授权门店”的合计；任何选项都不能包含未授权门店，也不显示全 Nairobi 排名。
-- Customers：Operator 具有全局 viewer 权限，列表与详情不受门店 scope 限制；所有 Customer 写操作仍只允许 Admin。Overview 中的 Customer/Member 数量属于门店经营统计，仍只统计在当前授权门店发生过订单的去重客户。
-- Product/Coupon：当前为全局规则，因此 Operator 只读可跨店查看。若以后出现门店专属商品/券，再增加实体 scope。
+- Overview：仅 Admin 可访问 Nairobi 全局经营统计。Operator 不请求该 endpoint；门店员工 Home 只根据已授权的订单与 Customer 列表显示任务提示。
+- Customers：Operator 具有全局 viewer 权限，列表与详情不受门店 scope 限制；所有 Customer 写操作仍只允许 Admin。
+- Product/Coupon：仅 Admin 可读取和管理；Operator 直接调用 read endpoint 同样返回 `403 FORBIDDEN`。
 
 ### 5.3 API 设计
 
@@ -350,12 +349,13 @@ Identity Platform 与 PostgreSQL 无法组成单一分布式事务。创建流�
 1. 调用 `/v1/auth/bootstrap`。
 2. 调用 `/v1/admin/session` 获取 role、permissions、stores。
 3. 根据允许的 Tab 按需加载数据，不再启动时一次请求全部 Admin 数据。
-4. 如果当前 URL/本地 tab 不再有权限，导航到 Overview，并显示“Your access has changed / 你的权限已变更”。
+4. 登录完成或权限变化后导航到 Home；无权限的管理模块不加载数据。
 
-Sidebar：
+Home 与导航：
 
-- `ADMIN`：Overview、Orders、Products、Coupons、Redeem、Customers、Stores、**Admin**。
-- `OPERATOR`：Overview、Orders、Products、Coupons、Redeem、Customers；不显示 Stores 和 Admin。
+- 登录后先进入 Home，显示大尺寸任务入口。
+- `ADMIN`：Redeem、Orders、Customers、**Admin**；Admin 内再进入 Overview、Products、Coupons、Stores、Users & access。
+- `OPERATOR`：Redeem、Orders、Customers；不显示 Admin，也不加载 Overview、Products、Coupons 数据。
 - Operator 顶部显示固定的门店 scope chip；多店 Operator 可在“全部已授权门店 / 单店”间切换，不能看到未授权门店名称。
 - 账号区明确显示 `Admin` 或 `Operator · Westlands +1`，不再固定写 `Nairobi HQ`。
 
@@ -385,13 +385,11 @@ Sidebar：
 - Stores：仅 Operator 显示，至少一个；支持搜索和多选。
 - Password / 密码与 Confirm password / 确认密码：由 Admin 直接设置；显示强度规则和显隐控制，不提供邮箱字段、邮件邀请或重置入口。
 
-Role 变化前显示影响摘要，例如：“Changing to Operator removes Product, Coupon, Customer and Store editing. Access will be limited to Westlands.” Admin → Operator 时必须先选择门店；Operator → Admin 时清空 store scope。
+Role 变化前显示影响摘要，例如：“Changing to Operator removes access to Overview, Products, Coupons, Stores and staff management. Customer access becomes view-only and operations are limited to Westlands.” Admin → Operator 时必须先选择门店；Operator → Admin 时清空 store scope。
 
 ### 7.4 Viewer 状态
 
-- Overview：页面标题旁持续显示当前门店 scope，例如 `Westlands` 或 `My stores · 2`。Operator 只看到这些门店的统计和订单摘要；状态使用只读 chip。Operator 可通过 `Manage assigned orders` 进入 Orders 完成操作。无权看到全 Nairobi 汇总、其他门店柱状图或跨店排名。
-- Products：保留搜索、筛选、详情查看；隐藏 New、Edit、publish toggle、Tag manager。详情所有字段只读。
-- Coupons：保留筛选、规则详情和数据；隐藏 Create、Edit、Publish、Stop、Disable、Archive。
+- Operator 不渲染或请求 Overview、Products、Coupons、Stores 管理和权限管理模块。
 - Customers：Operator 可全局只读查看详情，不受门店 scope 限制；对 Operator 隐藏 Save、状态选择、Issue/Revoke coupon、Set password。Admin 仍可使用完整 Customer 操作并直接设置密码。
 - 禁止只把按钮 `disabled` 后仍连接写 handler；无权限时组件不接收写 callback，API 仍独立拒绝。
 
@@ -438,11 +436,10 @@ Role 变化前显示影响摘要，例如：“Changing to Operator removes Prod
 
 - Admin 全部允许。
 - Operator 只允许矩阵中 read/full 动作。
-- Operator 可以读取全局 Customer 列表和详情，但无法通过直接 HTTP 调用 Product/Coupon/Customer 写接口。
+- Operator 可以读取全局 Customer 列表和详情；直接 HTTP 调用 Overview、Product、Coupon 或 Customer 写接口均返回 403。
 - Operator 的订单列表不含其他门店；用已知 fulfillment id 也不能跨店 transition。
 - Operator 不能用自己授权门店参数核销其他门店 token，也不能伪造 body `store_id` 绕过。
-- Overview 每一项统计只包含授权门店：订单量、活跃订单、营收、待取餐、客户数、订单摘要、趋势和门店图表逐项断言；响应中不得出现其他门店名称、计数或金额。
-- Operator 的 Customer 列表和详情为全局只读；Overview 的 Customer/Member 指标仍只统计授权门店的去重客户。
+- Operator 的 Customer 列表和详情为全局只读；首页不请求或显示经营指标。
 
 ### 9.2 账号与角色测试
 
@@ -465,8 +462,8 @@ Role 变化前显示影响摘要，例如：“Changing to Operator removes Prod
 
 ### 9.4 UI 与可访问性
 
-- Operator 不显示 Stores/Admin Tab；刷新或手输不可访问 tab 时安全回退。
-- Product/Coupon/Customer viewer 无写控件，Overview 无 inline mutation。
+- Operator 只显示 Home、Orders、Redeem、Customers；刷新或手输不可访问 tab 时安全回退。
+- Operator 无 Product/Coupon/Overview 请求，Customer viewer 无写控件。
 - Store selector 只含授权门店。
 - 键盘完成新建、编辑、确认和取消；焦点可见并正确返回。
 - English/Chinese、empty/error/loading/disabled/success 在四个基线宽度正常。
@@ -491,8 +488,9 @@ Role 变化前显示影响摘要，例如：“Changing to Operator removes Prod
 2026-08-12 已确认：
 
 1. **Operator 门店数量**：允许一个 Operator 绑定一个或多个门店。
-2. **Customer viewer 范围**：Operator 可全局只读查看所有 Customer，不受门店 scope 限制；Overview 的经营统计仍严格限定授权门店。
+2. **Customer viewer 范围**：Operator 可全局只读查看所有 Customer，不受门店 scope 限制；不授予 Overview 经营统计权限。
 3. **移除访问语义**：软移除后台访问权，不删除 Identity 或业务账号；保留权限生效时间、失效时间、操作者、原因和完整审计。
 4. **密码管理**：所有密码由 Admin 直接设置，不使用邮件邀请、验证、找回或重置流程。
+5. **门店员工首页**（2026-08-13）：Operator 只使用 Redeem、Orders 和只读 Customers；产品、优惠券、经营概览、门店管理和权限管理均归入 Admin 入口。
 
 设计 Review 已通过，并已按本文档完成代码、迁移、权限契约测试与前端回归验证；云端迁移和部署不在本次提交范围内。
