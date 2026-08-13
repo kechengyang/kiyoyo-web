@@ -40,7 +40,7 @@ test("server-renders the KIYOYO customer storefront", async () => {
   assert.match(featured, /Passion Fruit Tea/);
   assert.match(featured, /Raw Coconut Latte/);
   assert.match(html, /Home<\/span>/);
-  assert.match(html, /Saved<\/span>/);
+  assert.doesNotMatch(html, /Saved<\/span>/);
   assert.match(html, /Cart<\/span>/);
   assert.match(html, /Account<\/span>/);
 });
