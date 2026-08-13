@@ -1,4 +1,5 @@
 export type AdminTab =
+  | "home"
   | "overview"
   | "orders"
   | "products"
@@ -6,7 +7,8 @@ export type AdminTab =
   | "redeem"
   | "customers"
   | "stores"
-  | "admin";
+  | "admin"
+  | "access";
 
 export type StaffRole = "ADMIN" | "OPERATOR";
 
