@@ -26,6 +26,18 @@ Do not use color alone to communicate state. Pair it with text, iconography, pos
 - Keep async buttons stable in width, disable duplicate submission while pending, and announce the result.
 - Use links for navigation and buttons for actions.
 
+## Navigation and URL behavior
+
+- Treat the URL as the authoritative page state. Opening a canonical URL directly and refreshing it must render the same destination without relying on a previous in-memory tab value.
+- Verify ordinary navigation updates the URL and creates browser history. Back and Forward must update both the visible page and its active navigation state.
+- Every navigation control must expose a real `href` so it can be copied, opened in a new tab, and used without JavaScript interception. Use a button only when the interaction performs an action rather than navigation.
+- Verify each destination on the real hosting model. For static export, confirm every supported clean URL produces an exported page and returns HTML directly instead of depending on an accidental development-server fallback.
+- Keep `document.title`, the page `h1`, breadcrumbs, and `aria-current="page"` aligned with the active route.
+- Round-trip shareable filters and selections through query parameters. Reloading or sharing the URL must restore them; clearing a control must remove its parameter.
+- Use path segments for durable resources and nested workflows. Use query parameters for optional non-sensitive view state. Keep transient and sensitive state out of the URL.
+- Test authentication and RBAC through direct URLs. Protected content must not render before access is established, and an unauthorised route must lead to an explicit safe fallback.
+- Handle unknown routes with a useful 404 or canonical redirect. Do not silently display Home while leaving an unrelated URL in the address bar.
+
 ## Carousel
 
 - Default to 5–7 seconds per campaign when autoplay is justified.
@@ -111,7 +123,9 @@ Run the checks relevant to the change:
 6. Confirm drink images show the full cup and goods crops match their intended role.
 7. Confirm Admin-defined price, discount, tag, image, availability, and publish state reach the customer UI.
 8. Check motion with reduced-motion enabled.
-9. Run lint, build, and targeted automated tests.
-10. Verify the rendered page, not only source code, when visual behavior is part of the request.
+9. Open every changed destination directly, refresh it, use Back/Forward, and open its navigation link in a new tab.
+10. Confirm the active URL, page title, `h1`, breadcrumb, and navigation state agree.
+11. Run lint, build, and targeted automated tests; for static export, inspect the generated route files.
+12. Verify the rendered page, not only source code, when visual behavior is part of the request.
 
 Record any intentionally deferred rule with its user impact and a concrete follow-up; do not quietly waive it.

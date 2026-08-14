@@ -66,7 +66,8 @@ export async function apiFetch<T>(
 
 export type AdminOrderStreamEvent =
   | { type: "ready"; orderNumbers: string[] }
-  | { type: "new-order"; orderNumber: string };
+  | { type: "new-order"; orderNumber: string }
+  | { type: "order-updated"; orderNumber: string };
 
 const parseAdminOrderEvent = (frame: string): AdminOrderStreamEvent | null => {
   let eventName = "message";
@@ -88,6 +89,9 @@ const parseAdminOrderEvent = (frame: string): AdminOrderStreamEvent | null => {
     }
     if (eventName === "new-order" && typeof payload.orderNumber === "string") {
       return { type: "new-order", orderNumber: payload.orderNumber };
+    }
+    if (eventName === "order-updated" && typeof payload.orderNumber === "string") {
+      return { type: "order-updated", orderNumber: payload.orderNumber };
     }
   } catch {
     return null;

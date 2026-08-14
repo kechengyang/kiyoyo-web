@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Dispatch, SetStateAction } from "react";
 import { money } from "../../../data";
 import type {
@@ -15,7 +16,7 @@ export function AccountView({
   t, lang, session, profile, openAuth, openProfile, openAddress,
   setDefaultAddress, accountPanel, setAccountPanel, couponsLoading,
   userCoupons, selectedCouponId, setSelectedCouponId, setCouponCodeInput,
-  setTab, cart, orders, openOrderDetails, setEditingOrderId, signOut,
+  cart, orders, openOrderDetails, setEditingOrderId, signOut,
   authBusy, authError, linkProvider, linkPassword, unlinkProvider,
   resendVerification, refreshVerification, go,
 }: {
@@ -34,7 +35,6 @@ export function AccountView({
   selectedCouponId: string;
   setSelectedCouponId: Dispatch<SetStateAction<string>>;
   setCouponCodeInput: Dispatch<SetStateAction<string>>;
-  setTab: Dispatch<SetStateAction<Tab>>;
   cart: CartItem[];
   orders: Order[];
   openOrderDetails: (order: Order) => void;
@@ -283,7 +283,7 @@ export function AccountView({
                   onClick={() => {
                     setSelectedCouponId(coupon.userCouponId);
                     setCouponCodeInput("");
-                    setTab(cart.length ? "cart" : "shop");
+                    go(cart.length ? "cart" : "shop");
                   }}
                 >
                   {selectedCouponId === coupon.userCouponId
@@ -401,9 +401,9 @@ export function AccountView({
         </div>
       )}
       <div className="account-links">
-        <a className="admin-link" href="/admin">
+        <Link className="admin-link" href="/admin">
           ⚙ {t.admin} →
-        </a>
+        </Link>
         <button
           onClick={() => {
             void signOut().then(() => go("home"));

@@ -55,3 +55,25 @@ test("server-renders the Nairobi operations admin", async () => {
   assert.match(html, /Loading permissions and live Cloud SQL data/);
   assert.doesNotMatch(html, /Today’s orders|KYO-/);
 });
+
+test("every customer and admin destination is directly renderable", async () => {
+  const paths = [
+    "/shop",
+    "/cart",
+    "/account",
+    "/admin/orders",
+    "/admin/redeem",
+    "/admin/customers",
+    "/admin/management",
+    "/admin/overview",
+    "/admin/products",
+    "/admin/coupons",
+    "/admin/stores",
+    "/admin/access",
+  ];
+  for (const path of paths) {
+    const response = await render(path);
+    assert.equal(response.status, 200, `${path} should render directly`);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  }
+});

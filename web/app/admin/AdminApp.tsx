@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { drinkCategoryOrder } from "../menu";
 import {
@@ -36,6 +36,7 @@ import {
   categorySlug,
   goodsCategoryOrder,
 } from "./core/foundation";
+import { adminTabFromPath, adminTabPath } from "./core/routes";
 import { OverviewView } from "./overview/OverviewView";
 import { OrdersView } from "./orders/OrdersView";
 import {
@@ -59,6 +60,14 @@ import { AdminManagementView } from "./management/AdminManagementView";
 
 type ApiAdminOrder = AdminOverview["recent_orders"][number];
 type ApiOrderAlert = { order_number: string; created_at: string };
+
+const tabsForStaff = (staff: Pick<AdminSession, "role">): AdminTab[] => {
+  const tabs: AdminTab[] = ["home", "orders", "redeem", "customers"];
+  if (staff.role === "ADMIN") {
+    tabs.push("admin", "overview", "products", "coupons", "stores", "access");
+  }
+  return tabs;
+};
 
 const mapAdminOrder = (order: ApiAdminOrder): Order => ({
   id: order.order_number,
@@ -104,8 +113,12 @@ const uploadImageToSignedUrl = (
     request.send(file);
   });
 
-export default function AdminApp() {
-  const [tab, setTab] = useState<AdminTab>("home");
+export default function AdminApp({
+  initialTab = "home",
+}: {
+  initialTab?: AdminTab;
+}) {
+  const [tab, setTabState] = useState<AdminTab>(initialTab);
   const [catalog, setCatalog] = useCatalog();
   const [productTags, setProductTags] = useProductTags();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -154,7 +167,9 @@ export default function AdminApp() {
   const [cloudStatus, setCloudStatus] = useState("Connecting to KIYOYO Cloud…");
   const [scannerActive, setScannerActive] = useState(false);
   const [newOrderNotice, setNewOrderNotice] = useState<NewOrderNotice | null>(null);
-  const [orderAlertsConnected, setOrderAlertsConnected] = useState(true);
+  const [orderAlertsConnected, setOrderAlertsConnected] = useState(false);
+  const [ordersRefreshing, setOrdersRefreshing] = useState(false);
+  const [ordersUpdatedAt, setOrdersUpdatedAt] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerStreamRef = useRef<MediaStream | null>(null);
   const couponDialogRef = useRef<HTMLElement>(null);
@@ -169,12 +184,60 @@ export default function AdminApp() {
     playSoundRef.current = playSound;
   }, [playSound]);
 
+  const refreshOrderData = useCallback(async () => {
+    if (!session) return;
+    setOrdersRefreshing(true);
+    try {
+      const [orderPayload, overviewPayload] = await Promise.all([
+        apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
+        session.role === "ADMIN"
+          ? apiFetch<{ data: AdminOverview }>("/v1/admin/overview")
+          : Promise.resolve(null),
+      ]);
+      setOrders(orderPayload.data.map(mapAdminOrder));
+      if (overviewPayload) setOverview(overviewPayload.data);
+      setOrdersUpdatedAt(Date.now());
+    } finally {
+      setOrdersRefreshing(false);
+    }
+  }, [session]);
+
+  const refreshOrdersManually = async () => {
+    try {
+      await refreshOrderData();
+      setCloudStatus("Orders refreshed from KIYOYO Cloud / 订单已从云端刷新");
+    } catch (error) {
+      setCloudStatus(
+        error instanceof Error
+          ? `Order refresh failed: ${error.message}`
+          : "Order refresh failed / 订单刷新失败",
+      );
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextTab = adminTabFromPath(window.location.pathname);
+      if (!nextTab) return;
+      if (session && !tabsForStaff(session).includes(nextTab)) {
+        setTabState("home");
+        window.history.replaceState({}, "", adminTabPath("home"));
+        return;
+      }
+      setTabState(nextTab);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [session]);
+
   useEffect(
     () =>
       observeMember(async (user) => {
         if (!user) {
           setAdminState("anonymous");
-          setTab("home");
+          setTabState(
+            adminTabFromPath(window.location.pathname) ?? initialTab,
+          );
           setSession(null);
           setOverview(null);
           setOrders([]);
@@ -183,6 +246,9 @@ export default function AdminApp() {
           setAdminStores([]);
           knownOrderIdsRef.current.clear();
           setNewOrderNotice(null);
+          setOrderAlertsConnected(false);
+          setOrdersRefreshing(false);
+          setOrdersUpdatedAt(null);
           return;
         }
         setAdminState("loading");
@@ -241,12 +307,20 @@ export default function AdminApp() {
           }
           const cloudOrders = orderPayload.data.map(mapAdminOrder);
           setOrders(cloudOrders);
+          setOrdersUpdatedAt(Date.now());
           setSession(staffSession);
           setCustomers(customerPayload.data);
           setAdminStores(storePayload.data);
           knownOrderIdsRef.current = new Set(orderAlertPayload.data.map((order) => order.order_number));
-          setOrderAlertsConnected(true);
-          setTab("home");
+          setOrderAlertsConnected(false);
+          const requestedTab =
+            adminTabFromPath(window.location.pathname) ?? initialTab;
+          if (tabsForStaff(staffSession).includes(requestedTab)) {
+            setTabState(requestedTab);
+          } else {
+            setTabState("home");
+            window.history.replaceState({}, "", adminTabPath("home"));
+          }
           setCloudStatus(`Connected as ${staffSession.username}`);
           setAdminState("ready");
         } catch (error) {
@@ -261,7 +335,7 @@ export default function AdminApp() {
           );
         }
       }),
-    [setCatalog, setProductTags],
+    [initialTab, setCatalog, setProductTags],
   );
 
   useEffect(() => {
@@ -277,23 +351,12 @@ export default function AdminApp() {
         const timer = window.setTimeout(finish, delay);
         controller.signal.addEventListener("abort", finish, { once: true });
       });
-    const handleOrderNumbers = async (orderNumbers: string[]) => {
+    const announceNewOrders = (orderNumbers: string[]) => {
       const newOrderNumbers = orderNumbers.filter(
         (orderNumber) => !knownOrderIdsRef.current.has(orderNumber),
       );
-      if (!newOrderNumbers.length) {
-        orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
-        return;
-      }
-      const [orderPayload, overviewPayload] = await Promise.all([
-        apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
-        session.role === "ADMIN"
-          ? apiFetch<{ data: AdminOverview }>("/v1/admin/overview")
-          : Promise.resolve(null),
-      ]);
-      setOrders(orderPayload.data.map(mapAdminOrder));
-      if (overviewPayload) setOverview(overviewPayload.data);
       orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
+      if (!newOrderNumbers.length) return;
       noticeSequenceRef.current += 1;
       setNewOrderNotice({
         sequence: noticeSequenceRef.current,
@@ -308,9 +371,13 @@ export default function AdminApp() {
         try {
           await streamAdminOrderEvents(controller.signal, async (event) => {
             setOrderAlertsConnected(true);
-            await handleOrderNumbers(
-              event.type === "ready" ? event.orderNumbers : [event.orderNumber],
-            );
+            if (event.type === "ready") {
+              await refreshOrderData();
+              announceNewOrders(event.orderNumbers);
+              return;
+            }
+            await refreshOrderData();
+            if (event.type === "new-order") announceNewOrders([event.orderNumber]);
           });
           retryDelay = 1_000;
           if (!controller.signal.aborted) await waitForReconnect(250);
@@ -324,7 +391,7 @@ export default function AdminApp() {
     };
     void connect();
     return () => controller.abort();
-  }, [adminState, session]);
+  }, [adminState, refreshOrderData, session]);
 
   useEffect(
     () => () => {
@@ -396,12 +463,22 @@ export default function AdminApp() {
   const can = (permission: AdminPermission) => session?.permissions.includes(permission) ?? false;
   const allowedTabs = useMemo<AdminTab[]>(() => {
     if (!session) return [];
-    const tabs: AdminTab[] = ["home", "orders", "redeem", "customers"];
-    if (session.role === "ADMIN") {
-      tabs.push("admin", "overview", "products", "coupons", "stores", "access");
-    }
-    return tabs;
+    return tabsForStaff(session);
   }, [session]);
+
+  const navigateTab = (nextTab: AdminTab) => {
+    setTabState(nextTab);
+    const path = adminTabPath(nextTab);
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+    }
+    window.scrollTo({
+      top: 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  };
 
   const recentOverviewOrders = useMemo(
     () => overview?.recent_orders.map(mapAdminOrder) ?? [],
@@ -786,6 +863,7 @@ export default function AdminApp() {
     setOrders(
       orders.map((item) => (item.id === id ? { ...item, status } : item)),
     );
+    setOrdersUpdatedAt(Date.now());
   };
   const toggleProduct = async (id: string) => {
     const product = catalog.find((item) => item.id === id);
@@ -1172,7 +1250,7 @@ export default function AdminApp() {
     <div className="admin-shell">
       <AdminSidebar
         tab={tab}
-        setTab={setTab}
+        setTab={navigateTab}
         activeCount={active.length}
         session={session}
         allowedTabs={allowedTabs}
@@ -1195,19 +1273,19 @@ export default function AdminApp() {
             overview={overview}
             customerCount={customers.length}
             activeOrderCount={active.length}
-            setTab={setTab}
+            setTab={navigateTab}
           />
         )}
 
         {tab === "admin" && (
-          <AdminManagementView overview={overview} setTab={setTab} />
+          <AdminManagementView overview={overview} setTab={navigateTab} />
         )}
 
         {tab === "overview" && (
           <OverviewView
             overview={overview}
             recentOrders={recentOverviewOrders}
-            setTab={setTab}
+            setTab={navigateTab}
             catalog={catalog}
             adminStores={adminStores}
             changeStatus={changeStatus}
@@ -1223,6 +1301,10 @@ export default function AdminApp() {
             shown={shown}
             catalog={catalog}
             changeStatus={changeStatus}
+            refreshing={ordersRefreshing}
+            lastUpdatedAt={ordersUpdatedAt}
+            liveUpdatesConnected={orderAlertsConnected}
+            onRefresh={() => void refreshOrdersManually()}
           />
         )}
 
@@ -1350,7 +1432,7 @@ export default function AdminApp() {
           notice={newOrderNotice}
           onDismiss={() => setNewOrderNotice(null)}
           onViewOrder={() => {
-            setTab("orders");
+            navigateTab("orders");
             setNewOrderNotice(null);
           }}
         />

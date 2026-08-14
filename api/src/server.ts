@@ -24,8 +24,9 @@ import {
   closeOrderEventListener,
   ensureOrderEventListener,
   notifyOrderCreated,
+  notifyOrderStatusChanged,
   subscribeToOrderEvents,
-  type OrderCreatedEvent,
+  type OrderEvent,
 } from "./order-events.js";
 
 const app = Fastify({
@@ -902,20 +903,27 @@ app.get("/v1/admin/order-events", { preHandler: requirePermission("orders.read")
   const scope = staff.role === "ADMIN" ? null : staff.storeIds;
   await ensureOrderEventListener();
 
-  const queuedEvents: OrderCreatedEvent[] = [];
+  const queuedEvents: OrderEvent[] = [];
   let streaming = false;
   let closed = false;
-  const isAuthorised = (event: OrderCreatedEvent) =>
+  const isAuthorised = (event: OrderEvent) =>
     scope === null || (event.storeId !== null && scope.includes(event.storeId));
   const writeEvent = (event: string, data: unknown, id?: string) => {
     if (closed || reply.raw.destroyed) return;
     if (id) reply.raw.write(`id: ${id}\n`);
     reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
-  const receiveOrder = (event: OrderCreatedEvent) => {
+  const sendOrderEvent = (event: OrderEvent) => {
+    writeEvent(
+      event.type === "created" ? "new-order" : "order-updated",
+      event,
+      event.orderNumber,
+    );
+  };
+  const receiveOrder = (event: OrderEvent) => {
     if (!isAuthorised(event)) return;
     if (!streaming) queuedEvents.push(event);
-    else writeEvent("new-order", event, event.orderNumber);
+    else sendOrderEvent(event);
   };
   const unsubscribe = subscribeToOrderEvents(receiveOrder);
 
@@ -937,8 +945,8 @@ app.get("/v1/admin/order-events", { preHandler: requirePermission("orders.read")
     writeEvent("ready", { order_numbers: [...baselineIds] });
     streaming = true;
     queuedEvents
-      .filter((event) => !baselineIds.has(event.orderNumber))
-      .forEach((event) => writeEvent("new-order", event, event.orderNumber));
+      .filter((event) => event.type !== "created" || !baselineIds.has(event.orderNumber))
+      .forEach(sendOrderEvent);
 
     const heartbeat = setInterval(() => {
       if (!closed && !reply.raw.destroyed) reply.raw.write(": heartbeat\n\n");
@@ -1136,7 +1144,12 @@ app.post("/v1/admin/fulfillments/:id/transition", { preHandler: requirePermissio
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const current = await client.query("select status,store_id::text from fulfillment_groups where id=$1 for update", [id]);
+    const current = await client.query(
+      `select f.status,f.store_id::text,o.order_number
+         from fulfillment_groups f join orders o on o.id=f.order_id
+        where f.id=$1 for update of f`,
+      [id],
+    );
     if (!current.rowCount) { await client.query("rollback"); return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Fulfillment not found" } }); }
     if (!current.rows[0].store_id || !actorCanAccessStore(request, current.rows[0].store_id)) {
       await client.query("rollback");
@@ -1145,6 +1158,11 @@ app.post("/v1/admin/fulfillments/:id/transition", { preHandler: requirePermissio
     if (!allowed[current.rows[0].status]?.includes(input.to)) { await client.query("rollback"); return reply.code(409).send({ error: { code: "INVALID_TRANSITION", message: `Cannot move ${current.rows[0].status} to ${input.to}` } }); }
     const result = await client.query("update fulfillment_groups set status=$2 where id=$1 returning id,status", [id, input.to]);
     await client.query("insert into status_events(fulfillment_group_id,from_status,to_status,actor_id,reason) values($1,$2,$3,$4,$5)", [id, current.rows[0].status, input.to, request.actor!.userId, input.reason ?? null]);
+    await notifyOrderStatusChanged(client, {
+      orderNumber: current.rows[0].order_number,
+      updatedAt: new Date().toISOString(),
+      storeId: current.rows[0].store_id,
+    });
     await client.query("commit");
     return { data: result.rows[0] };
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
@@ -1186,6 +1204,11 @@ app.post("/v1/admin/pickups/redeem", { preHandler: requirePermission("redeem.exe
     await client.query("update pickup_tokens set redeemed_at=now(),redeemed_by=$2,redeemed_store_id=$3 where id=$1", [pickup.id, request.actor!.userId, pickup.store_id]);
     await client.query("update fulfillment_groups set status='COMPLETED' where id=$1", [pickup.fulfillment_group_id]);
     await client.query("insert into status_events(fulfillment_group_id,from_status,to_status,actor_id,reason) values($1,$2,'COMPLETED',$3,'QR pickup redemption')", [pickup.fulfillment_group_id, pickup.status, request.actor!.userId]);
+    await notifyOrderStatusChanged(client, {
+      orderNumber: pickup.order_number,
+      updatedAt: new Date().toISOString(),
+      storeId: pickup.store_id,
+    });
     await client.query("commit");
     return { data: { order_number: pickup.order_number, status: "COMPLETED", redeemed_at: new Date().toISOString() } };
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }

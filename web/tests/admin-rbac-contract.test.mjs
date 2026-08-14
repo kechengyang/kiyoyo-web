@@ -14,7 +14,7 @@ test("Admin shell exposes the task home and management only through allowed tabs
   assert.match(shell, /allowedTabs\.includes\(item\)/);
   assert.match(app, /session\.role === "ADMIN"/);
   assert.match(app, /AccessManagementView/);
-  assert.match(app, /useState<AdminTab>\("home"\)/);
+  assert.match(app, /useState<AdminTab>\(initialTab\)/);
   assert.match(home, /Redeem/);
   assert.match(home, /Orders/);
   assert.match(home, /Customers/);
