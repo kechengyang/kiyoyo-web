@@ -9,6 +9,7 @@ export function ProductsView({
   catalog, productTags, showTagManager, setShowTagManager, newTag, setNewTag,
   addTag, tagError, deleteTag, productSearch, setProductSearch, productKind,
   setProductKind, productCategory, setProductCategory, categoryOptions,
+  productVisibility, setProductVisibility,
   shownProducts, toggleProduct, openProductEditor, openNewProductEditor,
   canWrite, syncingPospal, onSyncPospal, canManagePospal,
 }: {
@@ -27,6 +28,8 @@ export function ProductsView({
   setProductKind: Dispatch<SetStateAction<"all" | "drink" | "goods">>;
   productCategory: string;
   setProductCategory: Dispatch<SetStateAction<string>>;
+  productVisibility: "alive" | "offline" | "all";
+  setProductVisibility: Dispatch<SetStateAction<"alive" | "offline" | "all">>;
   categoryOptions: string[];
   shownProducts: Product[];
   toggleProduct: (id: string) => void;
@@ -173,7 +176,22 @@ export function ProductsView({
       <span>Product</span>
       <span>Price</span>
       <span>Offer / tag</span>
-      <span>Visibility</span>
+      <label className="product-visibility-filter">
+        <span>Visibility</span>
+        <select
+          aria-label="Filter products by visibility"
+          value={productVisibility}
+          onChange={(event) =>
+            setProductVisibility(
+              event.target.value as "alive" | "offline" | "all",
+            )
+          }
+        >
+          <option value="alive">Alive</option>
+          <option value="offline">Offline</option>
+          <option value="all">All</option>
+        </select>
+      </label>
       <span>Action</span>
       <span>Pospal</span>
     </div>
@@ -241,6 +259,11 @@ export function ProductsView({
         </article>
       );
     })}
+    {shownProducts.length === 0 && (
+      <p className="admin-product-empty" role="status">
+        No products match the current filters.
+      </p>
+    )}
   </div>
 </section>
   );

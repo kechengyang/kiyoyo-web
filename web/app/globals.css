@@ -5447,9 +5447,9 @@ button {
 .product-list-head,
 .admin-product-list article {
   display: grid;
-  grid-template-columns: 2.2fr 0.8fr 0.65fr 0.8fr 0.5fr 0.45fr;
+  grid-template-columns: 2.2fr 0.8fr 0.65fr 1fr 0.5fr 0.45fr;
   align-items: center;
-  min-width: 790px;
+  min-width: 860px;
 }
 .pospal-sync-mark {
   font-style: normal;
@@ -5468,6 +5468,26 @@ button {
   text-transform: uppercase;
   padding: 10px 6px;
 }
+.product-visibility-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.product-visibility-filter select {
+  min-height: 44px;
+  min-width: 82px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0 24px 0 8px;
+  font-size: 9px;
+  text-transform: none;
+}
+.product-visibility-filter select:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
 .admin-product-list article {
   min-height: 82px;
   border-top: 1px solid #eee9e5;
@@ -5477,6 +5497,15 @@ button {
 .admin-product-list article.offline {
   opacity: 0.55;
   background: #f5f3f1;
+}
+.admin-product-empty {
+  min-width: 860px;
+  margin: 0;
+  padding: 28px 12px;
+  border-top: 1px solid #eee9e5;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
 }
 .admin-product-name {
   display: flex;
