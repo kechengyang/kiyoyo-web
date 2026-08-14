@@ -1,5 +1,17 @@
+import Link from "next/link";
+import type { MouseEvent } from "react";
 import type { AdminOverview, AdminTab } from "../core/types";
+import { adminTabPath } from "../core/routes";
 import { AdminIcon } from "../shell/AdminShell";
+
+const navigateInPlace = (
+  event: MouseEvent<HTMLAnchorElement>,
+  navigate: () => void,
+) => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  navigate();
+};
 
 const tools: Array<{
   tab: AdminTab;
@@ -68,13 +80,17 @@ export function AdminManagementView({
 
       <div className="admin-management-grid">
         {tools.map((tool) => (
-          <button key={tool.tab} type="button" onClick={() => setTab(tool.tab)}>
+          <Link
+            key={tool.tab}
+            href={adminTabPath(tool.tab)}
+            onClick={(event) => navigateInPlace(event, () => setTab(tool.tab))}
+          >
             <span aria-hidden="true"><AdminIcon name={tool.icon} /></span>
             <strong>{tool.title}</strong>
             <b>{tool.titleZh}</b>
             <small>{tool.description}</small>
             <i aria-hidden="true">→</i>
-          </button>
+          </Link>
         ))}
       </div>
     </section>

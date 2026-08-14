@@ -37,6 +37,10 @@ import {
 import { productSizeEntries } from "./customer/shared/primitives";
 import { useStoredState } from "./customer/core/useStoredState";
 import { copy } from "./customer/core/copy";
+import {
+  customerTabFromPath,
+  customerTabPath,
+} from "./customer/core/routes";
 import { HomeView } from "./customer/home/HomeView";
 import { ShopView } from "./customer/shop/ShopView";
 import { CartView } from "./customer/cart/CartView";
@@ -68,13 +72,17 @@ import type {
   UserProfile,
 } from "../types";
 
-export default function KiyoyoApp() {
+export default function KiyoyoApp({
+  initialTab = "home",
+}: {
+  initialTab?: Tab;
+}) {
   const [lang, setLang] = useStoredState<Lang>("kiyoyo-lang", "en");
   const customerAuth = useCustomerAuth(lang);
   const session = customerAuth.session;
   const [catalog] = useCatalog();
   const [productTags] = useProductTags();
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [storeId, setStoreId] = useStoredState("kiyoyo-store", "kilimani");
   const [cart, setCart] = useStoredState<CartItem[]>("kiyoyo-cart", []);
   const [saved, setSaved] = useStoredState<string[]>("kiyoyo-saved", [
@@ -174,6 +182,15 @@ export default function KiyoyoApp() {
   useEffect(() => {
     savedRef.current = saved;
   }, [saved]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextTab = customerTabFromPath(window.location.pathname);
+      if (nextTab) setTab(nextTab);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     if (
@@ -1086,7 +1103,16 @@ export default function KiyoyoApp() {
 
   const go = (next: Tab) => {
     setTab(next);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const path = customerTabPath(next);
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+    }
+    window.scrollTo({
+      top: 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
   };
   const openShop = (mode: "drinks" | "goods", nextFilter?: string) => {
     setShopMode(mode);
@@ -1261,7 +1287,6 @@ export default function KiyoyoApp() {
             selectedCouponId={selectedCouponId}
             setSelectedCouponId={setSelectedCouponId}
             setCouponCodeInput={setCouponCodeInput}
-            setTab={setTab}
             cart={cart}
             orders={orders}
             openOrderDetails={openOrderDetails}

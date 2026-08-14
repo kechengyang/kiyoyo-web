@@ -1,5 +1,17 @@
+import Link from "next/link";
+import type { MouseEvent } from "react";
 import type { AdminOverview, AdminSession, AdminTab } from "../core/types";
+import { adminTabPath } from "../core/routes";
 import { AdminIcon } from "../shell/AdminShell";
+
+const navigateInPlace = (
+  event: MouseEvent<HTMLAnchorElement>,
+  navigate: () => void,
+) => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  navigate();
+};
 
 type LaunchCard = {
   tab: AdminTab;
@@ -84,11 +96,11 @@ export function AdminHomeView({
     <section className="admin-home" aria-label="Staff tasks / 员工操作">
       <div className="admin-launch-grid">
         {cards.map((card) => (
-          <button
+          <Link
             key={card.tab}
-            type="button"
+            href={adminTabPath(card.tab)}
             className={`admin-launch-card admin-launch-${card.tab}`}
-            onClick={() => setTab(card.tab)}
+            onClick={(event) => navigateInPlace(event, () => setTab(card.tab))}
             aria-label={`${card.title}: ${card.description}`}
           >
             <span className="admin-launch-icon" aria-hidden="true">
@@ -104,7 +116,7 @@ export function AdminHomeView({
             <span className="admin-launch-meta">
               {cardMeta(card.tab)} <i aria-hidden="true">→</i>
             </span>
-          </button>
+          </Link>
         ))}
       </div>
 

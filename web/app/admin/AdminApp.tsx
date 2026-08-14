@@ -36,6 +36,7 @@ import {
   categorySlug,
   goodsCategoryOrder,
 } from "./core/foundation";
+import { adminTabFromPath, adminTabPath } from "./core/routes";
 import { OverviewView } from "./overview/OverviewView";
 import { OrdersView } from "./orders/OrdersView";
 import {
@@ -59,6 +60,14 @@ import { AdminManagementView } from "./management/AdminManagementView";
 
 type ApiAdminOrder = AdminOverview["recent_orders"][number];
 type ApiOrderAlert = { order_number: string; created_at: string };
+
+const tabsForStaff = (staff: Pick<AdminSession, "role">): AdminTab[] => {
+  const tabs: AdminTab[] = ["home", "orders", "redeem", "customers"];
+  if (staff.role === "ADMIN") {
+    tabs.push("admin", "overview", "products", "coupons", "stores", "access");
+  }
+  return tabs;
+};
 
 const mapAdminOrder = (order: ApiAdminOrder): Order => ({
   id: order.order_number,
@@ -104,8 +113,12 @@ const uploadImageToSignedUrl = (
     request.send(file);
   });
 
-export default function AdminApp() {
-  const [tab, setTab] = useState<AdminTab>("home");
+export default function AdminApp({
+  initialTab = "home",
+}: {
+  initialTab?: AdminTab;
+}) {
+  const [tab, setTabState] = useState<AdminTab>(initialTab);
   const [catalog, setCatalog] = useCatalog();
   const [productTags, setProductTags] = useProductTags();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -166,12 +179,29 @@ export default function AdminApp() {
     playSoundRef.current = playSound;
   }, [playSound]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextTab = adminTabFromPath(window.location.pathname);
+      if (!nextTab) return;
+      if (session && !tabsForStaff(session).includes(nextTab)) {
+        setTabState("home");
+        window.history.replaceState({}, "", adminTabPath("home"));
+        return;
+      }
+      setTabState(nextTab);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [session]);
+
   useEffect(
     () =>
       observeMember(async (user) => {
         if (!user) {
           setAdminState("anonymous");
-          setTab("home");
+          setTabState(
+            adminTabFromPath(window.location.pathname) ?? initialTab,
+          );
           setSession(null);
           setOverview(null);
           setOrders([]);
@@ -243,7 +273,14 @@ export default function AdminApp() {
           setAdminStores(storePayload.data);
           knownOrderIdsRef.current = new Set(orderAlertPayload.data.map((order) => order.order_number));
           setOrderAlertsConnected(true);
-          setTab("home");
+          const requestedTab =
+            adminTabFromPath(window.location.pathname) ?? initialTab;
+          if (tabsForStaff(staffSession).includes(requestedTab)) {
+            setTabState(requestedTab);
+          } else {
+            setTabState("home");
+            window.history.replaceState({}, "", adminTabPath("home"));
+          }
           setCloudStatus(`Connected as ${staffSession.username}`);
           setAdminState("ready");
         } catch (error) {
@@ -258,7 +295,7 @@ export default function AdminApp() {
           );
         }
       }),
-    [setCatalog, setProductTags],
+    [initialTab, setCatalog, setProductTags],
   );
 
   useEffect(() => {
@@ -393,12 +430,22 @@ export default function AdminApp() {
   const can = (permission: AdminPermission) => session?.permissions.includes(permission) ?? false;
   const allowedTabs = useMemo<AdminTab[]>(() => {
     if (!session) return [];
-    const tabs: AdminTab[] = ["home", "orders", "redeem", "customers"];
-    if (session.role === "ADMIN") {
-      tabs.push("admin", "overview", "products", "coupons", "stores", "access");
-    }
-    return tabs;
+    return tabsForStaff(session);
   }, [session]);
+
+  const navigateTab = (nextTab: AdminTab) => {
+    setTabState(nextTab);
+    const path = adminTabPath(nextTab);
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+    }
+    window.scrollTo({
+      top: 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  };
 
   const recentOverviewOrders = useMemo(
     () => overview?.recent_orders.map(mapAdminOrder) ?? [],
@@ -1165,7 +1212,7 @@ export default function AdminApp() {
     <div className="admin-shell">
       <AdminSidebar
         tab={tab}
-        setTab={setTab}
+        setTab={navigateTab}
         activeCount={active.length}
         session={session}
         allowedTabs={allowedTabs}
@@ -1188,19 +1235,19 @@ export default function AdminApp() {
             overview={overview}
             customerCount={customers.length}
             activeOrderCount={active.length}
-            setTab={setTab}
+            setTab={navigateTab}
           />
         )}
 
         {tab === "admin" && (
-          <AdminManagementView overview={overview} setTab={setTab} />
+          <AdminManagementView overview={overview} setTab={navigateTab} />
         )}
 
         {tab === "overview" && (
           <OverviewView
             overview={overview}
             recentOrders={recentOverviewOrders}
-            setTab={setTab}
+            setTab={navigateTab}
             catalog={catalog}
             adminStores={adminStores}
             changeStatus={changeStatus}
@@ -1341,7 +1388,7 @@ export default function AdminApp() {
           notice={newOrderNotice}
           onDismiss={() => setNewOrderNotice(null)}
           onViewOrder={() => {
-            setTab("orders");
+            navigateTab("orders");
             setNewOrderNotice(null);
           }}
         />

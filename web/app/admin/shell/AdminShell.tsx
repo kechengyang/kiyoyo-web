@@ -1,7 +1,23 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { signOutMember } from "../../auth/service";
+import { adminTabPath } from "../core/routes";
 import type { AdminSession, AdminTab } from "../core/types";
+
+const navigateInPlace = (
+  event: MouseEvent<HTMLAnchorElement>,
+  navigate: () => void,
+) => {
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) return;
+  event.preventDefault();
+  navigate();
+};
 
 const adminTabs: AdminTab[] = [
   "home",
@@ -73,8 +89,9 @@ export function AdminSidebar({
       </div>
       <nav>
         {adminTabs.filter((item) => allowedTabs.includes(item)).map((item) => (
-          <button
+          <Link
             key={item}
+            href={adminTabPath(item)}
             className={
               tab === item ||
               (item === "admin" && ["overview", "products", "coupons", "stores", "access"].includes(tab))
@@ -87,12 +104,12 @@ export function AdminSidebar({
                 ? "page"
                 : undefined
             }
-            onClick={() => setTab(item)}
+            onClick={(event) => navigateInPlace(event, () => setTab(item))}
           >
             <i><AdminIcon name={item as AdminIconName} /></i>
             <span>{adminTabLabels[item]}</span>
             {item === "orders" && <b>{activeCount}</b>}
-          </button>
+          </Link>
         ))}
       </nav>
       <Link href="/">← Customer store</Link>
