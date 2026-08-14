@@ -21,7 +21,7 @@ candidates as (
   select distinct on (norm) p.id, norm as normalized_name
   from (
     select p.id, p.active,
-      lower(regexp_replace(regexp_replace(p.name_en, '&', 'and', 'g'))) as norm
+      lower(regexp_replace(p.name_en, '&', 'and', 'g')) as norm
     from products p
   ) p
   order by norm, p.active desc, p.id
