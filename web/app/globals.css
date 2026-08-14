@@ -4903,12 +4903,55 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.orders-tools .panel-head {
+  margin-bottom: 8px;
+}
+.orders-tools-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
 }
 .orders-tools select {
   border: 1px solid #d7d1cb;
   background: #fff;
-  padding: 9px;
+  min-height: 44px;
+  padding: 9px 12px;
   font-size: 10px;
+}
+.orders-refresh-button {
+  min-height: 44px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  padding: 9px 16px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.orders-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+.orders-refresh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.orders-refresh-meta .connected {
+  color: var(--success);
+  font-weight: 800;
+}
+.orders-refresh-meta .reconnecting {
+  color: #a35d00;
+  font-weight: 800;
 }
 .redeem-layout {
   display: grid;
@@ -5804,6 +5847,19 @@ button {
   }
 }
 @media (max-width: 720px) {
+  .orders-tools {
+    flex-direction: column;
+  }
+  .orders-tools-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .orders-tools-actions select {
+    flex: 1 1 190px;
+  }
+  .orders-refresh-button {
+    flex: 1 1 132px;
+  }
   .admin-gate { padding: 18px; }
   .admin-gate > section { padding: 34px 22px; box-shadow: 7px 7px 0 #171412; }
   .admin-record-modal { padding: 38px 20px; }

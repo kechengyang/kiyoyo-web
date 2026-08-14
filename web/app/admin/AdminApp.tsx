@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { drinkCategoryOrder } from "../menu";
 import {
@@ -164,7 +164,9 @@ export default function AdminApp({
   const [cloudStatus, setCloudStatus] = useState("Connecting to KIYOYO Cloud…");
   const [scannerActive, setScannerActive] = useState(false);
   const [newOrderNotice, setNewOrderNotice] = useState<NewOrderNotice | null>(null);
-  const [orderAlertsConnected, setOrderAlertsConnected] = useState(true);
+  const [orderAlertsConnected, setOrderAlertsConnected] = useState(false);
+  const [ordersRefreshing, setOrdersRefreshing] = useState(false);
+  const [ordersUpdatedAt, setOrdersUpdatedAt] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerStreamRef = useRef<MediaStream | null>(null);
   const couponDialogRef = useRef<HTMLElement>(null);
@@ -178,6 +180,37 @@ export default function AdminApp({
   useEffect(() => {
     playSoundRef.current = playSound;
   }, [playSound]);
+
+  const refreshOrderData = useCallback(async () => {
+    if (!session) return;
+    setOrdersRefreshing(true);
+    try {
+      const [orderPayload, overviewPayload] = await Promise.all([
+        apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
+        session.role === "ADMIN"
+          ? apiFetch<{ data: AdminOverview }>("/v1/admin/overview")
+          : Promise.resolve(null),
+      ]);
+      setOrders(orderPayload.data.map(mapAdminOrder));
+      if (overviewPayload) setOverview(overviewPayload.data);
+      setOrdersUpdatedAt(Date.now());
+    } finally {
+      setOrdersRefreshing(false);
+    }
+  }, [session]);
+
+  const refreshOrdersManually = async () => {
+    try {
+      await refreshOrderData();
+      setCloudStatus("Orders refreshed from KIYOYO Cloud / 订单已从云端刷新");
+    } catch (error) {
+      setCloudStatus(
+        error instanceof Error
+          ? `Order refresh failed: ${error.message}`
+          : "Order refresh failed / 订单刷新失败",
+      );
+    }
+  };
 
   useEffect(() => {
     const handlePopState = () => {
@@ -210,6 +243,9 @@ export default function AdminApp({
           setAdminStores([]);
           knownOrderIdsRef.current.clear();
           setNewOrderNotice(null);
+          setOrderAlertsConnected(false);
+          setOrdersRefreshing(false);
+          setOrdersUpdatedAt(null);
           return;
         }
         setAdminState("loading");
@@ -268,11 +304,12 @@ export default function AdminApp({
           }
           const cloudOrders = orderPayload.data.map(mapAdminOrder);
           setOrders(cloudOrders);
+          setOrdersUpdatedAt(Date.now());
           setSession(staffSession);
           setCustomers(customerPayload.data);
           setAdminStores(storePayload.data);
           knownOrderIdsRef.current = new Set(orderAlertPayload.data.map((order) => order.order_number));
-          setOrderAlertsConnected(true);
+          setOrderAlertsConnected(false);
           const requestedTab =
             adminTabFromPath(window.location.pathname) ?? initialTab;
           if (tabsForStaff(staffSession).includes(requestedTab)) {
@@ -311,23 +348,12 @@ export default function AdminApp({
         const timer = window.setTimeout(finish, delay);
         controller.signal.addEventListener("abort", finish, { once: true });
       });
-    const handleOrderNumbers = async (orderNumbers: string[]) => {
+    const announceNewOrders = (orderNumbers: string[]) => {
       const newOrderNumbers = orderNumbers.filter(
         (orderNumber) => !knownOrderIdsRef.current.has(orderNumber),
       );
-      if (!newOrderNumbers.length) {
-        orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
-        return;
-      }
-      const [orderPayload, overviewPayload] = await Promise.all([
-        apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
-        session.role === "ADMIN"
-          ? apiFetch<{ data: AdminOverview }>("/v1/admin/overview")
-          : Promise.resolve(null),
-      ]);
-      setOrders(orderPayload.data.map(mapAdminOrder));
-      if (overviewPayload) setOverview(overviewPayload.data);
       orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
+      if (!newOrderNumbers.length) return;
       noticeSequenceRef.current += 1;
       setNewOrderNotice({
         sequence: noticeSequenceRef.current,
@@ -342,9 +368,13 @@ export default function AdminApp({
         try {
           await streamAdminOrderEvents(controller.signal, async (event) => {
             setOrderAlertsConnected(true);
-            await handleOrderNumbers(
-              event.type === "ready" ? event.orderNumbers : [event.orderNumber],
-            );
+            if (event.type === "ready") {
+              await refreshOrderData();
+              announceNewOrders(event.orderNumbers);
+              return;
+            }
+            await refreshOrderData();
+            if (event.type === "new-order") announceNewOrders([event.orderNumber]);
           });
           retryDelay = 1_000;
           if (!controller.signal.aborted) await waitForReconnect(250);
@@ -358,7 +388,7 @@ export default function AdminApp({
     };
     void connect();
     return () => controller.abort();
-  }, [adminState, session]);
+  }, [adminState, refreshOrderData, session]);
 
   useEffect(
     () => () => {
@@ -826,6 +856,7 @@ export default function AdminApp({
     setOrders(
       orders.map((item) => (item.id === id ? { ...item, status } : item)),
     );
+    setOrdersUpdatedAt(Date.now());
   };
   const toggleProduct = async (id: string) => {
     const product = catalog.find((item) => item.id === id);
@@ -1263,6 +1294,10 @@ export default function AdminApp({
             shown={shown}
             catalog={catalog}
             changeStatus={changeStatus}
+            refreshing={ordersRefreshing}
+            lastUpdatedAt={ordersUpdatedAt}
+            liveUpdatesConnected={orderAlertsConnected}
+            onRefresh={() => void refreshOrdersManually()}
           />
         )}
 
