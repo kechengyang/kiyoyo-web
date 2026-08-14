@@ -1,0 +1,4 @@
+interface:
+  display_name: "KIYOYO Cloud SQL"
+  short_description: "Query, update, and migrate KIYOYO Cloud SQL safely"
+  default_prompt: "Use $kiyoyo-cloudsql to inspect or change the KIYOYO database directly without deploying Cloud Run."
