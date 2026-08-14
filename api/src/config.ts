@@ -39,4 +39,11 @@ export const config = {
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean),
   ),
+  pospal: {
+    appId: required("POSPAL_APP_ID"),
+    appKey: required("POSPAL_APP_KEY"),
+    baseUrl: required("POSPAL_BASE_URL", "https://platform.pospal.cn"),
+    hqAccount: required("POSPAL_HQ_ACCOUNT"),
+    timeoutMs: Number(process.env.POSPAL_TIMEOUT_MS ?? 10_000),
+  },
 };

@@ -26,6 +26,7 @@ export const permissionCodes = [
   "access.remove",
   "access.password_set",
   "audit.read",
+  "pospal.manage",
 ] as const;
 
 export type PermissionCode = (typeof permissionCodes)[number];

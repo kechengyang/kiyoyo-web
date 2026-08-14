@@ -19,6 +19,7 @@ import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./cry
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
 import { registerAdminAccessRoutes } from "./admin/access-routes.js";
 import { registerAdminSessionRoutes } from "./admin/session-routes.js";
+import { registerProductSyncRoutes } from "./pospal/product-sync/routes.js";
 import {
   closeOrderEventListener,
   ensureOrderEventListener,
@@ -44,6 +45,7 @@ await app.register(cors, {
 
 registerAdminSessionRoutes(app);
 registerAdminAccessRoutes(app);
+registerProductSyncRoutes(app, { pospal: config.pospal, pool });
 
 app.setErrorHandler((error, request, reply) => {
   if (error instanceof ZodError) {
@@ -112,10 +114,18 @@ app.get("/v1/stores/:id", async (request, reply) => {
   return { data: result.rows[0] };
 });
 
-const productSelect = `select p.id,p.external_code,p.kind,p.category_slug,p.slug,p.name_en,p.name_zh,p.description_en,p.description_zh,
+const productColumns = `p.id,p.external_code,p.kind,p.category_slug,p.slug,p.name_en,p.name_zh,p.description_en,p.description_zh,
   p.image_key,p.base_price,p.size_prices_json,p.discount_percent,round(p.base_price*(100-p.discount_percent)/100.0)::integer as effective_price,
-  p.active,p.catalog_version,p.updated_at,t.id as tag_id,t.label as tag_label,t.tone as tag_tone
+  p.active,p.catalog_version,p.updated_at,t.id as tag_id,t.label as tag_label,t.tone as tag_tone`;
+
+const productSelect = `select ${productColumns}
   from products p left join product_tags t on t.id=p.tag_id and t.active=true`;
+
+/** 管理端商品列表:附加银豹字典同步状态(客户侧 /v1/products 不加,避免污染公共响应) */
+const adminProductSelect = `select ${productColumns},
+  m.pospal_uid,m.pospal_barcode,m.pospal_name,m.pospal_sell_price_cents,m.last_synced_at as pospal_synced_at
+  from products p left join product_tags t on t.id=p.tag_id and t.active=true
+  left join pospal_product_mappings m on m.product_id=p.id and m.status='ACTIVE'`;
 
 const productSlug = (name: string, category: string) => {
   const stem = `${category}-${name}`
@@ -621,7 +631,7 @@ app.post("/v1/me/orders/:orderNumber/pickup-token", { preHandler: requireProfile
 });
 
 app.get("/v1/admin/products", { preHandler: requirePermission("products.read") }, async () => {
-  const result = await query(`${productSelect} order by p.updated_at desc`);
+  const result = await query(`${adminProductSelect} order by p.updated_at desc`);
   return { data: result.rows };
 });
 
@@ -1083,20 +1093,21 @@ app.post("/v1/admin/user-coupons/:id/revoke", { preHandler: requirePermission("c
 
 app.get("/v1/admin/stores", { preHandler: requireAdmin }, async () => {
   const result = await query(
-    "select id,code,name,area,address,phone,lat::float,lng::float,timezone,status,pickup_enabled,delivery_enabled,location_verified,opening_hours_json,created_at,updated_at from stores order by name",
+    "select id,code,name,area,address,phone,lat::float,lng::float,timezone,status,pickup_enabled,delivery_enabled,location_verified,pospal_account,pospal_enabled,opening_hours_json,created_at,updated_at from stores order by name",
   );
   return { data: result.rows };
 });
 
 app.patch("/v1/admin/stores/:id", { preHandler: requirePermission("stores.write") }, async (request, reply) => {
   const { id } = z.object({ id: z.string() }).parse(request.params);
-  const input = z.object({ name: z.string().trim().min(1).max(120).optional(), address: z.string().trim().min(3).max(240).optional(), phone: z.string().max(30).nullable().optional(), lat: z.number().min(-90).max(90).nullable().optional(), lng: z.number().min(-180).max(180).nullable().optional(), status: z.enum(["ACTIVE", "INACTIVE", "COMING_SOON"]).optional(), pickup_enabled: z.boolean().optional(), delivery_enabled: z.boolean().optional(), location_verified: z.boolean().optional() }).parse(request.body);
+  const input = z.object({ name: z.string().trim().min(1).max(120).optional(), address: z.string().trim().min(3).max(240).optional(), phone: z.string().max(30).nullable().optional(), lat: z.number().min(-90).max(90).nullable().optional(), lng: z.number().min(-180).max(180).nullable().optional(), status: z.enum(["ACTIVE", "INACTIVE", "COMING_SOON"]).optional(), pickup_enabled: z.boolean().optional(), delivery_enabled: z.boolean().optional(), location_verified: z.boolean().optional(), pospal_account: z.string().trim().min(1).max(64).nullable().optional(), pospal_enabled: z.boolean().optional() }).parse(request.body);
   const result = await query(
     `update stores set name=coalesce($2,name),address=coalesce($3,address),phone=case when $4::boolean then $5 else phone end,
      lat=case when $6::boolean then $7 else lat end,lng=case when $8::boolean then $9 else lng end,status=coalesce($10,status),
-     pickup_enabled=coalesce($11,pickup_enabled),delivery_enabled=coalesce($12,delivery_enabled),location_verified=coalesce($13,location_verified),updated_at=now()
+     pickup_enabled=coalesce($11,pickup_enabled),delivery_enabled=coalesce($12,delivery_enabled),location_verified=coalesce($13,location_verified),
+     pospal_account=case when $14::boolean then $15 else pospal_account end,pospal_enabled=coalesce($16,pospal_enabled),updated_at=now()
      where id::text=$1 or code=$1 returning *`,
-    [id, input.name ?? null, input.address ?? null, Object.hasOwn(input, "phone"), input.phone ?? null, Object.hasOwn(input, "lat"), input.lat ?? null, Object.hasOwn(input, "lng"), input.lng ?? null, input.status ?? null, input.pickup_enabled ?? null, input.delivery_enabled ?? null, input.location_verified ?? null],
+    [id, input.name ?? null, input.address ?? null, Object.hasOwn(input, "phone"), input.phone ?? null, Object.hasOwn(input, "lat"), input.lat ?? null, Object.hasOwn(input, "lng"), input.lng ?? null, input.status ?? null, input.pickup_enabled ?? null, input.delivery_enabled ?? null, input.location_verified ?? null, Object.hasOwn(input, "pospal_account"), input.pospal_account ?? null, input.pospal_enabled ?? null],
   );
   if (!result.rowCount) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Store not found" } });
   await query(
