@@ -1,0 +1,350 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT="kiyoyo"
+REGION="europe-west1"
+ENVIRONMENT="dev"
+PORT="${KIYOYO_DB_PORT:-55432}"
+COMMAND=""
+SQL=""
+SQL_FILE=""
+CONFIRM_ENV=""
+CONFIRM_PROD="false"
+STATEMENT_TIMEOUT_MS="${KIYOYO_DB_STATEMENT_TIMEOUT_MS:-60000}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  kiyoyo-db [global options] status
+  kiyoyo-db [global options] query (--sql SQL | --file PATH)
+  kiyoyo-db [global options] write (--sql SQL | --file PATH) --confirm-env ENV [--confirm-prod]
+  kiyoyo-db [global options] migrate --confirm-env ENV [--confirm-prod]
+
+Global options:
+  --env ENV          KIYOYO environment (default: dev)
+  --project ID       GCP project (default: kiyoyo)
+  --region REGION    Cloud SQL region (default: europe-west1)
+  --port PORT        Temporary local proxy port (default: 55432)
+  --confirm-env ENV  Required exact environment confirmation for writes/migrations
+  --confirm-prod     Additional required confirmation for production writes/migrations
+  --sql SQL          SQL statement for query/write
+  --file PATH        SQL file for query/write
+  -h, --help         Show this help
+
+This command connects directly through Cloud SQL Auth Proxy. It never deploys Cloud Run.
+EOF
+}
+
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+need_value() {
+  [[ $# -ge 2 ]] || die "$1 requires a value"
+  [[ -n "${2:-}" ]] || die "$1 requires a value"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    status|query|write|migrate)
+      [[ -z "$COMMAND" ]] || die "only one command may be specified"
+      COMMAND="$1"
+      shift
+      ;;
+    --env)
+      need_value "$@"
+      ENVIRONMENT="$2"
+      shift 2
+      ;;
+    --project)
+      need_value "$@"
+      PROJECT="$2"
+      shift 2
+      ;;
+    --region)
+      need_value "$@"
+      REGION="$2"
+      shift 2
+      ;;
+    --port)
+      need_value "$@"
+      PORT="$2"
+      shift 2
+      ;;
+    --confirm-env)
+      need_value "$@"
+      CONFIRM_ENV="$2"
+      shift 2
+      ;;
+    --confirm-prod)
+      CONFIRM_PROD="true"
+      shift
+      ;;
+    --sql)
+      need_value "$@"
+      SQL="$2"
+      shift 2
+      ;;
+    --file)
+      need_value "$@"
+      SQL_FILE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+[[ -n "$COMMAND" ]] || {
+  usage
+  exit 1
+}
+[[ "$ENVIRONMENT" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "invalid environment: $ENVIRONMENT"
+[[ "$PORT" =~ ^[0-9]+$ ]] || die "port must be numeric"
+(( PORT >= 1024 && PORT <= 65535 )) || die "port must be between 1024 and 65535"
+[[ "$STATEMENT_TIMEOUT_MS" =~ ^[0-9]+$ ]] || die "statement timeout must be numeric"
+
+if [[ -n "$SQL" && -n "$SQL_FILE" ]]; then
+  die "choose either --sql or --file"
+fi
+if [[ -n "$SQL_FILE" ]]; then
+  [[ -f "$SQL_FILE" ]] || die "SQL file does not exist: $SQL_FILE"
+  SQL_FILE="$(cd "$(dirname "$SQL_FILE")" && pwd)/$(basename "$SQL_FILE")"
+fi
+if [[ "$COMMAND" == "query" || "$COMMAND" == "write" ]]; then
+  [[ -n "$SQL" || -n "$SQL_FILE" ]] || die "$COMMAND requires --sql or --file"
+elif [[ -n "$SQL" || -n "$SQL_FILE" ]]; then
+  die "--sql and --file are only valid with query or write"
+fi
+
+sql_payload_matches() {
+  local pattern="$1"
+  if [[ -n "$SQL_FILE" ]]; then
+    grep -Eiq "$pattern" "$SQL_FILE"
+  else
+    printf '%s\n' "$SQL" | grep -Eiq "$pattern"
+  fi
+}
+
+validate_sql_payload() {
+  if sql_payload_matches '^[[:space:]]*\\'; then
+    die "psql meta-commands are not allowed in query/write payloads"
+  fi
+  if sql_payload_matches '(^|;)[[:space:]]*(begin|start[[:space:]]+transaction|commit|rollback)[[:space:]]*;'; then
+    die "embedded transaction control is not allowed; the script owns the transaction"
+  fi
+  if sql_payload_matches '^[[:space:]]*(begin|start[[:space:]]+transaction|commit|rollback)[[:space:]]*$'; then
+    die "embedded transaction control is not allowed; the script owns the transaction"
+  fi
+  if sql_payload_matches 'set[[:space:]]+(transaction|session[[:space:]]+characteristics|default_transaction_read_only)'; then
+    die "SQL may not override the script transaction mode"
+  fi
+}
+
+if [[ "$COMMAND" == "query" || "$COMMAND" == "write" ]]; then
+  validate_sql_payload
+fi
+
+for tool in gcloud cloud-sql-proxy psql; do
+  command -v "$tool" >/dev/null 2>&1 || die "missing required command: $tool"
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+API_DIR="$REPOSITORY_ROOT/api"
+if [[ "$COMMAND" == "migrate" ]]; then
+  for tool in node npm; do
+    command -v "$tool" >/dev/null 2>&1 || die "missing required command for migrations: $tool"
+  done
+  [[ -f "$API_DIR/src/migrate.ts" && -d "$API_DIR/migrations" ]] || \
+    die "could not find KIYOYO API migration runner from $REPOSITORY_ROOT"
+fi
+
+if [[ "$COMMAND" == "write" || "$COMMAND" == "migrate" ]]; then
+  [[ "$CONFIRM_ENV" == "$ENVIRONMENT" ]] || \
+    die "write access requires --confirm-env $ENVIRONMENT"
+  if [[ "$ENVIRONMENT" == "prod" && "$CONFIRM_PROD" != "true" ]]; then
+    die "production write access also requires --confirm-prod"
+  fi
+elif [[ -n "$CONFIRM_ENV" || "$CONFIRM_PROD" == "true" ]]; then
+  die "write confirmation flags are only valid with write or migrate"
+fi
+
+ENV_SUFFIX="${ENVIRONMENT//-/_}"
+PREFIX="kiyoyo-${ENVIRONMENT}"
+INSTANCE="${PREFIX}-db"
+DATABASE="kiyoyo_${ENV_SUFFIX}"
+DATABASE_USER="${DATABASE}_api"
+PASSWORD_SECRET="${PREFIX}-db-password"
+
+ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n 1)"
+[[ -n "$ACTIVE_ACCOUNT" ]] || die "gcloud has no active account; run gcloud auth login"
+
+CONNECTION_NAME="$(
+  gcloud sql instances describe "$INSTANCE" \
+    --project "$PROJECT" \
+    --format='value(connectionName)'
+)"
+[[ -n "$CONNECTION_NAME" ]] || die "could not resolve connection name for $INSTANCE"
+EXPECTED_CONNECTION_NAME="${PROJECT}:${REGION}:${INSTANCE}"
+[[ "$CONNECTION_NAME" == "$EXPECTED_CONNECTION_NAME" ]] || \
+  die "resolved connection $CONNECTION_NAME does not match expected $EXPECTED_CONNECTION_NAME"
+
+printf 'Target: project=%s region=%s env=%s instance=%s database=%s user=%s account=%s\n' \
+  "$PROJECT" "$REGION" "$ENVIRONMENT" "$INSTANCE" "$DATABASE" "$DATABASE_USER" "$ACTIVE_ACCOUNT"
+
+DB_PASSWORD="$(
+  gcloud secrets versions access latest \
+    --project "$PROJECT" \
+    --secret "$PASSWORD_SECRET"
+)"
+[[ -n "$DB_PASSWORD" ]] || die "Secret Manager returned an empty database password"
+export PGPASSWORD="$DB_PASSWORD"
+unset DB_PASSWORD
+
+PROXY_LOG="$(mktemp -t kiyoyo-cloudsql.XXXXXX)"
+PROXY_PID=""
+
+cleanup() {
+  if [[ -n "$PROXY_PID" ]] && kill -0 "$PROXY_PID" >/dev/null 2>&1; then
+    kill "$PROXY_PID" >/dev/null 2>&1 || true
+    wait "$PROXY_PID" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$PROXY_LOG" && -f "$PROXY_LOG" ]]; then
+    rm -f "$PROXY_LOG"
+  fi
+  unset PGPASSWORD
+}
+trap cleanup EXIT INT TERM
+
+cloud-sql-proxy \
+  --gcloud-auth \
+  --address 127.0.0.1 \
+  --port "$PORT" \
+  "$CONNECTION_NAME" >"$PROXY_LOG" 2>&1 &
+PROXY_PID="$!"
+
+PROXY_READY="false"
+for _ in $(seq 1 80); do
+  if grep -q "ready for new connections" "$PROXY_LOG"; then
+    PROXY_READY="true"
+    break
+  fi
+  if ! kill -0 "$PROXY_PID" >/dev/null 2>&1; then
+    cat "$PROXY_LOG" >&2
+    die "Cloud SQL Auth Proxy exited before becoming ready"
+  fi
+  sleep 0.25
+done
+
+if [[ "$PROXY_READY" != "true" ]]; then
+  cat "$PROXY_LOG" >&2
+  die "timed out waiting for Cloud SQL Auth Proxy"
+fi
+
+CONNECTION="host=127.0.0.1 port=${PORT} sslmode=disable connect_timeout=10 dbname=${DATABASE} user=${DATABASE_USER}"
+READ_ONLY_OPTIONS="-c default_transaction_read_only=on -c statement_timeout=${STATEMENT_TIMEOUT_MS}"
+WRITE_OPTIONS="-c statement_timeout=${STATEMENT_TIMEOUT_MS} -c lock_timeout=5000"
+
+run_status() {
+  PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+    -c "select current_database() as database, current_user as db_user, current_setting('transaction_read_only') as read_only, now() as checked_at;"
+  PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+    -c "select schemaname, count(*) as table_count from pg_tables where schemaname not in ('pg_catalog','information_schema') group by schemaname order by schemaname;"
+  if [[ -n "$(PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -At -v ON_ERROR_STOP=1 -c "select to_regclass('public.schema_migrations');")" ]]; then
+    PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+      -c "select version, applied_at from schema_migrations order by version;"
+  else
+    printf 'schema_migrations has not been created.\n'
+  fi
+}
+
+case "$COMMAND" in
+  status)
+    printf 'Mode: read-only status\n'
+    run_status
+    ;;
+  query)
+    printf 'Mode: read-only query\n'
+    if [[ -n "$SQL_FILE" ]]; then
+      PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+        --single-transaction --command "set transaction read only" --file "$SQL_FILE"
+    else
+      PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+        --single-transaction --command "set transaction read only" --command "$SQL"
+    fi
+    ;;
+  write)
+    printf 'Mode: write-enabled single transaction (confirmed env=%s)\n' "$CONFIRM_ENV"
+    if [[ -n "$SQL_FILE" ]]; then
+      PGOPTIONS="$WRITE_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+        --single-transaction --file "$SQL_FILE"
+    else
+      PGOPTIONS="$WRITE_OPTIONS" psql -X "$CONNECTION" -v ON_ERROR_STOP=1 \
+        --single-transaction --command "$SQL"
+    fi
+    ;;
+  migrate)
+    printf 'Mode: migration through api/src/migrate.ts (confirmed env=%s)\n' "$CONFIRM_ENV"
+    if [[ -n "$(PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -At -v ON_ERROR_STOP=1 -c "select to_regclass('public.schema_migrations');")" ]]; then
+      APPLIED_MIGRATIONS="$(PGOPTIONS="$READ_ONLY_OPTIONS" psql -X "$CONNECTION" -At -v ON_ERROR_STOP=1 -c "select version from schema_migrations order by version;")"
+    else
+      APPLIED_MIGRATIONS=""
+    fi
+    MISSING_LOCAL_MIGRATIONS=""
+    while IFS= read -r applied_migration; do
+      [[ -n "$applied_migration" ]] || continue
+      if [[ ! -f "$API_DIR/migrations/$applied_migration" ]]; then
+        MISSING_LOCAL_MIGRATIONS="${MISSING_LOCAL_MIGRATIONS}${applied_migration}"$'\n'
+      fi
+    done <<<"$APPLIED_MIGRATIONS"
+    if [[ -n "$MISSING_LOCAL_MIGRATIONS" ]]; then
+      printf 'Applied migrations missing from the current branch:\n%s' "$MISSING_LOCAL_MIGRATIONS" >&2
+      die "database migration history is ahead of this branch; update the branch before migrating"
+    fi
+    PENDING_COUNT=0
+    printf 'Pending migrations:\n'
+    for migration_path in "$API_DIR"/migrations/*.sql; do
+      migration_file="$(basename "$migration_path")"
+      if ! grep -Fqx "$migration_file" <<<"$APPLIED_MIGRATIONS"; then
+        if grep -Eiq '(^|;)[[:space:]]*(begin|start[[:space:]]+transaction|commit|rollback)[[:space:]]*;' "$migration_path"; then
+          die "$migration_file contains transaction control; api/src/migrate.ts owns the transaction"
+        fi
+        if grep -Eq '^[[:space:]]*\\' "$migration_path"; then
+          die "$migration_file contains a psql meta-command, which the application runner does not support"
+        fi
+        printf '  %s\n' "$migration_file"
+        PENDING_COUNT=$((PENDING_COUNT + 1))
+      fi
+    done
+    if (( PENDING_COUNT == 0 )); then
+      printf '  none\nNo migration changes were applied.\n'
+      exit 0
+    fi
+    [[ -d "$API_DIR/node_modules" ]] || \
+      die "API dependencies are missing; run npm ci in $API_DIR"
+    npm --prefix "$API_DIR" run build
+    (
+      cd "$API_DIR"
+      APP_ENV="$ENVIRONMENT" \
+      GOOGLE_CLOUD_PROJECT="$PROJECT" \
+      DB_HOST="127.0.0.1" \
+      DB_PORT="$PORT" \
+      DB_NAME="$DATABASE" \
+      DB_USER="$DATABASE_USER" \
+      DB_PASSWORD="$PGPASSWORD" \
+      DB_POOL_MAX="1" \
+      MEDIA_BUCKET="${PREFIX}-media" \
+      PICKUP_SIGNING_KEY="local-migration-runner-unused" \
+      node dist/migrate.js
+    )
+    run_status
+    ;;
+esac
