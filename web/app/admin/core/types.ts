@@ -37,7 +37,8 @@ export type AdminPermission =
   | "access.update"
   | "access.remove"
   | "access.password_set"
-  | "audit.read";
+  | "audit.read"
+  | "pospal.manage";
 
 export type AdminSession = {
   user_id: string;
@@ -212,6 +213,9 @@ export type AdminStore = {
   pickup_enabled: boolean;
   delivery_enabled: boolean;
   location_verified: boolean;
+  /** 银豹门店账号(admin 维护;见 docs/12-pospal-integration.md §7。OPERATOR 的 context/stores 无此字段) */
+  pospal_account?: string | null;
+  pospal_enabled?: boolean;
 };
 
 export type AdminState = "loading" | "anonymous" | "forbidden" | "ready" | "error";

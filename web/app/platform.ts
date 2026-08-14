@@ -149,6 +149,12 @@ type ApiProduct = {
   tag_id: string | null;
   tag_label: string | null;
   tag_tone: "RED" | "YELLOW" | "BLACK" | "GREEN" | null;
+  // 银豹字典同步状态(仅 /v1/admin/products 返回)
+  pospal_uid: string | null;
+  pospal_barcode: string | null;
+  pospal_name: string | null;
+  pospal_sell_price_cents: number | null;
+  pospal_synced_at: string | null;
 };
 
 const titleCase = (value: string) =>
@@ -196,6 +202,11 @@ export function mapApiProduct(product: ApiProduct): Product {
     discountPercent: product.discount_percent,
     catalogVersion: product.catalog_version,
     updatedAt: product.updated_at,
+    pospalUid: product.pospal_uid ?? undefined,
+    pospalBarcode: product.pospal_barcode ?? undefined,
+    pospalName: product.pospal_name ?? undefined,
+    pospalSellPriceCents: product.pospal_sell_price_cents ?? undefined,
+    pospalSyncedAt: product.pospal_synced_at ?? undefined,
   };
 }
 
@@ -228,6 +239,15 @@ export async function fetchAdminCatalog() {
     "/v1/admin/products",
   );
   return payload.data.map(mapApiProduct);
+}
+
+/** 手动触发银豹商品字典同步(需 pospal.manage 权限),返回同步统计 */
+export async function syncPospalProducts() {
+  const payload = await apiFetch<{ data: { pages: number; items: number; matchedProducts: number } }>(
+    "/v1/admin/pospal/product-sync",
+    { method: "POST" },
+  );
+  return payload.data;
 }
 
 export async function fetchProductTags(): Promise<ProductTag[]> {

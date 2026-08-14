@@ -30,6 +30,12 @@ export type Product = {
   discountPercent?: number;
   updatedAt?: string;
   catalogVersion?: number;
+  // 银豹字典同步状态(admin 商品管理用;客户侧无值)
+  pospalUid?: string;
+  pospalBarcode?: string;
+  pospalName?: string;
+  pospalSellPriceCents?: number;
+  pospalSyncedAt?: string;
 };
 
 export type Store = {
