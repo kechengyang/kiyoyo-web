@@ -57,7 +57,11 @@ export async function syncProductDictionary(
     await store.upsertMappings(page.list.map(normalizeProductRow));
     items += page.list.length;
 
-    if (!page.hasMore) break;
+    if (!page.hasMore) {
+      // 保存最终游标:下次同步从增量点继续,避免重拉最后一页
+      if (page.nextLastId != null) await store.saveCursor(String(page.nextLastId));
+      break;
+    }
     lastId = page.nextLastId != null ? String(page.nextLastId) : null;
     if (lastId == null) break; // hasMore 但无 nextLastId:视为同步完成
     await store.saveCursor(lastId);

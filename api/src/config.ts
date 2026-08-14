@@ -39,11 +39,12 @@ export const config = {
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean),
   ),
+  // 银豹集成配置:按需启用(缺失时 sync 端点返回明确错误,不影响 API 其他功能与迁移)
   pospal: {
-    appId: required("POSPAL_APP_ID"),
-    appKey: required("POSPAL_APP_KEY"),
-    baseUrl: required("POSPAL_BASE_URL", "https://platform.pospal.cn"),
-    hqAccount: required("POSPAL_HQ_ACCOUNT"),
+    appId: process.env.POSPAL_APP_ID ?? null,
+    appKey: process.env.POSPAL_APP_KEY ?? null,
+    baseUrl: process.env.POSPAL_BASE_URL ?? "https://platform.pospal.cn",
+    hqAccount: process.env.POSPAL_HQ_ACCOUNT ?? null,
     timeoutMs: Number(process.env.POSPAL_TIMEOUT_MS ?? 10_000),
   },
 };

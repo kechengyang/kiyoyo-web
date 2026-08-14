@@ -447,6 +447,10 @@ checkout 事务内构造快照,toppings 展开为独立行(结算时 toppings �
 | `POSPAL_APP_KEY` | 根 `.env` appKey | **Secret Manager** | 签名 |
 | `POSPAL_HQ_ACCOUNT` | `mixuehq` | 非密 | user/page、商品字典(总部) |
 | `POSPAL_TIMEOUT_MS` | `10000` | 非密 | HTTP 超时 |
+
+> ⚠️ 以上 POSPAL 变量为**按需配置**:缺失时 API 与迁移照常启动/执行,
+> 仅 `/v1/admin/pospal/*` 端点返回明确配置错误(codex review P1 修复,
+> 避免部署被可选集成阻断)。启用同步前在 Cloud Run service 注入即可。
 | `POSPAL_PUSH_ENABLED` | 默认 `false`;prod tfvars `true` | 非密 | 推单总开关(欠费/维护时关闭) |
 | `POSPAL_PUSH_TEST_ORDERS` | 默认 `false` | 非密 | dev 联调放行 `is_test=true` 订单 |
 | `POSPAL_CURRENCY` | `KES` | 非密 | 文档性标注(币种以门店 POS 为准,验证项②) |

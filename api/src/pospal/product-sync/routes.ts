@@ -12,25 +12,45 @@ import { createPgProductSyncStore } from "./store.js";
  * 后续模块(商品管理、推单)各自注册独立端点,共享 ../client.ts。
  */
 export type ProductSyncRouteDependencies = {
-  pospal: PospalClientConfig & { hqAccount: string };
+  pospal: {
+    appId: string | null;
+    appKey: string | null;
+    baseUrl: string;
+    hqAccount: string | null;
+    timeoutMs: number;
+  };
   pool: Pool;
 };
 
 export function registerProductSyncRoutes(app: FastifyInstance, deps: ProductSyncRouteDependencies) {
-  const client = createPospalClient(deps.pospal);
-  const store = createPgProductSyncStore(deps.pool, deps.pospal.hqAccount);
-  const { hqAccount } = deps.pospal;
+  const { pool } = deps;
+
+  /**
+   * POSPAL 配置就绪检查:配置缺失时请求返回明确错误,
+   * 不做启动期阻塞 —— API 其他功能与迁移不依赖银豹配置。
+   */
+  const requirePospalConfig = (): PospalClientConfig & { hqAccount: string } => {
+    const { appId, appKey, baseUrl, hqAccount, timeoutMs } = deps.pospal;
+    if (!appId || !appKey || !hqAccount) {
+      throw new Error("POSPAL is not configured: POSPAL_APP_ID / POSPAL_APP_KEY / POSPAL_HQ_ACCOUNT missing");
+    }
+    return { appId, appKey, baseUrl, hqAccount, timeoutMs };
+  };
 
   /** 手动触发商品字典同步,同步执行:83 条商品约 1-2 秒 */
   app.post("/v1/admin/pospal/product-sync", { preHandler: requirePermission("pospal.manage") }, async () => {
-    const result = await syncProductDictionary(client, store, hqAccount);
+    const pospal = requirePospalConfig();
+    const client = createPospalClient(pospal);
+    const store = createPgProductSyncStore(pool, pospal.hqAccount);
+    const result = await syncProductDictionary(client, store, pospal.hqAccount);
     return { data: result };
   });
 
   /** 同步状态报表:KIYOYO 商品 vs 银豹字典对齐情况 */
   app.get("/v1/admin/pospal/product-sync/status", { preHandler: requirePermission("pospal.manage") }, async () => {
+    const { hqAccount } = requirePospalConfig();
     const scope = syncScope(hqAccount);
-    const { rows } = await deps.pool.query<{
+    const { rows } = await pool.query<{
       product_count: string;
       matched_count: string;
       unmatched_product_count: string;

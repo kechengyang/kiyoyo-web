@@ -228,7 +228,7 @@ export function ProductsView({
             {product.pospalUid ? (
               <em
                 className="pospal-sync-mark synced"
-                title={`${product.pospalName ?? ""} · ${money(product.pospalSellPriceCents ?? 0)} · ${product.pospalBarcode ?? ""}`}
+                title={`${product.pospalName ?? ""} · ${money((product.pospalSellPriceCents ?? 0) / 100)} · ${product.pospalBarcode ?? ""}`}
               >
                 ✓
               </em>

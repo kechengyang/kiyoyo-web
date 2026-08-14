@@ -6,9 +6,9 @@ create table pospal_product_mappings (
   id uuid primary key default gen_random_uuid(),
   product_id uuid references products(id) on delete cascade,  -- null = 银豹有、KIYOYO 未匹配
   pospal_uid text not null unique,        -- 银豹商品 uid
-  pospal_barcode text not null,
+  pospal_barcode text,                    -- 银豹可缺条码(无条码商品)
   pospal_name text not null,
-  pospal_sell_price_cents integer not null,  -- 银豹售价(分),用于对账/告警
+  pospal_sell_price_cents integer,        -- 银豹售价(分);未定价时为 null
   source text not null default 'AUTO' check (source in ('AUTO','MANUAL')),
   status text not null default 'ACTIVE' check (status in ('ACTIVE','DISABLED')),
   last_synced_at timestamptz not null default now(),

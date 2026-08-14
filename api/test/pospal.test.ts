@@ -184,7 +184,7 @@ test("字典同步:游标分页直至 hasMore=false,保存游标并执行条码�
 
   assert.deepEqual(result, { pages: 2, items: 3, matchedProducts: 1 });
   assert.deepEqual(requestedLastIds, [undefined, "100"], "第二页应携带上一页的 nextLastId(字符串)");
-  assert.deepEqual(store.cursors, ["100"]);
+  assert.deepEqual(store.cursors, ["100", "200"], "含最后一页的终态游标(hasMore=false 时也保存,避免下次重拉)");
   assert.equal(store.upserted.length, 3);
   assert.equal(store.upserted[2].uid, "3");
 });
