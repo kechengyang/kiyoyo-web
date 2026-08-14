@@ -26,12 +26,13 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
 
     async alignByBarcode() {
       // 未对齐的行按条码匹配;已 AUTO 对齐但条码变化的行重算(银豹条码改了
-      // 就跟随新匹配);MANUAL 映射不动
+      // 就跟随新匹配);MANUAL 映射不动。对齐键是 products.pospal_barcode
+      // (银豹 EAN 条码),不是 external_code(菜单内部编码,保留原样)
       const { rowCount } = await pool.query(
         `update pospal_product_mappings m
          set product_id = p.id, source = 'AUTO'
          from products p
-         where p.external_code = m.pospal_barcode
+         where p.pospal_barcode = m.pospal_barcode
            and (m.product_id is null or (m.source = 'AUTO' and m.product_id <> p.id))`,
       );
       return rowCount ?? 0;

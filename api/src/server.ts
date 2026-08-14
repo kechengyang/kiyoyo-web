@@ -121,9 +121,10 @@ const productColumns = `p.id,p.external_code,p.kind,p.category_slug,p.slug,p.nam
 const productSelect = `select ${productColumns}
   from products p left join product_tags t on t.id=p.tag_id and t.active=true`;
 
-/** 管理端商品列表:附加银豹字典同步状态(客户侧 /v1/products 不加,避免污染公共响应) */
+/** 管理端商品列表:附加银豹字典同步状态(客户侧 /v1/products 不加,避免污染公共响应)。
+ *  pospal_barcode 取 products 自身(对齐键,编辑器可维护);字典信息从映射行取 */
 const adminProductSelect = `select ${productColumns},
-  m.pospal_uid,m.pospal_barcode,m.pospal_name,m.pospal_sell_price_cents,m.last_synced_at as pospal_synced_at
+  m.pospal_uid,p.pospal_barcode,m.pospal_name,m.pospal_sell_price_cents,m.last_synced_at as pospal_synced_at
   from products p left join product_tags t on t.id=p.tag_id and t.active=true
   left join pospal_product_mappings m on m.product_id=p.id and m.status='ACTIVE'`;
 
@@ -146,6 +147,8 @@ const productWriteSchema = z.object({
   base_price: z.number().int().min(0),
   discount_percent: z.number().int().min(0).max(90).default(0),
   tag_id: z.string().uuid().nullable().default(null),
+  /** 银豹 EAN 条码(对齐键);external_code 是菜单内部编码,不在此编辑 */
+  pospal_barcode: z.string().trim().max(64).nullable().optional(),
 });
 
 const assertActiveTag = async (tagId: string | null, reply: FastifyReply) => {
@@ -663,9 +666,11 @@ app.patch("/v1/admin/products/:id", { preHandler: requirePermission("products.wr
   }
   const result = await query(
     `update products set name_en=coalesce($2,name_en),name_zh=coalesce($3,name_zh),description_en=coalesce($4,description_en),description_zh=coalesce($5,description_zh),category_slug=coalesce($6,category_slug),base_price=coalesce($7,base_price),discount_percent=coalesce($8,discount_percent),
-      active=coalesce($9,active),tag_id=case when $10::boolean then $11::uuid else tag_id end,catalog_version=catalog_version+1,updated_at=now(),updated_by=$12
-     where id=$1 and catalog_version=$13 returning *`,
-    [id, input.name_en ?? null, input.name_zh ?? null, input.description_en ?? null, input.description_zh ?? null, input.category_slug ?? null, input.base_price ?? null, input.discount_percent ?? null, input.active ?? null, Object.hasOwn(input, "tag_id"), input.tag_id ?? null, request.actor!.userId, input.catalog_version],
+      active=coalesce($9,active),tag_id=case when $10::boolean then $11::uuid else tag_id end,
+      pospal_barcode=case when $12::boolean then $13 else pospal_barcode end,
+      catalog_version=catalog_version+1,updated_at=now(),updated_by=$14
+     where id=$1 and catalog_version=$15 returning *`,
+    [id, input.name_en ?? null, input.name_zh ?? null, input.description_en ?? null, input.description_zh ?? null, input.category_slug ?? null, input.base_price ?? null, input.discount_percent ?? null, input.active ?? null, Object.hasOwn(input, "tag_id"), input.tag_id ?? null, Object.hasOwn(input, "pospal_barcode"), input.pospal_barcode ?? null, request.actor!.userId, input.catalog_version],
   );
   if (!result.rowCount) return reply.code(409).send({ error: { code: "VERSION_CONFLICT", message: "Product was changed by another admin; refresh and retry" } });
   await query("insert into audit_logs(actor_id,action,entity_type,entity_id,request_id) values($1,'PRODUCT_UPDATED','product',$2,$3)", [request.actor!.userId, id, request.id]);

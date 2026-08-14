@@ -235,6 +235,25 @@ export function ProductEditorDialog({
         Create reusable tags from Manage tags before assigning them.
       </small>
     </label>
+    {!isNew && (
+      <label className="form-field">
+        <span>POSPAL barcode</span>
+        <input
+          value={editingProduct.pospalBarcode ?? ""}
+          onChange={(e) =>
+            setEditingProduct({
+              ...editingProduct,
+              pospalBarcode: e.target.value,
+            })
+          }
+          placeholder="e.g. 0273400877705"
+        />
+        <small>
+          The barcode of the matching item in the POSPAL dictionary. Sync
+          links products to POSPAL by this code.
+        </small>
+      </label>
+    )}
     <div className="sale-preview">
       <span>Customer price</span>
       <strong>{money(salePrice(editingProduct))}</strong>
