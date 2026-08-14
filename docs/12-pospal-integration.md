@@ -362,8 +362,9 @@ checkout 事务内构造快照,toppings 展开为独立行(结算时 toppings �
 ## 6. 商品字典同步
 
 - **接口**:`POST /openapi/v3/product/increment-page`,body `{account, lastId}`(游标分页;lastId 存 `pospal_sync_state`)。计费:基础 100 + 扩展 20/项(冒烟时确认扩展项含义与返回字段:uid / barcode / name / sellPrice)。
-- **对齐规则**:`products.external_code` ↔ 银豹 `barcode`。若门店已在银豹按 external_code 维护条码,同步后直接匹配。
-- **策略**:全量游标拉取 + upsert 映射(按 pospal_uid 唯一);再按 `barcode = external_code` 回填 `product_id`。`product_id is null` 的行 = 银豹有、KIYOYO 未匹配(管理侧报表);KIYOYO 有、银豹无 → 不在映射表,推单时 DEAD 报错。银豹无 updatedAt 增量语义,增量 = lastId 断点续拉;菜单改动频率低,默认**每天一次 + 管理按钮手动触发**。
+- **对齐规则**:`products.pospal_barcode` ↔ 银豹 `barcode`。`products.pospal_barcode` 存银豹 EAN 条码(migration 0006 新增);`external_code` 是菜单内部编码(A1/B2/…),**保持不变**——订单引用与 seed 依赖它,不与银豹条码混用。admin 在商品编辑器填写/修改条码,同步后自动对齐。
+- **一次性回填(migration 0006)**:首次部署时按规范化名称(去首部菜单代码前缀、`&`↔`and`、小写)把已同步字典条码写入商品——仅此一次,避免永久启发式匹配。实测 83 条字典中 37 条可自动回填,其余(银豹名截断、字典独有商品)由编辑器人工填。
+- **策略**:全量游标拉取 + upsert 映射(按 pospal_uid 唯一);再按 `barcode = pospal_barcode` 回填 `product_id`。`product_id is null` 的行 = 银豹有、KIYOYO 未匹配(管理侧报表);KIYOYO 有、银豹无 → 不在映射表,推单时 DEAD 报错。银豹无 updatedAt 增量语义,增量 = lastId 断点续拉;菜单改动频率低,默认**每天一次 + 管理按钮手动触发**。
 - **触发方式**(三个都做):Cloud Scheduler 每日 03:00(Nairobi);admin 按钮 `POST /v1/admin/pospal/sync`(任务入 `order_events` 队列,不阻塞请求);部署后首次手动。
 - **每次对账**:发现 `pospal_sell_price_cents ≠ products 售价` → 记日志/告警(不阻断,门店可能故意不同价)。
 
@@ -494,7 +495,7 @@ api/src/pospal/
   types.ts         — 请求/响应 zod schema(create/increment-page/user/page/错误体)
   client.ts        — signRequest()(MD5 大写)、request()(超时/错误分类)、PospalError(errorCode/messages)
   mapper.ts        — buildProductOrderFromSnapshot(payload, mappings, store):纯函数,可单测
-  product-sync.ts  — increment-page 游标同步 + upsert 映射 + external_code 对齐
+  product-sync.ts  — increment-page 游标同步 + upsert 映射 + pospal_barcode 对齐
   push-worker.ts   — /internal/tasks/pospal-order-push 处理器
   sweep.ts         — /internal/outbox/sweep 处理器
   webhooks.ts      — Phase 2:verifyPospalSignature() + productOrder/ticket handler
@@ -529,7 +530,7 @@ docs/12-pospal-integration.md    — 本文档
 产生 token 费用(约 3 元/天正常量)与银豹侧真实数据:
 
 1. `user/page`(account=mixuehq)→ 门店列表,核对 §7 对比矩阵。
-2. `product/increment-page` → 商品总数、确认 barcode 与 external_code 匹配率、sellPrice 字段语义。
+2. `product/increment-page` → 商品总数、确认 barcode 与 pospal_barcode 匹配率、sellPrice 字段语义。
 3. `product-order/create` 建**最小测试单**(1 件商品、totalAmount=0.01、测试专用 orderNo `SMOKE-…`)→ 记录响应 id/orderNo/duplicate;**重发同 orderNo 观察 duplicate=true 还是 4001**(记录实测,回填本文档);银豹后台可见性由门店确认;随后在银豹侧作废。
 4. 验证项:`eShopSellPrice` 是否覆盖 POS 目录价;金额 decimal 格式;`time` 时区;商品条码匹配。
 
@@ -556,7 +557,7 @@ docs/12-pospal-integration.md    — 本文档
 | ④ | duplicate 语义 | 同 orderNo 重发返回 duplicate:true 还是 4001,实测回填设计 |
 | ⑤ | eShopSellPrice 生效性 | 银豹是否采纳我们传入的价格 |
 | ⑥ | 6 门店账号 | user/page 核对 account/enable/self,补 stores.pospal_account |
-| ⑦ | 商品匹配率 | barcode = external_code 的匹配率;未匹配商品处理 |
+| ⑦ | 商品匹配率 | barcode = pospal_barcode 的匹配率(dev 已回填 37/83,其余待人工);未匹配商品处理 |
 | ⑧ | Token 余额节奏 | 首次赠送 10000 Token ≈ 50 单推单量,上线头几天关注余额与消费日报 |
 
 运营要点:

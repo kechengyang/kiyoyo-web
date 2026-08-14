@@ -915,6 +915,7 @@ export default function AdminApp() {
         Math.min(90, Number(editingProduct.discountPercent) || 0),
       ),
       tag_id: editingProduct.tagId ?? null,
+      pospal_barcode: editingProduct.pospalBarcode?.trim() || null,
     };
     setProductBusy(true);
     setProductError("");

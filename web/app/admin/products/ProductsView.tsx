@@ -230,10 +230,10 @@ export function ProductsView({
                 className="pospal-sync-mark synced"
                 title={`${product.pospalName ?? ""} · ${money((product.pospalSellPriceCents ?? 0) / 100)} · ${product.pospalBarcode ?? ""}`}
               >
-                ✓
+                {product.pospalBarcode || "✓"}
               </em>
             ) : (
-              <em className="pospal-sync-mark pending" title="Not found in POSPAL dictionary — run Sync with POSPAL">
+              <em className="pospal-sync-mark pending" title="Not found in POSPAL dictionary — run Sync with POSPAL or set the POSPAL barcode in the product editor">
                 —
               </em>
             )}
