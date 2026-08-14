@@ -27,13 +27,19 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
     async alignByBarcode() {
       // 未对齐的行按条码匹配;已 AUTO 对齐但条码变化的行重算(银豹条码改了
       // 就跟随新匹配);MANUAL 映射不动。对齐键是 products.pospal_barcode
-      // (银豹 EAN 条码),不是 external_code(菜单内部编码,保留原样)
+      // (银豹 EAN 条码),不是 external_code(菜单内部编码,保留原样)。
+      // 同一 barcode 的重复字典行(银豹重复建档)只取最早一行,避免撞
+      // ACTIVE product_id 唯一索引
       const { rowCount } = await pool.query(
         `update pospal_product_mappings m
          set product_id = p.id, source = 'AUTO'
          from products p
          where p.pospal_barcode = m.pospal_barcode
-           and (m.product_id is null or (m.source = 'AUTO' and m.product_id <> p.id))`,
+           and (m.product_id is null or (m.source = 'AUTO' and m.product_id <> p.id))
+           and not exists (
+             select 1 from pospal_product_mappings dup
+             where dup.pospal_barcode = m.pospal_barcode and dup.ctid < m.ctid
+           )`,
       );
       return rowCount ?? 0;
     },
