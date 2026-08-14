@@ -116,11 +116,19 @@ export function AdminTopbar({
   cloudStatus,
   activeCount,
   scopeLabel,
+  orderAlertsConnected,
+  soundEnabled,
+  soundReady,
+  toggleSound,
 }: {
   tab: AdminTab;
   cloudStatus: string;
   activeCount: number;
   scopeLabel: string;
+  orderAlertsConnected: boolean;
+  soundEnabled: boolean;
+  soundReady: boolean;
+  toggleSound: () => void;
 }) {
   const managementTabs: AdminTab[] = ["overview", "products", "coupons", "stores", "access"];
   const labels: Record<AdminTab, string> = {
@@ -143,6 +151,29 @@ export function AdminTopbar({
       </div>
       <div>
         <span className="live-dot" /> {cloudStatus}{" "}
+        <button
+          className="order-sound-toggle"
+          data-connected={orderAlertsConnected}
+          data-enabled={soundEnabled}
+          onClick={toggleSound}
+          aria-pressed={soundEnabled}
+          aria-label={soundEnabled ? "Turn off new order sound" : "Turn on new order sound"}
+          title={
+            !orderAlertsConnected
+              ? "New order alerts are reconnecting"
+              : soundEnabled && !soundReady
+                ? "Click to allow new order sound"
+                : soundEnabled
+                  ? "New order sound on"
+                  : "New order sound off"
+          }
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+            {!soundEnabled && <path d="m4 4 16 16" />}
+          </svg>
+          <span>{soundEnabled ? "Order sound on" : "Order sound off"}</span>
+        </button>
         <button onClick={() => void signOutMember()}>
           Sign out <b>{activeCount}</b>
         </button>

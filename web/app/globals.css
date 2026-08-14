@@ -4399,6 +4399,78 @@ button {
   padding: 2px 4px;
   border-radius: 50%;
 }
+.admin-top .order-sound-toggle {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 8px;
+}
+.order-sound-toggle svg,
+.new-order-alert-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.order-sound-toggle[data-connected="false"] {
+  border-color: var(--red);
+  color: var(--red);
+}
+.order-sound-toggle[data-enabled="false"] {
+  color: var(--muted);
+}
+.new-order-alert {
+  position: fixed;
+  z-index: 80;
+  right: 24px;
+  bottom: 24px;
+  width: min(430px, calc(100vw - 48px));
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: #fff;
+  background: var(--ink);
+  border-left: 4px solid var(--red);
+  box-shadow: 0 16px 40px rgba(23, 20, 18, 0.24);
+}
+.new-order-alert-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--red);
+  border-radius: 50%;
+}
+.new-order-alert > div:nth-child(2) {
+  display: grid;
+  gap: 2px;
+}
+.new-order-alert strong { font-size: 13px; }
+.new-order-alert span { color: #d8d1cc; font-size: 10px; }
+.new-order-alert small { color: #9f9791; font-size: 8px; }
+.new-order-alert button {
+  min-height: 44px;
+  border: 1px solid #5c554f;
+  color: #fff;
+  background: transparent;
+  font-size: 9px;
+  font-weight: 900;
+}
+.new-order-alert button:hover,
+.new-order-alert button:focus-visible { border-color: #fff; }
+.new-order-view { padding: 0 12px; }
+.new-order-dismiss {
+  width: 44px;
+  padding: 0;
+  font-size: 18px !important;
+}
 .admin-home,
 .admin-management {
   width: min(1280px, 100%);
@@ -5936,6 +6008,27 @@ button {
   .admin-top { height: 82px; }
   .admin-top > div:last-child {
     font-size: 0;
+  }
+  .admin-top .order-sound-toggle {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+  .order-sound-toggle span { display: none; }
+  .new-order-alert {
+    left: 12px;
+    right: 12px;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    width: auto;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+  .new-order-view {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .new-order-dismiss {
+    grid-column: 3;
+    grid-row: 1 / span 2;
   }
   .admin-top button { min-height: 44px; margin-left: 5px; }
   .admin-launch-grid { grid-template-columns: 1fr; gap: 10px; }
