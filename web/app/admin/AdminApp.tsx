@@ -137,6 +137,9 @@ export default function AdminApp() {
     "all",
   );
   const [productCategory, setProductCategory] = useState("all");
+  const [productVisibility, setProductVisibility] = useState<
+    "alive" | "offline" | "all"
+  >("alive");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productError, setProductError] = useState("");
   const [productBusy, setProductBusy] = useState(false);
@@ -427,13 +430,17 @@ export default function AdminApp() {
           (productKind === "all" || product.kind === productKind) &&
           (productCategory === "all" ||
             product.category === productCategory) &&
+          (productVisibility === "all" ||
+            (productVisibility === "alive"
+              ? product.active !== false
+              : product.active === false)) &&
           (!query ||
             `${product.name} ${product.nameZh} ${product.category}`
               .toLowerCase()
               .includes(query))
         );
       }),
-    [catalog, productCategory, productKind, productSearch],
+    [catalog, productCategory, productKind, productSearch, productVisibility],
   );
 
   const openCustomer = async (customer: AdminCustomer) => {
@@ -1236,6 +1243,8 @@ export default function AdminApp() {
             setProductKind={setProductKind}
             productCategory={productCategory}
             setProductCategory={setProductCategory}
+            productVisibility={productVisibility}
+            setProductVisibility={setProductVisibility}
             categoryOptions={categoryOptions}
             shownProducts={shownProducts}
             toggleProduct={toggleProduct}
