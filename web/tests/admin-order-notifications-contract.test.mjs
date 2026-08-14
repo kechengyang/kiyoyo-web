@@ -27,6 +27,10 @@ test("new orders use authenticated SSE with server-side store scope", async () =
   assert.match(app, /streamAdminOrderEvents/);
   assert.doesNotMatch(app, /setInterval\(pollOrderAlerts/);
   assert.match(app, /\/v1\/admin\/overview/);
+  assert.match(
+    app,
+    /session\.role === "ADMIN"\s*\? apiFetch<\{ data: AdminOverview \}>\("\/v1\/admin\/overview"\)\s*:\s*Promise\.resolve\(null\)/,
+  );
 });
 
 test("new order notice uses the approved voice MP3 and accessible controls", async () => {

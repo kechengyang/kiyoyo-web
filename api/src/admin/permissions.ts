@@ -31,14 +31,11 @@ export const permissionCodes = [
 export type PermissionCode = (typeof permissionCodes)[number];
 
 const operatorPermissions = new Set<PermissionCode>([
-  "overview.read",
   "orders.read",
   "orders.transition",
   "redeem.verify",
   "redeem.execute",
   "customers.read",
-  "products.read",
-  "coupons.read",
   "stores.read",
 ]);
 

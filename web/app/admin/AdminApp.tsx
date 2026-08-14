@@ -53,6 +53,8 @@ import { StoresView } from "./stores/StoresView";
 import { StoreEditorDialog } from "./stores/StoreEditorDialog";
 import { AdminSidebar, AdminTopbar } from "./shell/AdminShell";
 import { AccessManagementView } from "./access/AccessManagementView";
+import { AdminHomeView } from "./home/AdminHomeView";
+import { AdminManagementView } from "./management/AdminManagementView";
 
 type ApiAdminOrder = AdminOverview["recent_orders"][number];
 type ApiOrderAlert = { order_number: string; created_at: string };
@@ -102,7 +104,7 @@ const uploadImageToSignedUrl = (
   });
 
 export default function AdminApp() {
-  const [tab, setTab] = useState<AdminTab>("overview");
+  const [tab, setTab] = useState<AdminTab>("home");
   const [catalog, setCatalog] = useCatalog();
   const [productTags, setProductTags] = useProductTags();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -167,6 +169,7 @@ export default function AdminApp() {
       observeMember(async (user) => {
         if (!user) {
           setAdminState("anonymous");
+          setTab("home");
           setSession(null);
           setOverview(null);
           setOrders([]);
@@ -190,51 +193,55 @@ export default function AdminApp() {
           const sessionPayload = await apiFetch<{ data: AdminSession }>("/v1/admin/session");
           const staffSession = sessionPayload.data;
           const [
-            productPayload,
-            tagPayload,
             orderPayload,
             customerPayload,
-            couponPayload,
             storePayload,
-            overviewPayload,
             orderAlertPayload,
           ] = await Promise.all([
-            apiFetch<{ data: Parameters<typeof mapApiProduct>[0][] }>(
-              "/v1/admin/products",
-            ),
-            apiFetch<{
-              data: Array<{
-                id: string;
-                label: string;
-                tone: "RED" | "YELLOW" | "BLACK" | "GREEN";
-                created_at: string;
-              }>;
-            }>("/v1/admin/product-tags"),
             apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
             apiFetch<{ data: AdminCustomer[] }>("/v1/admin/customers"),
-            apiFetch<{ data: AdminCoupon[] }>("/v1/admin/coupons"),
             apiFetch<{ data: AdminStore[] }>(staffSession.role === "ADMIN" ? "/v1/admin/stores" : "/v1/admin/context/stores"),
-            apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
             apiFetch<{ data: ApiOrderAlert[] }>("/v1/admin/order-alerts"),
           ]);
-          setCatalog(productPayload.data.map(mapApiProduct));
-          setProductTags(
-            tagPayload.data.map((tag) => ({
-              id: tag.id,
-              label: tag.label,
-              tone: tag.tone.toLowerCase() as ProductTagTone,
-              createdAt: tag.created_at,
-            })),
-          );
+          if (staffSession.role === "ADMIN") {
+            const [productPayload, tagPayload, couponPayload, overviewPayload] = await Promise.all([
+              apiFetch<{ data: Parameters<typeof mapApiProduct>[0][] }>(
+                "/v1/admin/products",
+              ),
+              apiFetch<{
+                data: Array<{
+                  id: string;
+                  label: string;
+                  tone: "RED" | "YELLOW" | "BLACK" | "GREEN";
+                  created_at: string;
+                }>;
+              }>("/v1/admin/product-tags"),
+              apiFetch<{ data: AdminCoupon[] }>("/v1/admin/coupons"),
+              apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
+            ]);
+            setCatalog(productPayload.data.map(mapApiProduct));
+            setProductTags(
+              tagPayload.data.map((tag) => ({
+                id: tag.id,
+                label: tag.label,
+                tone: tag.tone.toLowerCase() as ProductTagTone,
+                createdAt: tag.created_at,
+              })),
+            );
+            setCoupons(couponPayload.data);
+            setOverview(overviewPayload.data);
+          } else {
+            setCoupons([]);
+            setOverview(null);
+          }
           const cloudOrders = orderPayload.data.map(mapAdminOrder);
           setOrders(cloudOrders);
-          setOverview(overviewPayload.data);
           setSession(staffSession);
           setCustomers(customerPayload.data);
-          setCoupons(couponPayload.data);
           setAdminStores(storePayload.data);
           knownOrderIdsRef.current = new Set(orderAlertPayload.data.map((order) => order.order_number));
           setOrderAlertsConnected(true);
+          setTab("home");
           setCloudStatus(`Connected as ${staffSession.username}`);
           setAdminState("ready");
         } catch (error) {
@@ -275,10 +282,12 @@ export default function AdminApp() {
       }
       const [orderPayload, overviewPayload] = await Promise.all([
         apiFetch<{ data: ApiAdminOrder[] }>("/v1/admin/orders"),
-        apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
+        session.role === "ADMIN"
+          ? apiFetch<{ data: AdminOverview }>("/v1/admin/overview")
+          : Promise.resolve(null),
       ]);
       setOrders(orderPayload.data.map(mapAdminOrder));
-      setOverview(overviewPayload.data);
+      if (overviewPayload) setOverview(overviewPayload.data);
       orderNumbers.forEach((orderNumber) => knownOrderIdsRef.current.add(orderNumber));
       noticeSequenceRef.current += 1;
       setNewOrderNotice({
@@ -382,10 +391,13 @@ export default function AdminApp() {
   const can = (permission: AdminPermission) => session?.permissions.includes(permission) ?? false;
   const allowedTabs = useMemo<AdminTab[]>(() => {
     if (!session) return [];
-    const tabs: AdminTab[] = ["overview", "orders", "products", "coupons", "redeem", "customers"];
-    if (session.role === "ADMIN") tabs.push("stores", "admin");
+    const tabs: AdminTab[] = ["home", "orders", "redeem", "customers"];
+    if (session.role === "ADMIN") {
+      tabs.push("admin", "overview", "products", "coupons", "stores", "access");
+    }
     return tabs;
   }, [session]);
+
   const recentOverviewOrders = useMemo(
     () => overview?.recent_orders.map(mapAdminOrder) ?? [],
     [overview],
@@ -1148,6 +1160,20 @@ export default function AdminApp() {
           toggleSound={() => void toggleSound()}
         />
 
+        {tab === "home" && (
+          <AdminHomeView
+            session={session}
+            overview={overview}
+            customerCount={customers.length}
+            activeOrderCount={active.length}
+            setTab={setTab}
+          />
+        )}
+
+        {tab === "admin" && (
+          <AdminManagementView overview={overview} setTab={setTab} />
+        )}
+
         {tab === "overview" && (
           <OverviewView
             overview={overview}
@@ -1235,7 +1261,7 @@ export default function AdminApp() {
             setEditingStore={setEditingStore}
           />
         )}
-        {tab === "admin" && <AccessManagementView session={session} stores={adminStores} />}
+        {tab === "access" && <AccessManagementView session={session} stores={adminStores} />}
       </main>
       {editingProduct && can("products.write") && (
         <ProductEditorDialog

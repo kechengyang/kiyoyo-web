@@ -14,14 +14,15 @@ test("Admin receives every sensitive permission", () => {
   assert.equal(roleHasPermission("ADMIN", "products.write"), true);
 });
 
-test("Operator permissions match the approved viewer/full-access matrix", () => {
+test("Operator permissions are limited to store operations and customer viewing", () => {
   const permissions = permissionsForRole("OPERATOR");
-  assert.equal(permissions.includes("overview.read"), true);
   assert.equal(permissions.includes("orders.transition"), true);
   assert.equal(permissions.includes("redeem.execute"), true);
   assert.equal(permissions.includes("customers.read"), true);
-  assert.equal(permissions.includes("products.read"), true);
-  assert.equal(permissions.includes("coupons.read"), true);
+  assert.equal(permissions.includes("stores.read"), true);
+  assert.equal(permissions.includes("overview.read"), false);
+  assert.equal(permissions.includes("products.read"), false);
+  assert.equal(permissions.includes("coupons.read"), false);
   assert.equal(permissions.includes("customers.write"), false);
   assert.equal(permissions.includes("products.write"), false);
   assert.equal(permissions.includes("coupons.write"), false);
