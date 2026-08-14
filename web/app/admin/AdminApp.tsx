@@ -11,6 +11,7 @@ import {
   apiFetch,
   fetchAdminCatalog,
   mapApiProduct,
+  syncPospalProducts,
   streamAdminOrderEvents,
 } from "../platform";
 import {
@@ -113,6 +114,7 @@ export default function AdminApp() {
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
   const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
+  const [syncingPospal, setSyncingPospal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] =
     useState<CustomerDetail | null>(null);
   const [editingStore, setEditingStore] = useState<AdminStore | null>(null);
@@ -644,6 +646,23 @@ export default function AdminApp() {
     }
   };
 
+  const syncPospal = async () => {
+    setSyncingPospal(true);
+    try {
+      const result = await syncPospalProducts();
+      setCatalog(await fetchAdminCatalog());
+      setCloudStatus(
+        `POSPAL sync complete: ${result.items} products pulled, ${result.matchedProducts} matched`,
+      );
+    } catch (error) {
+      setCloudStatus(
+        error instanceof Error ? error.message : "POSPAL sync failed",
+      );
+    } finally {
+      setSyncingPospal(false);
+    }
+  };
+
   const saveStore = async () => {
     if (!editingStore?.name.trim() || !editingStore.address.trim()) return;
     try {
@@ -661,6 +680,8 @@ export default function AdminApp() {
             pickup_enabled: editingStore.pickup_enabled,
             delivery_enabled: editingStore.delivery_enabled,
             location_verified: editingStore.location_verified,
+            pospal_account: editingStore.pospal_account?.trim() || null,
+            pospal_enabled: editingStore.pospal_enabled !== false,
           }),
         },
       );
@@ -1220,6 +1241,9 @@ export default function AdminApp() {
             openProductEditor={openProductEditor}
             openNewProductEditor={openNewProductEditor}
             canWrite={can("products.write")}
+            syncingPospal={syncingPospal}
+            onSyncPospal={syncPospal}
+            canManagePospal={can("pospal.manage")}
           />
         )}
 

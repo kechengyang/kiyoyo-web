@@ -6,6 +6,9 @@ import Fastify from "fastify";
 
 process.env.DB_PASSWORD ??= "auth-contract-db-password";
 process.env.PICKUP_SIGNING_KEY ??= "auth-contract-pickup-signing-key";
+process.env.POSPAL_APP_ID ??= "auth-contract-pospal-app-id";
+process.env.POSPAL_APP_KEY ??= "auth-contract-pospal-app-key";
+process.env.POSPAL_HQ_ACCOUNT ??= "auth-contract-pospal-hq";
 
 const { trustedProviderIdentities, verifiedEmailError } = await import(
   "../src/modules/auth/middleware.js"

@@ -59,6 +59,19 @@ export function StoreEditorDialog({ editingStore, setEditingStore, saveStore }: 
         }
       />
     </label>
+    <label className="form-field">
+      <span>POSPAL account</span>
+      <input
+        placeholder="e.g. KIYOYO05"
+        value={editingStore.pospal_account ?? ""}
+        onChange={(event) =>
+          setEditingStore({
+            ...editingStore,
+            pospal_account: event.target.value.trim() || null,
+          })
+        }
+      />
+    </label>
     <div className="form-split">
       <label className="form-field">
         <span>Latitude</span>
@@ -128,6 +141,19 @@ export function StoreEditorDialog({ editingStore, setEditingStore, saveStore }: 
           }
         />
         Location verified by operations
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={editingStore.pospal_enabled !== false}
+          onChange={(event) =>
+            setEditingStore({
+              ...editingStore,
+              pospal_enabled: event.target.checked,
+            })
+          }
+        />
+        POSPAL enabled
       </label>
     </div>
     <button className="primary full" onClick={() => void saveStore()}>

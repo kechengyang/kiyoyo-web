@@ -3,6 +3,9 @@ import test from "node:test";
 
 process.env.DB_PASSWORD ??= "refactor-contract-db-password";
 process.env.PICKUP_SIGNING_KEY ??= "refactor-contract-pickup-signing-key";
+process.env.POSPAL_APP_ID ??= "refactor-contract-pospal-app-id";
+process.env.POSPAL_APP_KEY ??= "refactor-contract-pospal-app-key";
+process.env.POSPAL_HQ_ACCOUNT ??= "refactor-contract-pospal-hq";
 
 const { createPickupToken, hashPickupToken, verifyPickupSignature } =
   await import("../src/crypto.js");

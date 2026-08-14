@@ -27,6 +27,12 @@ export function StoresView({
               >
                 {store.location_verified ? "Verified" : "Confirm details"}
               </em>
+              <em
+                className={store.pospal_account ? "verified" : "pending"}
+                title={store.pospal_account ?? undefined}
+              >
+                {store.pospal_account ? "POSPAL linked" : "POSPAL unlinked"}
+              </em>
               <button onClick={() => setEditingStore({ ...store })}>
                 Edit →
               </button>

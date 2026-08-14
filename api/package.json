@@ -13,6 +13,7 @@
     "migrate": "node dist/migrate.js",
     "seed": "node dist/seed.js",
     "test": "tsx --test test/*.test.ts",
+    "pospal:verify": "tsx scripts/pospal-verify.ts",
     "check": "tsc -p tsconfig.json --noEmit",
     "verify": "npm run check && npm test"
   },
