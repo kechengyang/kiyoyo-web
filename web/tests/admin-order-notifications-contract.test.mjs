@@ -29,15 +29,20 @@ test("new orders use authenticated SSE with server-side store scope", async () =
   assert.match(app, /\/v1\/admin\/overview/);
 });
 
-test("new order notice provides a chime, exact copy, and accessible controls", async () => {
-  const [notice, shell] = await Promise.all([
+test("new order notice uses the approved voice MP3 and accessible controls", async () => {
+  const [notice, shell, voice] = await Promise.all([
     read("../app/admin/orders/NewOrderNotifications.tsx"),
     read("../app/admin/shell/AdminShell.tsx"),
+    readFile(new URL("../public/audio/new-order-alert.mp3", import.meta.url)),
   ]);
   assert.match(notice, /You have a new order!/);
   assert.match(notice, /您有一个新订单！/);
   assert.match(notice, /role="alert"/);
-  assert.match(notice, /createOscillator/);
+  assert.match(notice, /NEW_ORDER_SOUND_URL = "\/audio\/new-order-alert\.mp3"/);
+  assert.match(notice, /await audio\.play\(\)/);
+  assert.doesNotMatch(notice, /createOscillator/);
+  assert.ok(voice.length > 40_000);
+  assert.equal(voice.subarray(0, 3).toString(), "ID3");
   assert.match(shell, /aria-pressed=\{soundEnabled\}/);
   assert.match(shell, /New order alerts are reconnecting/);
 });

@@ -2,14 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type AudioContextConstructor = typeof AudioContext;
-
-const audioContextConstructor = () => {
-  const audioWindow = window as typeof window & {
-    webkitAudioContext?: AudioContextConstructor;
-  };
-  return window.AudioContext ?? audioWindow.webkitAudioContext;
-};
+const NEW_ORDER_SOUND_URL = "/audio/new-order-alert.mp3";
 
 export type NewOrderNotice = {
   sequence: number;
@@ -17,37 +10,46 @@ export type NewOrderNotice = {
   orderCount: number;
 };
 
-export function useNewOrderChime() {
-  const contextRef = useRef<AudioContext | null>(null);
+export function useNewOrderSound() {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundReady, setSoundReady] = useState(false);
 
+  const getAudio = useCallback(() => {
+    const audio = audioRef.current ?? new Audio(NEW_ORDER_SOUND_URL);
+    audio.preload = "auto";
+    audioRef.current = audio;
+    return audio;
+  }, []);
+
   useEffect(
-    () => () => {
-      if (contextRef.current && contextRef.current.state !== "closed") {
-        void contextRef.current.close();
-      }
+    () => {
+      getAudio().load();
+      return () => {
+        audioRef.current?.pause();
+        audioRef.current = null;
+      };
     },
-    [],
+    [getAudio],
   );
 
   const ensureSoundReady = useCallback(async () => {
-    const AudioContextClass = audioContextConstructor();
-    if (!AudioContextClass) return null;
-    const context = contextRef.current ?? new AudioContextClass();
-    contextRef.current = context;
-    if (context.state === "suspended") {
-      try {
-        await context.resume();
-      } catch {
-        setSoundReady(false);
-        return null;
-      }
+    const audio = getAudio();
+    const previousVolume = audio.volume;
+    audio.volume = 0;
+    try {
+      await audio.play();
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = previousVolume;
+      setSoundReady(true);
+      return audio;
+    } catch {
+      audio.volume = previousVolume;
+      setSoundReady(false);
+      return null;
     }
-    const ready = context.state === "running";
-    setSoundReady(ready);
-    return ready ? context : null;
-  }, []);
+  }, [getAudio]);
 
   useEffect(() => {
     if (!soundEnabled || soundReady) return;
@@ -74,28 +76,20 @@ export function useNewOrderChime() {
     await ensureSoundReady();
   }, [ensureSoundReady, soundEnabled, soundReady]);
 
-  const playChime = useCallback(async () => {
+  const playSound = useCallback(async () => {
     if (!soundEnabled) return;
-    const context = await ensureSoundReady();
-    if (!context) return;
-    const start = context.currentTime;
-    [659.25, 880].forEach((frequency, index) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const noteStart = start + index * 0.16;
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(frequency, noteStart);
-      gain.gain.setValueAtTime(0.0001, noteStart);
-      gain.gain.exponentialRampToValueAtTime(0.2, noteStart + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.42);
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start(noteStart);
-      oscillator.stop(noteStart + 0.45);
-    });
-  }, [ensureSoundReady, soundEnabled]);
+    const audio = getAudio();
+    audio.volume = 1;
+    audio.currentTime = 0;
+    try {
+      await audio.play();
+      setSoundReady(true);
+    } catch {
+      setSoundReady(false);
+    }
+  }, [getAudio, soundEnabled]);
 
-  return { playChime, soundEnabled, soundReady, toggleSound };
+  return { playSound, soundEnabled, soundReady, toggleSound };
 }
 
 export function NewOrderAlert({

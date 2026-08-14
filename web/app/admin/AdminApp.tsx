@@ -40,7 +40,7 @@ import { OrdersView } from "./orders/OrdersView";
 import {
   NewOrderAlert,
   type NewOrderNotice,
-  useNewOrderChime,
+  useNewOrderSound,
 } from "./orders/NewOrderNotifications";
 import { ProductsView } from "./products/ProductsView";
 import { ProductEditorDialog } from "./products/ProductEditorDialog";
@@ -155,12 +155,12 @@ export default function AdminApp() {
   const couponEditorOpen = Boolean(editingCoupon);
   const knownOrderIdsRef = useRef(new Set<string>());
   const noticeSequenceRef = useRef(0);
-  const { playChime, soundEnabled, soundReady, toggleSound } = useNewOrderChime();
-  const playChimeRef = useRef(playChime);
+  const { playSound, soundEnabled, soundReady, toggleSound } = useNewOrderSound();
+  const playSoundRef = useRef(playSound);
 
   useEffect(() => {
-    playChimeRef.current = playChime;
-  }, [playChime]);
+    playSoundRef.current = playSound;
+  }, [playSound]);
 
   useEffect(
     () =>
@@ -286,7 +286,7 @@ export default function AdminApp() {
         orderNumber: newOrderNumbers[0],
         orderCount: newOrderNumbers.length,
       });
-      void playChimeRef.current();
+      void playSoundRef.current();
     };
     const connect = async () => {
       let retryDelay = 1_000;
