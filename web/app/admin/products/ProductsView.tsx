@@ -10,7 +10,7 @@ export function ProductsView({
   addTag, tagError, deleteTag, productSearch, setProductSearch, productKind,
   setProductKind, productCategory, setProductCategory, categoryOptions,
   shownProducts, toggleProduct, openProductEditor, openNewProductEditor,
-  canWrite,
+  canWrite, syncingPospal, onSyncPospal, canManagePospal,
 }: {
   catalog: Product[];
   productTags: ProductTag[];
@@ -33,6 +33,9 @@ export function ProductsView({
   openProductEditor: (product: Product) => void;
   openNewProductEditor: () => void;
   canWrite: boolean;
+  syncingPospal: boolean;
+  onSyncPospal: () => void;
+  canManagePospal: boolean;
 }) {
   return (
 <section className="admin-panel wide product-management">
@@ -53,6 +56,11 @@ export function ProductsView({
       </span>
       {canWrite && <button onClick={() => setShowTagManager(!showTagManager)}>{showTagManager ? "Close tags" : "Manage tags"} →</button>}
       {canWrite && <button className="new-product" onClick={openNewProductEditor}>+ New product</button>}
+      {canManagePospal && (
+        <button onClick={onSyncPospal} disabled={syncingPospal}>
+          {syncingPospal ? "Syncing…" : "Sync with POSPAL"}
+        </button>
+      )}
     </div>
   </div>
   {canWrite && showTagManager && (
@@ -167,6 +175,7 @@ export function ProductsView({
       <span>Offer / tag</span>
       <span>Visibility</span>
       <span>Action</span>
+      <span>Pospal</span>
     </div>
     {shownProducts.map((product) => {
       const assignedTag = resolveProductTag(product, productTags);
@@ -214,6 +223,20 @@ export function ProductsView({
           </span>
           <span>
             {canWrite ? <button className="edit-product" onClick={() => openProductEditor(product)}>Edit →</button> : <small>Viewer</small>}
+          </span>
+          <span>
+            {product.pospalUid ? (
+              <em
+                className="pospal-sync-mark synced"
+                title={`${product.pospalName ?? ""} · ${money(product.pospalSellPriceCents ?? 0)} · ${product.pospalBarcode ?? ""}`}
+              >
+                ✓
+              </em>
+            ) : (
+              <em className="pospal-sync-mark pending" title="Not found in POSPAL dictionary — run Sync with POSPAL">
+                —
+              </em>
+            )}
           </span>
         </article>
       );

@@ -5447,9 +5447,20 @@ button {
 .product-list-head,
 .admin-product-list article {
   display: grid;
-  grid-template-columns: 2.2fr 0.8fr 0.65fr 0.8fr 0.5fr;
+  grid-template-columns: 2.2fr 0.8fr 0.65fr 0.8fr 0.5fr 0.45fr;
   align-items: center;
-  min-width: 730px;
+  min-width: 790px;
+}
+.pospal-sync-mark {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 12px;
+}
+.pospal-sync-mark.synced {
+  color: #2e7d32;
+}
+.pospal-sync-mark.pending {
+  color: #c3bbb4;
 }
 .product-list-head {
   color: #948c86;
