@@ -42,6 +42,36 @@ Target roughly 70% paper/white, 20% ink/media, and no more than 10% red or suppo
 
 ## Shell and navigation
 
+### URL, routing, and recoverability
+
+Treat the URL as part of the product interface and as the source of truth for navigation. A screen that looks like a page but cannot be opened, refreshed, bookmarked, shared, or revisited with browser history is incomplete.
+
+- Give every primary destination and durable business resource one canonical path. Use nouns and stable identifiers, for example `/shop`, `/admin/orders`, `/admin/orders/:orderNumber`, and `/admin/products/:productId/edit`.
+- Put shareable view state in query parameters, for example `/admin/orders?store=kilimani&status=preparing`. Filters must round-trip between controls and the URL without losing unrelated parameters.
+- Keep transient state in component memory: hover, menu expansion, upload progress, camera activity, unsaved form edits, and dismissible notices do not need URLs.
+- Never put passwords, authentication tokens, pickup QR payloads, payment details, personal addresses, or other secrets in a path, query string, or hash.
+- Prefer Next.js routes, `<Link>`, `useRouter`, `usePathname`, and shared `layout` boundaries. Do not add a new page that exists only as `useState("tab")` when it represents a destination.
+- Use dynamic route segments for repeated resource shapes rather than duplicating page files. Folder names such as `[productId]` or `[section]` are implementation templates; brackets never appear in the customer-facing URL.
+- Use static generation only for a finite route set. Generate every supported path at build time and reject unknown values; verify the hosting layer serves each exported clean URL directly.
+- Render the correct page title, `h1`, breadcrumb when needed, and `aria-current="page"` state from the active URL.
+- Apply the same authentication, role, and store-scope checks on direct entry as on in-app navigation. An unauthorised deep link must not flash protected data; return a safe fallback, forbidden state, or 404 as appropriate.
+- Reserve redirects and `replaceState` for canonicalisation, invalid routes, or access fallbacks. Normal user navigation must create browser history so Back and Forward remain meaningful.
+
+KIYOYO routing baseline:
+
+| Surface | Canonical path | URL-owned optional state |
+| --- | --- | --- |
+| Customer home | `/` | campaign or referral parameters only when durable |
+| Shop | `/shop` | mode, category, search, and filters when shareable |
+| Product detail | `/products/:slug` | selected sellable variant when it can be restored safely |
+| Cart | `/cart` | none; cart contents remain account/local data, never URL data |
+| Account | `/account` | a durable subsection may become a nested path |
+| Admin home | `/admin` | none |
+| Admin task list | `/admin/:section` | store, status, search, sort, and page filters |
+| Admin resource | `/admin/:section/:resourceId` | subsection or non-sensitive view state |
+| Admin edit flow | `/admin/:section/:resourceId/edit` | no unsaved field values in the URL |
+| Pickup redemption | `/admin/redeem` | scanner and pickup token always remain transient and private |
+
 ### Desktop
 
 - Use a 24–30 px announcement bar for one operational message.
@@ -54,7 +84,7 @@ Target roughly 70% paper/white, 20% ink/media, and no more than 10% red or suppo
 
 - Use a compact header with logo, store/location access, and cart/account utilities.
 - Use horizontal category scrolling when labels do not fit; never shrink text below 11 px to force one row.
-- Keep the five primary destinations consistent: Home, Shop, Saved, Cart, Account. Use one coherent icon family with matching stroke, optical size, corner style, and active treatment.
+- Keep the four primary destinations consistent: Home, Shop, Cart, Account. Saved items remain a shelf inside Cart rather than a standalone destination. Use one coherent icon family with matching stroke, optical size, corner style, and active treatment.
 - Use a bottom navigation only on mobile. Make targets at least 44×44 px, respect safe-area padding, and show badges without shifting labels.
 - Use red for the active destination and ink/muted for inactive destinations; do not use five unrelated pictograms or emoji.
 

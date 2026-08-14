@@ -34,6 +34,7 @@ Create a coherent KIYOYO experience: campaign-led and collectible for goods, fas
 - Use Admin-managed data for product tags, prices, discounts, availability, images, and publishing state. Do not hard-code merchandising labels in customer components.
 - Use the existing English/Chinese copy structure for user-facing strings. Add both languages whenever adding a new persistent label or message.
 - Maintain 44 px minimum touch targets, visible focus, semantic controls, useful alt text, adequate contrast, and reduced-motion support.
+- Give every navigable destination a canonical, shareable URL. Direct entry, refresh, new-tab opening, and browser back/forward must restore the same page. Use paths for pages and resources, query parameters for shareable view state, and component state only for transient non-sensitive interactions. Prefer the framework router, links, and shared layouts over tab-only React state.
 - Complete every interaction state. A polished default state with missing loading, error, empty, or disabled behavior is incomplete.
 
 ## Route references by task
