@@ -14,7 +14,6 @@ KIYOYO 顾客账号统一使用 Firebase Authentication 处理身份凭据，KIY
 
 - 邮箱 + 密码注册和登录；
 - Google 登录；
-- Facebook 登录；
 - 忘记密码和安全重置；
 - 注册后邮箱验证、验证邮件重发和链接过期处理；
 - 同一 Firebase 用户关联多种登录方式；
@@ -23,7 +22,7 @@ KIYOYO 顾客账号统一使用 Firebase Authentication 处理身份凭据，KIY
 - 登录时把游客收藏并入会员收藏，保留本地购物车和结账返回状态；
 - 停用会员在 API 层被统一拒绝。
 
-KIYOYO 数据库不保存密码、密码哈希、Firebase refresh token、Google/Facebook OAuth token 或 OAuth Secret。
+KIYOYO 数据库不保存密码、密码哈希、Firebase refresh token、Google OAuth token 或 OAuth Secret。
 
 ## 2. 技术选择
 
@@ -81,7 +80,7 @@ flowchart LR
   M --> B["订单 / 积分 / 优惠券 / 地址 / 收藏"]
 ```
 
-Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Google、Facebook 和密码登录关联到同一 Firebase 用户后，只产生一个 `users` 会员记录，因此不会复制订单、积分或优惠券账户。
+Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Google 和密码登录关联到同一 Firebase 用户后，只产生一个 `users` 会员记录，因此不会复制订单、积分或优惠券账户。
 
 请求体中的 `email` 或 `provider` 不参与授权；API 只读取 Firebase Admin SDK 验证后的 claims。
 
@@ -105,7 +104,7 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 | --- | --- | --- |
 | `id` | uuid | identity 记录主键 |
 | `user_id` | uuid FK | 指向 `users.id`，会员删除时级联 |
-| `provider` | text | 约束预留 `PASSWORD`、`GOOGLE`、`FACEBOOK`；当前只同步可信的 Google/Facebook identity |
+| `provider` | text | 约束预留 `PASSWORD`、`GOOGLE`；当前只同步可信的 Google identity |
 | `provider_subject` | text | Firebase token 中对应 social provider 的可信 subject |
 | `linked_at` | timestamptz | 首次关联时间 |
 | `last_seen_at` | timestamptz | 最近一次 bootstrap 看见时间 |
@@ -133,7 +132,7 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 
 密码仅从浏览器发送给 Google Identity Toolkit，不经过 KIYOYO API。
 
-### 6.2 Google / Facebook 登录
+### 6.2 Google 登录
 
 优先使用 popup；浏览器阻止 popup 时回退到 redirect。用户取消、网络故障、provider 未启用和账号冲突均映射成稳定的中英文业务错误。
 
@@ -151,7 +150,7 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 
 ### 6.5 登录方式管理
 
-Account security 展示三种 provider。用户可增加 Google、Facebook 或密码方式；只有存在至少两种有效方式时才允许移除。页面不直接调用 Firebase SDK，所有动作通过 auth hook 完成。账号冲突不会跨对话框暂存 OAuth credential；用户使用原方式登录后，再从 Account security 主动关联新方式。
+Account security 展示两种 provider。用户可增加 Google 或密码方式；只有存在至少两种有效方式时才允许移除。页面不直接调用 Firebase SDK，所有动作通过 auth hook 完成。账号冲突不会跨对话框暂存 OAuth credential；用户使用原方式登录后，再从 Account security 主动关联新方式。
 
 本地收藏带有 `guest` 或 `member:<id>` owner。只有明确标记为 `guest` 的收藏会在登录时合并一次；其他会员或未知旧缓存不会上传到当前账号。真实 Firebase 登出会清理会员收藏缓存并切回 guest owner。
 
@@ -201,26 +200,22 @@ Content-Type: application/json
 
 ## 9. Firebase / OAuth 上线配置
 
-Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域名。Google/Facebook 的 OAuth Secret 不由当前 Terraform 资源管理，因为该资源会把 `client_secret` 以明文保存进 state。
+Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域名。Google 的 OAuth Secret 不由当前 Terraform 资源管理，因为该资源会把 `client_secret` 以明文保存进 state。
 
 每个环境按以下清单配置：
 
 1. Firebase Authentication → Sign-in method：启用 Email/Password 与 Google。
-2. Meta for Developers：创建 Facebook App，启用 Facebook Login，配置隐私政策和数据删除 URL。
-3. 在 Facebook App 中加入 Firebase 回调：`https://<firebase-project>.firebaseapp.com/__/auth/handler`。
-4. 把 Facebook App ID/Secret 填入 Firebase 控制台的 Facebook provider；不要提交到仓库。
-5. Authentication → Settings：加入正式 Web 域名和预览域名；移除不再使用的域名。
-6. 启用 email enumeration protection。
-7. Password policy：enforce，最少 10 字符；已有用户迁移阶段不强制升级旧密码。
-8. Email templates：设置发件人、品牌文案，并把验证/重置 Action URL 指向正式站点 `/auth/action`。
-9. Google OAuth consent screen 和 Meta App 切换生产状态前，完成域名验证、隐私政策与必要审核。
+2. Authentication → Settings：加入正式 Web 域名和预览域名；移除不再使用的域名。
+3. 启用 email enumeration protection。
+4. Password policy：enforce，最少 10 字符；已有用户迁移阶段不强制升级旧密码。
+5. Email templates：设置发件人、品牌文案，并把验证/重置 Action URL 指向正式站点 `/auth/action`。
+6. Google OAuth consent screen 切换生产状态前，完成域名验证、隐私政策与必要审核。
 
 相关官方资料：
 
 - [Identity Platform 密码策略](https://cloud.google.com/identity-platform/docs/password-policy)
 - [Email enumeration protection](https://cloud.google.com/identity-platform/docs/admin/email-enumeration-protection)
 - [Firebase Google 登录](https://firebase.google.com/docs/auth/web/google-signin)
-- [Firebase Facebook 登录](https://firebase.google.com/docs/auth/web/facebook-login)
 - [Firebase 自定义邮件 action handler](https://firebase.google.com/docs/auth/custom-email-handler)
 
 ## 10. 成本
@@ -235,19 +230,19 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 | 250,000 | 约 USD 965 |
 | 1,000,000 | 约 USD 4,415 |
 
-以上不包含 Cloud Run、Cloud SQL、网络流量、自定义邮件发送、监控以及人工运维成本。Google/Facebook provider 本身不会形成另一份 Identity Platform Tier 1 计费，但 Meta/Google 的审核、隐私材料和账号运营需要人力。
+以上不包含 Cloud Run、Cloud SQL、网络流量、自定义邮件发送、监控以及人工运维成本。Google provider 本身不会形成另一份 Identity Platform Tier 1 计费，但 Google 的审核、隐私材料和账号运营需要人力。
 
 ## 11. 测试与验收
 
 自动化验证包含：
 
 - Web ESLint、TypeScript、Vinext SSR/契约测试、Vinext build 和 Next production build；
-- auth 模块边界、三 provider、验证/重置 action、结账 gate、状态保留的契约测试；
+- auth 模块边界、Google/password provider、验证/重置 action、结账 gate、状态保留的契约测试；
 - API TypeScript、provider claims 映射、bootstrap service、注入式路由、稳定错误码测试；
 - migration 前向扩展、provider 约束、有效 identity 唯一性契约；
 - 仓库统一 `scripts/verify-refactor.sh`、Terraform format 和 Git whitespace。
 
-人工/集成环境仍需使用测试 Firebase 项目验证：真实邮件投递、过期 action code、Google/Facebook 取消与回调、同邮箱关联、停用用户，以及 390/768/1280/1440px 中英文键盘操作。
+人工/集成环境仍需使用测试 Firebase 项目验证：真实邮件投递、过期 action code、Google 取消与回调、同邮箱关联、停用用户，以及 390/768/1280/1440px 中英文键盘操作。
 
 ## 12. 运维与回滚
 
@@ -255,5 +250,5 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 - API 和 Web 均兼容旧 bootstrap 路径及旧用户主表字段。
 - 回滚 Web/API 不需要回滚 migration；新增列和 `user_identities` 可保留。
 - 不执行向后 migration，不删除用户身份数据。
-- provider 故障时可在 Firebase 控制台单独停用 Google 或 Facebook，邮箱密码登录继续工作。
+- provider 故障时可在 Firebase 控制台单独停用 Google，邮箱密码登录继续工作。
 - 监控重点：登录失败率、bootstrap 5xx、`EMAIL_VERIFICATION_REQUIRED` 比例、provider linking 冲突、密码重置发送失败和停用账号访问。

@@ -2,7 +2,7 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import type { PermissionCode, StaffRole } from "../../admin/permissions.js";
 
 export type UserStatus = "ACTIVE" | "SUSPENDED" | "DELETED";
-export type AuthProvider = "PASSWORD" | "GOOGLE" | "FACEBOOK";
+export type AuthProvider = "PASSWORD" | "GOOGLE";
 
 export type ProviderIdentity = {
   provider: AuthProvider;

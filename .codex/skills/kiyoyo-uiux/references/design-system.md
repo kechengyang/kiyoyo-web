@@ -118,7 +118,7 @@ Treat Drink Studio as a service flow, not a standard category grid.
 - Explain mixed-cart consequences before checkout rather than after payment.
 - Keep order summary visible on desktop and sticky near the final action on mobile.
 - Mark test payment clearly without making the checkout look broken or untrustworthy.
-- Support email/password and Google/Facebook entry points with equal account outcomes.
+- Support email/password and Google entry points with equal account outcomes.
 - Collect nickname, gender, age, and default address only with clear purpose, editable controls, and appropriate privacy copy.
 - Let users add, edit, delete, and select delivery addresses during checkout without losing cart or customisation state.
 - After order creation, show order number, fulfilment status, next step, and pickup QR only when pickup applies.

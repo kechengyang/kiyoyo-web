@@ -131,10 +131,9 @@ test("provider display never infers password from a social email", () => {
   assert.deepEqual(
     providerMapping.providersFromProviderData([
       { providerId: "google.com", email: "member@example.com" },
-      { providerId: "facebook.com", email: "member@example.com" },
       { providerId: "google.com", email: "member@example.com" },
     ]),
-    ["google", "facebook"],
+    ["google"],
   );
   assert.deepEqual(
     providerMapping.providersFromProviderData([

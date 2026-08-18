@@ -132,14 +132,6 @@ export function AuthDialog({
             >
               <b aria-hidden="true">G</b>{t.continueGoogle}
             </button>
-            <button
-              className="social facebook"
-              type="button"
-              disabled={busy}
-              onClick={() => void authenticate("facebook")}
-            >
-              <b aria-hidden="true">f</b>{t.continueFacebook}
-            </button>
             <div className="auth-divider"><span>{t.or}</span></div>
           </>
         )}

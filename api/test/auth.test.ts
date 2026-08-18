@@ -26,14 +26,12 @@ test("trustedProviderIdentities maps and deduplicates Firebase identities", () =
       identities: {
         email: ["Member@Example.com"],
         "google.com": ["google-subject-1", "google-subject-1"],
-        "facebook.com": ["facebook-subject-1"],
       },
     },
   });
 
   assert.deepEqual(providers, [
     { provider: "GOOGLE", subject: "google-subject-1" },
-    { provider: "FACEBOOK", subject: "facebook-subject-1" },
   ]);
 });
 

@@ -32,4 +32,4 @@
 
 ## 当前状态
 
-`kiyoyo-dev` 的 Web、Cloud Run API、Cloud SQL、Cloud Storage 与 Firebase Authentication 已部署。支付仍为明确标记的 MOCK 测试通道；Google/Facebook provider 仍需 KIYOYO 自有 OAuth 凭据。重构工作以提交 `57a555e` 为回滚基线，进度和行为契约记录在第 9 份文档中。
+`kiyoyo-dev` 的 Web、Cloud Run API、Cloud SQL、Cloud Storage 与 Firebase Authentication 已部署。支付仍为明确标记的 MOCK 测试通道；Google provider 仍需 KIYOYO 自有 OAuth 凭据。重构工作以提交 `57a555e` 为回滚基线，进度和行为契约记录在第 9 份文档中。

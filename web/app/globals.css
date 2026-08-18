@@ -2143,16 +2143,6 @@ button {
   left: 15px;
   font-size: 18px;
 }
-.social.facebook {
-  background: #1877f2;
-  color: #fff;
-  border-color: #1877f2;
-}
-.social.facebook b {
-  font-family:
-    Arial Black,
-    sans-serif;
-}
 .auth-divider {
   display: flex;
   align-items: center;

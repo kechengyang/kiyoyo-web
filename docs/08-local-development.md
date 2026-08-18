@@ -56,7 +56,7 @@ web/
 7. 图片上传 Cloud Storage，数据库只保存 object key/metadata。
 8. 用 Terraform 创建 dev/staging/prod，接 CI/CD。
 
-当前 Google/Facebook 按钮只建立清晰标记的本地演示 session，不访问第三方网站、不取得真实 token。生产启用顺序：创建 OAuth 应用 → 配置 Identity Platform provider → 限制授权域名/回调 → API 验证 ID token → 邮箱验证和找回密码 → staging E2E → 生产开关。
+当前 Google 按钮只建立清晰标记的本地演示 session，不访问第三方网站、不取得真实 token。生产启用顺序：创建 OAuth 应用 → 配置 Identity Platform provider → 限制授权域名/回调 → API 验证 ID token → 邮箱验证和找回密码 → staging E2E → 生产开关。
 
 商品图片在 localhost 和 Hosting 使用同一条 GCS 链路：Admin 先创建不可见草稿，向 API 申请短期 signed upload URL，浏览器直接上传不超过 8MB 的 JPG/PNG/WebP，API 校验对象后把 `gcs://<bucket>/products/...` 保存到 PostgreSQL。Data URL 只用于提交前的本地预览，不会写入数据库或商品目录缓存；没有有效 bucket path 的商品不能发布。
 

@@ -14,7 +14,7 @@
 | 商品图片 | `gs://kiyoyo-dev-media` | 私有、PAP、统一访问、CORS 与生命周期规则 |
 | 容器镜像 | Artifact Registry `kiyoyo-dev` | API 镜像按不可变版本部署 |
 | 异步任务 | `kiyoyo-dev-order-events`、`kiyoyo-dev-media-processing` | Cloud Tasks 队列已创建 |
-| 认证 | Identity Platform | Email/Password 已启用；Google/Facebook 等待 OAuth 凭据 |
+| 认证 | Identity Platform | Email/Password 已启用；Google 等待 OAuth 凭据 |
 | 地图 | Maps JavaScript API / Routes API | Browser key 已限定域名和 API |
 | 密钥 | Secret Manager | DB 密码与自取签名密钥；不进入 Terraform state |
 | IaC 状态 | `gs://kiyoyo-dev-tfstate` | 版本控制、统一 bucket 访问 |
@@ -80,11 +80,10 @@
 
 ## Identity Platform 配置
 
-- Email/Password 已启用；Google、Facebook 前端入口已完成，但 provider 需要真实 OAuth
+- Email/Password 已启用；Google 前端入口已完成，但 provider 需要真实 OAuth
   Client ID / Client Secret 后才能启用。不得使用伪造或共享凭据。
 - 上生产前启用邮箱验证和重置密码邮件模板。
 - Google OAuth 配置 consent screen、正式域名和 dev/staging/prod 回调地址。
-- Facebook 创建 KIYOYO Meta App，Secret 存 Secret Manager，完成隐私政策、数据删除 URL 和上线审核。
 - 客户前端只使用公开 Web config；provider secret 仅存在 GCP/Identity Platform。Commerce API 验证 Identity Platform ID token 后才读写个人资料和地址。
 - 本地开发使用 emulator 或明确标记的 mock adapter；正式 build 中禁止自动回退到 mock auth。
 

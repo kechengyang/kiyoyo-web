@@ -134,7 +134,7 @@ All write operations use database transactions with `FOR UPDATE` row locking. Id
 
 ### Authentication
 
-Firebase Authentication (Identity Platform) with email/password, Google, and Facebook providers. The web app uses the Firebase JS SDK for client-side auth; the API verifies Firebase ID tokens server-side. Admin access is gated by the `requireAdmin` middleware which checks the user's role in the database.
+Firebase Authentication (Identity Platform) with email/password and Google providers. The web app uses the Firebase JS SDK for client-side auth; the API verifies Firebase ID tokens server-side. Admin access is gated by the `requireAdmin` middleware which checks the user's role in the database.
 
 ### Key Design Decisions
 

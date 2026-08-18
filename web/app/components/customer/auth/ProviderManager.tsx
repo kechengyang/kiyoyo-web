@@ -3,7 +3,7 @@ import type { AuthErrorCode, AuthProvider, AuthSession } from "../../../auth/typ
 import type { CustomerCopy } from "../core/copy";
 import { PasswordFields } from "./PasswordFields";
 
-const providers: AuthProvider[] = ["password", "google", "facebook"];
+const providers: AuthProvider[] = ["password", "google"];
 
 export function ProviderManager({
   session,
@@ -18,7 +18,7 @@ export function ProviderManager({
   t: CustomerCopy;
   busy: boolean;
   error: AuthErrorCode | null;
-  linkProvider: (provider: "google" | "facebook") => Promise<unknown>;
+  linkProvider: () => Promise<unknown>;
   linkPassword: (email: string, password: string) => Promise<unknown>;
   unlinkProvider: (provider: AuthProvider) => Promise<unknown>;
 }) {
@@ -51,7 +51,7 @@ export function ProviderManager({
           const linked = session.providers.includes(provider);
           return (
             <div key={provider}>
-              <span><b>{provider === "password" ? "@" : provider === "google" ? "G" : "f"}</b>{t.providerNames[provider]}</span>
+              <span><b>{provider === "password" ? "@" : "G"}</b>{t.providerNames[provider]}</span>
               {linked ? (
                 <button
                   disabled={busy || session.providers.length === 1}
@@ -63,7 +63,7 @@ export function ProviderManager({
               ) : provider === "password" ? (
                 <button disabled={busy} onClick={() => setAddingPassword(true)}>{t.addMethod}</button>
               ) : (
-                <button disabled={busy} onClick={() => void linkProvider(provider).catch(() => undefined)}>{t.addMethod}</button>
+                <button disabled={busy} onClick={() => void linkProvider().catch(() => undefined)}>{t.addMethod}</button>
               )}
             </div>
           );

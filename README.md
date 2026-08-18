@@ -41,7 +41,7 @@ npm run build
 - `KIYOYO_Product_Review.html` — 经营层产品评审稿
 - `KIYOYO_Architecture_Review.html` — 经营层架构评审稿
 
-部署清单、成本与回滚流程见 `docs/05-gcp-deployment.md`。Google 与 Facebook 登录入口已完成，但启用真实 provider 仍需要 KIYOYO 自有 OAuth Client ID / Secret。
+部署清单、成本与回滚流程见 `docs/05-gcp-deployment.md`。Google 登录入口已完成，但启用真实 provider 仍需要 KIYOYO 自有 OAuth Client ID / Secret。
 
 环境规范为单一 GCP 项目 `kiyoyo` 下的 `kiyoyo-{env}` 资源前缀。当前仅部署
 `kiyoyo-dev`；未来 staging/prod 必须分别使用自己的 backend 配置、tfvars、API 镜像和
