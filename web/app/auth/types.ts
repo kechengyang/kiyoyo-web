@@ -1,4 +1,4 @@
-export type AuthProvider = "password" | "google" | "facebook";
+export type AuthProvider = "password" | "google";
 
 export type AuthSession = {
   uid: string;

@@ -19,15 +19,15 @@ test("customer authentication stays behind its domain hook", () => {
   assert.doesNotMatch(transport, /signInWith|createUserWith|sendPasswordReset/);
 });
 
-test("all three providers and safe recovery actions are implemented", () => {
+test("all providers and safe recovery actions are implemented", () => {
   const service = source("../app/auth/service.ts");
   const authTypes = source("../app/auth/types.ts");
   const actionPage = source("../app/auth/action/page.tsx");
 
-  assert.match(authTypes, /"password" \| "google" \| "facebook"/);
+  assert.match(authTypes, /"password" \| "google"/);
   assert.match(service, /createUserWithEmailAndPassword/);
   assert.match(service, /GoogleAuthProvider/);
-  assert.match(service, /FacebookAuthProvider/);
+  assert.doesNotMatch(service, /FacebookAuthProvider/);
   assert.match(service, /sendPasswordResetEmail/);
   assert.match(service, /sendEmailVerification/);
   assert.match(actionPage, /applyEmailVerification/);

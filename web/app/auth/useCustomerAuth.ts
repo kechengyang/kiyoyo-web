@@ -31,7 +31,7 @@ type BootstrapResponse = {
   auth: {
     uid: string;
     emailVerified: boolean;
-    providers: Array<"PASSWORD" | "GOOGLE" | "FACEBOOK">;
+    providers: Array<"PASSWORD" | "GOOGLE">;
   };
 };
 
@@ -140,8 +140,8 @@ export function useCustomerAuth(lang: Lang) {
     resendVerification: () =>
       run(() => sendMemberVerification("/?auth=verified")),
     refresh,
-    linkProvider: (provider: Exclude<AuthProvider, "password">) =>
-      refreshAfterProviderChange(() => linkMemberProvider(provider)),
+    linkProvider: () =>
+      refreshAfterProviderChange(() => linkMemberProvider()),
     linkPassword: (email: string, password: string) =>
       refreshAfterProviderChange(() => linkMemberPassword(email, password)),
     unlinkProvider: (provider: AuthProvider) =>

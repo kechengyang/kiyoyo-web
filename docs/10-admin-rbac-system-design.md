@@ -337,7 +337,7 @@ Identity Platform 与 PostgreSQL 无法组成单一分布式事务。创建流�
 5. 新密码只存在于 Admin 当前输入控件和到 Identity Platform 的加密请求中；API 成功响应不回传密码，页面离开或成功后立即清空字段。
 6. 设置后调用 `revokeRefreshTokens`。Admin 直接交付最终密码，因此不设置 `must_change_password`，也不增加邮件或首次登录改密 gate。
 7. 所有账号，包括 Customer，都不提供邮件密码重置入口；忘记密码时由 Admin 核验身份后直接设置新密码，并强制填写 reason。
-8. 对 Google/Facebook-only 账号，只有在业务明确要求启用密码登录时，Admin 才可通过独立的“Enable password login”高风险操作设置密码；不能由普通 reset 操作静默增加 provider。
+8. 对 Google-only 账号，只有在业务明确要求启用密码登录时，Admin 才可通过独立的“Enable password login”高风险操作设置密码；不能由普通 reset 操作静默增加 provider。
 9. 审计只记录 actor、target、时间、reason、session revoke 结果和 request id，绝不记录新密码。
 
 ## 7. Admin Web 设计

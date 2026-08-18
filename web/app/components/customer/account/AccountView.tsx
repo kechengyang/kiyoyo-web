@@ -42,7 +42,7 @@ export function AccountView({
   signOut: () => Promise<unknown>;
   authBusy: boolean;
   authError: AuthErrorCode | null;
-  linkProvider: (provider: "google" | "facebook") => Promise<unknown>;
+  linkProvider: () => Promise<unknown>;
   linkPassword: (email: string, password: string) => Promise<unknown>;
   unlinkProvider: (provider: AuthProvider) => Promise<unknown>;
   resendVerification: () => Promise<unknown>;

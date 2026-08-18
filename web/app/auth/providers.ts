@@ -8,7 +8,6 @@ export function providersFromProviderData(
       providerData
         .map((profile) => {
           if (profile.providerId === "google.com") return "google";
-          if (profile.providerId === "facebook.com") return "facebook";
           if (profile.providerId === "password") return "password";
           return null;
         })

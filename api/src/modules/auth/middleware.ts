@@ -26,7 +26,6 @@ if (getApps().length === 0) {
 
 const providerNames = {
   "google.com": "GOOGLE",
-  "facebook.com": "FACEBOOK",
 } as const;
 
 type ActorRow = {

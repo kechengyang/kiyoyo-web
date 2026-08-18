@@ -51,7 +51,7 @@ output "firebase_web_app_id" {
 }
 
 output "firebase_auth_handler_url" {
-  description = "OAuth callback to register with Google/Facebook providers"
+  description = "OAuth callback to register with Google provider"
   value       = "https://${local.prefix}.firebaseapp.com/__/auth/handler"
 }
 

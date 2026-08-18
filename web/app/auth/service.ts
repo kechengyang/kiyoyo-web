@@ -2,7 +2,6 @@
 
 import {
   EmailAuthProvider,
-  FacebookAuthProvider,
   GoogleAuthProvider,
   applyActionCode,
   browserLocalPersistence,
@@ -33,14 +32,9 @@ import type { AuthMode, AuthProvider } from "./types";
 
 const persistenceReady = setPersistence(auth, browserLocalPersistence);
 
-const providerInstance = (provider: Exclude<AuthProvider, "password">) => {
-  if (provider === "google") {
-    const instance = new GoogleAuthProvider();
-    instance.setCustomParameters({ prompt: "select_account" });
-    return instance;
-  }
-  const instance = new FacebookAuthProvider();
-  instance.addScope("email");
+const googleProvider = () => {
+  const instance = new GoogleAuthProvider();
+  instance.setCustomParameters({ prompt: "select_account" });
   return instance;
 };
 
@@ -61,7 +55,7 @@ export async function signInMember(
 ) {
   await persistenceReady;
   if (kind !== "password") {
-    const provider = providerInstance(kind);
+    const provider = googleProvider();
     try {
       const result = await signInWithPopup(auth, provider);
       return result.user;
@@ -123,11 +117,9 @@ export async function refreshMember() {
   return auth.currentUser;
 }
 
-export async function linkMemberProvider(
-  provider: Exclude<AuthProvider, "password">,
-) {
+export async function linkMemberProvider() {
   if (!auth.currentUser) throw new Error("Sign in required");
-  const result = await linkWithPopup(auth.currentUser, providerInstance(provider));
+  const result = await linkWithPopup(auth.currentUser, googleProvider());
   await reload(result.user);
   return result.user;
 }
@@ -173,11 +165,7 @@ export async function unlinkMemberProvider(provider: AuthProvider) {
   const providers = providersFromUser(auth.currentUser);
   if (providers.length <= 1) throw new Error("LAST_PROVIDER");
   const providerId =
-    provider === "google"
-      ? "google.com"
-      : provider === "facebook"
-        ? "facebook.com"
-        : EmailAuthProvider.PROVIDER_ID;
+    provider === "google" ? "google.com" : EmailAuthProvider.PROVIDER_ID;
   const user = await unlink(auth.currentUser, providerId);
   await reload(user);
   return user;
