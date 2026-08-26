@@ -28,6 +28,7 @@ npm run dev
 - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_CUSTOM_AUTH_DOMAIN`（可选；仅当页面实际运行在该域名或其 `www` 域名时使用）
 - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
 
 `dev` 可使用代码中的受限公开 Web 配置作为本地默认值。`staging` 和 `prod` 缺少任一

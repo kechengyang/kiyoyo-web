@@ -19,7 +19,9 @@ unset GOOGLE_OAUTH_ACCESS_TOKEN
 Backend 配置按环境单独保存，资源变量也必须使用对应的 `{env}.tfvars`。当前只创建了
 `backend/dev.hcl` 和 `dev.tfvars`；不得用 dev backend 或 dev 镜像部署 staging/prod。
 数据库名、数据库用户、Hosting 域名、CORS 与 Maps referrer 会从统一前缀
-`kiyoyo-{env}` 自动推导。
+`kiyoyo-{env}` 自动推导。`custom_domains` 会把已连接的 Firebase Hosting 自定义域名
+同时加入 API CORS、Cloud Storage CORS、Maps browser referrer 和 Identity Platform
+authorized domains；域名必须是不含协议、端口或路径的小写 hostname。
 
 CI/CD 应使用 Workload Identity Federation；上述 access token 方法仅用于已授权的本地
 运维终端，避免生成长期 service-account JSON key。

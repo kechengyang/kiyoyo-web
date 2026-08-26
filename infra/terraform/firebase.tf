@@ -40,13 +40,7 @@ resource "google_identity_platform_config" "app" {
     }
   }
 
-  authorized_domains = [
-    "localhost",
-    "kiyoyo.firebaseapp.com",
-    "kiyoyo.web.app",
-    "${local.prefix}.web.app",
-    "${local.prefix}.firebaseapp.com",
-  ]
+  authorized_domains = local.firebase_authorized_domains
 
   depends_on = [
     google_firebase_project.app,
