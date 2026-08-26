@@ -7,8 +7,9 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
   return {
     async upsertCategories(rows: CategoryRow[]) {
       if (rows.length === 0) return;
+      // 可空参数显式转类型:null 值时 node-postgres 不带类型,42P18 无法推断
       const placeholders = rows
-        .map((_, i) => `($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}, $${i * 8 + 4}, $${i * 8 + 5}, $${i * 8 + 6}, $${i * 8 + 7}, now())`)
+        .map((_, i) => `($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}::text, $${i * 8 + 4}::int, $${i * 8 + 5}::int, $${i * 8 + 6}, $${i * 8 + 7}, now())`)
         .join(", ");
       await pool.query(
         `insert into pospal_categories
@@ -28,8 +29,9 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
 
     async upsertTastes(rows: TasteRow[]) {
       if (rows.length === 0) return;
+      // 可空参数显式转类型:null 值时 node-postgres 不带类型,42P18 无法推断
       const placeholders = rows
-        .map((_, i) => `($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}, $${i * 7 + 4}, $${i * 7 + 5}, $${i * 7 + 6}, now())`)
+        .map((_, i) => `($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}::text, $${i * 7 + 4}::int, $${i * 7 + 5}::text, $${i * 7 + 6}::text, $${i * 7 + 7}::int, now())`)
         .join(", ");
       await pool.query(
         `insert into pospal_taste_options
@@ -57,8 +59,9 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
       );
       const oldByBarcode = new Map(oldRows.map((row) => [row.pospal_barcode, row.base_price]));
 
+      // 可空参数显式转类型:null 值时 node-postgres 不带类型,42P18 无法推断
       const placeholders = rows
-        .map((_, i) => `($${i * 11 + 1}, $${i * 11 + 2}, $${i * 11 + 3}, $${i * 11 + 4}, $${i * 11 + 5}, $${i * 11 + 6}, $${i * 11 + 7}, $${i * 11 + 8}, $${i * 11 + 9}, $${i * 11 + 10}, $${i * 11 + 11})`)
+        .map((_, i) => `($${i * 11 + 1}, $${i * 11 + 2}, $${i * 11 + 3}, $${i * 11 + 4}, $${i * 11 + 5}, $${i * 11 + 6}, $${i * 11 + 7}, $${i * 11 + 8}::jsonb, $${i * 11 + 9}::jsonb, $${i * 11 + 10}::boolean, $${i * 11 + 11})`)
         .join(", ");
       // 列序:barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug
       const flat = rows.flatMap((row) => [
