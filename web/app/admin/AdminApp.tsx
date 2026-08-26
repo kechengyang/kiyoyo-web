@@ -19,7 +19,7 @@ import {
   signInStaff,
   signOutMember,
 } from "../auth/service";
-import type { Order, Product, ProductTagTone } from "../types";
+import type { Order, PospalSyncDiff, Product, ProductTagTone } from "../types";
 import type {
   AdminCoupon,
   AdminCustomer,
@@ -128,6 +128,7 @@ export default function AdminApp({
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
   const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
   const [syncingPospal, setSyncingPospal] = useState(false);
+  const [pospalSyncDiffs, setPospalSyncDiffs] = useState<PospalSyncDiff[]>([]);
   const [selectedCustomer, setSelectedCustomer] =
     useState<CustomerDetail | null>(null);
   const [editingStore, setEditingStore] = useState<AdminStore | null>(null);
@@ -735,8 +736,9 @@ export default function AdminApp({
     try {
       const result = await syncPospalProducts();
       setCatalog(await fetchAdminCatalog());
+      setPospalSyncDiffs(result.diffs);
       setCloudStatus(
-        `POSPAL sync complete: ${result.items} products pulled, ${result.matchedProducts} matched`,
+        `POSPAL sync complete: ${result.productsCreated} created, ${result.productsUpdated} updated, ${result.diffs.length} changes to review`,
       );
     } catch (error) {
       setCloudStatus(
@@ -988,26 +990,22 @@ export default function AdminApp({
       setProductError("Refresh the cloud catalog before editing.");
       return;
     }
-    // 银豹为商品唯一数据源:pospalUid 商品的银豹侧字段不提交(服务端同步覆盖);
-    // 条码例外 —— 手动改码是运营刚需,提交后下次同步按新条码重连
-    const isPospalManaged = Boolean(editingProduct.pospalUid);
+    // 银豹为商品唯一数据源,但 Admin 始终可手动编辑(线上/线下不一致的例外);
+    // pospal_manual_override 锁定后同步不再覆盖
     const productBody = {
-      ...(isPospalManaged
-        ? {}
-        : {
-            name_en: editingProduct.name.trim(),
-            category_slug: categorySlug(editingProduct.category),
-            base_price: editingProduct.price,
-          }),
+      name_en: editingProduct.name.trim(),
       name_zh: editingProduct.nameZh.trim(),
       description_en: editingProduct.description.trim(),
       description_zh: editingProduct.descriptionZh.trim(),
+      category_slug: categorySlug(editingProduct.category),
+      base_price: editingProduct.price,
       discount_percent: Math.max(
         0,
         Math.min(90, Number(editingProduct.discountPercent) || 0),
       ),
       tag_id: editingProduct.tagId ?? null,
       pospal_barcode: editingProduct.pospalBarcode?.trim() || null,
+      pospal_manual_override: editingProduct.pospalManualOverride === true,
     };
     setProductBusy(true);
     setProductError("");
@@ -1343,6 +1341,8 @@ export default function AdminApp({
             syncingPospal={syncingPospal}
             onSyncPospal={syncPospal}
             canManagePospal={can("pospal.manage")}
+            pospalSyncDiffs={pospalSyncDiffs}
+            onClosePospalDiffs={() => setPospalSyncDiffs([])}
           />
         )}
 

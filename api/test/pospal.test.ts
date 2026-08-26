@@ -15,7 +15,7 @@ import {
   syncProductDictionary,
   type CategoryRow,
   type PospalProductRow,
-  type PriceDiff,
+  type ProductDiff,
   type ProductRow,
   type ProductSyncStore,
   type TasteRow,
@@ -306,7 +306,7 @@ function fakeStore(): ProductSyncStore & {
       state.productRows.push(...rows);
       let created = 0;
       let updated = 0;
-      const priceDiffs: PriceDiff[] = [];
+      const diffs: ProductDiff[] = [];
       for (const row of rows) {
         const old = state.basePrices.get(row.barcode as string);
         const next = row.basePrice ?? 0;
@@ -314,11 +314,22 @@ function fakeStore(): ProductSyncStore & {
           created += 1;
         } else {
           updated += 1;
-          if (old !== next) priceDiffs.push({ barcode: row.barcode, name: row.name, oldBasePrice: old, newBasePrice: next });
+          if (old !== next) {
+            diffs.push({
+              barcode: row.barcode,
+              name: row.name,
+              oldBasePrice: old,
+              newBasePrice: next,
+              oldName: null,
+              newName: null,
+              oldCategorySlug: null,
+              newCategorySlug: null,
+            });
+          }
         }
         state.basePrices.set(row.barcode as string, next);
       }
-      return { created, updated, priceDiffs };
+      return { created, updated, diffs };
     },
     async alignByBarcode() {
       state.calls.push("align");
@@ -363,7 +374,7 @@ test("字典同步:游标分页直至 hasMore=false,保存游标并执行条码�
   assert.equal(result.items, 3);
   assert.equal(result.productsCreated, 3);
   assert.equal(result.productsUpdated, 0);
-  assert.deepEqual(result.priceDiffs, []);
+  assert.deepEqual(result.diffs, []);
   assert.equal(result.matchedProducts, 1);
   assert.equal(result.categories, 0);
   assert.equal(result.tastes, 0);
@@ -441,7 +452,9 @@ test("字典同步 v2:分类/口味先落库、商品开扩展 flags、重复条
     items: 4,
     productsCreated: 1,
     productsUpdated: 1,
-    priceDiffs: [{ barcode: "d2", name: "Milk Tea", oldBasePrice: 400, newBasePrice: 5 }],
+    diffs: [
+      { barcode: "d2", name: "Milk Tea", oldBasePrice: 400, newBasePrice: 5, oldName: null, newName: null, oldCategorySlug: null, newCategorySlug: null },
+    ],
     matchedProducts: 1,
     categories: 1,
     tastes: 1,

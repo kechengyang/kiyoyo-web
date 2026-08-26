@@ -60,11 +60,16 @@ export type PospalProductRow = {
   slug: string;
 };
 
-export type PriceDiff = {
+export type ProductDiff = {
   barcode: string | null;
   name: string;
-  oldBasePrice: number;
-  newBasePrice: number;
+  /** 各字段差分;null = 该字段未变化 */
+  oldBasePrice: number | null;
+  newBasePrice: number | null;
+  oldName: string | null;
+  newName: string | null;
+  oldCategorySlug: string | null;
+  newCategorySlug: string | null;
 };
 
 export type ProductSyncStore = {
@@ -74,8 +79,8 @@ export type ProductSyncStore = {
   upsertTastes(rows: TasteRow[]): Promise<void>;
   /** 映射表批量 upsert(按 pospal_uid 唯一) */
   upsertMappings(rows: ProductRow[]): Promise<void>;
-  /** 商品本体 upsert:按 barcode 命中更新银豹字段,未命中插入新商品 */
-  upsertProducts(rows: PospalProductRow[]): Promise<{ created: number; updated: number; priceDiffs: PriceDiff[] }>;
+  /** 商品本体 upsert:按 barcode 命中更新银豹字段(手动锁定商品跳过),未命中插入新商品 */
+  upsertProducts(rows: PospalProductRow[]): Promise<{ created: number; updated: number; diffs: ProductDiff[] }>;
   /** 按 barcode = products.pospal_barcode 回填 product_id,返回本次匹配条数 */
   alignByBarcode(): Promise<number>;
   loadCursor(): Promise<string | null>;
@@ -87,8 +92,8 @@ export type ProductSyncResult = {
   items: number;
   productsCreated: number;
   productsUpdated: number;
-  /** 更新中 base_price 变化的行(≤100 条,超出截断) */
-  priceDiffs: PriceDiff[];
+  /** 更新中价格/名字/分类变化的行(≤100 条,超出截断) */
+  diffs: ProductDiff[];
   matchedProducts: number;
   categories: number;
   tastes: number;
@@ -261,7 +266,7 @@ export async function syncProductDictionary(
   let created = 0;
   let updated = 0;
   let skippedNoBarcode = 0;
-  const priceDiffs: PriceDiff[] = [];
+  const diffs: ProductDiff[] = [];
 
   while (true) {
     const page = await client.getProductPage({
@@ -280,7 +285,7 @@ export async function syncProductDictionary(
     const upsertResult = await store.upsertProducts(barcoded);
     created += upsertResult.created;
     updated += upsertResult.updated;
-    priceDiffs.push(...upsertResult.priceDiffs);
+    diffs.push(...upsertResult.diffs);
 
     await store.upsertMappings(page.list.map(normalizeProductRow));
     items += page.list.length;
@@ -301,7 +306,7 @@ export async function syncProductDictionary(
     items,
     productsCreated: created,
     productsUpdated: updated,
-    priceDiffs: priceDiffs.slice(0, 100),
+    diffs: diffs.slice(0, 100),
     matchedProducts,
     categories: categories.length,
     tastes: tastes.length,

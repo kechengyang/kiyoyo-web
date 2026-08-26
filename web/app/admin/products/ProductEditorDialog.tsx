@@ -22,7 +22,8 @@ export function ProductEditorDialog({
   productUploadPercent: number | null;
 }) {
   const isNew = !editingProduct.apiId;
-  // 银豹为商品唯一数据源:有 pospalUid 的商品其银豹侧字段只读
+  // 银豹为商品唯一数据源,但 Admin 始终可手动编辑(线上/线下不一致的例外);
+  // 手动锁定开关决定下次同步是否覆盖
   const isPospalManaged = Boolean(editingProduct.pospalUid);
   return (
 <div className="modal-backdrop">
@@ -39,9 +40,8 @@ export function ProductEditorDialog({
     <h2 id="product-editor-title">{editingProduct.name || "Create product"}</h2>
     {isPospalManaged && (
       <small className="admin-pospal-note">
-        POSPAL-managed — English name, category, base price and barcode sync
-        from POSPAL. Edit Chinese name, descriptions, discount and visibility
-        here.
+        POSPAL-linked — name, category and base price sync from POSPAL. To
+        keep manual values across syncs, enable the manual override below.
       </small>
     )}
     <div className="product-image-editor">
@@ -95,7 +95,6 @@ export function ProductEditorDialog({
         <span>Category</span>
         <select
           value={editingProduct.category}
-          disabled={isPospalManaged}
           onChange={(event) =>
             setEditingProduct({
               ...editingProduct,
@@ -152,10 +151,9 @@ export function ProductEditorDialog({
     </div>
     <div className="form-split">
       <label className="form-field">
-        <span>English name {isPospalManaged ? "(POSPAL-managed)" : ""}</span>
+        <span>English name</span>
         <input
           value={editingProduct.name}
-          readOnly={isPospalManaged}
           onChange={(e) =>
             setEditingProduct({
               ...editingProduct,
@@ -179,12 +177,11 @@ export function ProductEditorDialog({
     </div>
     <div className="form-split">
       <label className="form-field">
-        <span>Base price (KSh) {isPospalManaged ? "(POSPAL-managed)" : ""}</span>
+        <span>Base price (KSh)</span>
         <input
           type="number"
           min="1"
           value={editingProduct.price}
-          readOnly={isPospalManaged}
           onChange={(e) =>
             setEditingProduct({
               ...editingProduct,
@@ -290,6 +287,27 @@ export function ProductEditorDialog({
         <small>Uncheck to hide this item and block checkout.</small>
       </span>
     </label>
+    {isPospalManaged && (
+      <label className="admin-publish-check">
+        <input
+          type="checkbox"
+          checked={editingProduct.pospalManualOverride === true}
+          onChange={(e) =>
+            setEditingProduct({
+              ...editingProduct,
+              pospalManualOverride: e.target.checked,
+            })
+          }
+        />
+        <span>
+          <strong>Manual override (skip POSPAL sync)</strong>
+          <small>
+            Keep this product’s manual values — POSPAL sync will not overwrite
+            name, category or price while locked.
+          </small>
+        </span>
+      </label>
+    )}
     {productError && <div className="form-error">{productError}</div>}
     {productProgress && (
       <div className="product-upload-status" role="status" aria-live="polite">
