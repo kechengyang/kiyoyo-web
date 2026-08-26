@@ -58,6 +58,20 @@ variable "additional_allowed_origins" {
   default     = []
 }
 
+variable "custom_domains" {
+  description = "Custom Firebase Hosting domains without a scheme. They are authorized for browser, auth, media, and Maps access."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for domain in var.custom_domains :
+      can(regex("^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", domain))
+    ])
+    error_message = "Every custom_domains value must be a lowercase hostname without a scheme, port, path, or trailing dot."
+  }
+}
+
 variable "api_image" {
   description = "Immutable Commerce API container image deployed to Cloud Run."
   type        = string

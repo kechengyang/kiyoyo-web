@@ -7,3 +7,4 @@ api_image             = "europe-west1-docker.pkg.dev/kiyoyo/kiyoyo-dev/api:gcs-p
 monthly_budget_amount = 30
 alert_email           = "kechengyang234@gmail.com"
 admin_emails          = ["kechengyang234@gmail.com"]
+custom_domains        = ["kiyoyo.africa", "www.kiyoyo.africa"]

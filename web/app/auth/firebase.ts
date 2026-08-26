@@ -2,6 +2,7 @@
 
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { resolveFirebaseAuthDomain } from "./domain";
 
 const deploymentEnvironment = process.env.NEXT_PUBLIC_KIYOYO_ENV ?? "dev";
 const devFallback = deploymentEnvironment === "dev";
@@ -19,6 +20,15 @@ const publicConfigValue = (
   }
   return value;
 };
+
+const configuredAuthDomain = publicConfigValue(
+  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+  process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  "kiyoyo.firebaseapp.com",
+);
+const customAuthDomain =
+  process.env.NEXT_PUBLIC_FIREBASE_CUSTOM_AUTH_DOMAIN ??
+  (devFallback ? "kiyoyo.africa" : undefined);
 
 const firebaseConfig = {
   projectId: publicConfigValue(
@@ -41,11 +51,12 @@ const firebaseConfig = {
     process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     "AIzaSyCpM9bXRBrObsN4u5_cUq0kragkI0fCdNI",
   ),
-  authDomain: publicConfigValue(
-    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
-    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    "kiyoyo.firebaseapp.com",
-  ),
+  authDomain: resolveFirebaseAuthDomain({
+    configuredAuthDomain,
+    customAuthDomain,
+    browserHostname:
+      typeof window === "undefined" ? undefined : window.location.hostname,
+  }),
   messagingSenderId: publicConfigValue(
     "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
     process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,

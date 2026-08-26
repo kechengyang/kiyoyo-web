@@ -25,6 +25,34 @@
 前后端是分离部署：Firebase Hosting 只承载静态前端，所有用户、地址、商品、订单、
 优惠、标签、图片与核销操作都通过 Cloud Run API 进入 Cloud SQL / Cloud Storage。
 
+## `kiyoyo.africa` 自定义域名发布
+
+`kiyoyo.africa` 是 `kiyoyo-dev` Hosting site 的主域名，`www.kiyoyo.africa` 仅做 301
+跳转。域名切换不会把 dev 环境变成 production：API、Cloud SQL、支付通道和数据仍属于
+`kiyoyo-dev`。正式营业前必须单独完成生产环境与真实支付发布评审。
+
+发布使用 Firebase Hosting Advanced Setup，避免在证书准备前切走现有网站：
+
+1. 在 Hosting site `kiyoyo-dev` 创建 `kiyoyo.africa` custom domain，但先不修改现有
+   A/AAAA/CNAME 流量记录。
+2. 在 DNS 服务商添加 Firebase 返回的 ownership、ACME 和必要的 CAA 记录；保留邮件的
+   MX、SPF、DKIM、DMARC 记录，也不更换 nameserver。
+3. 审查完整 Terraform plan。若 plan 包含域名之外的运行时漂移（例如回退 Cloud Run
+   image、删除手工注入的 Secret env 或修改 Cloud SQL authorized networks），不得直接
+   apply。只对 Maps key、Cloud Storage bucket 和 Identity Platform config 执行经审查的
+   targeted apply；Cloud Run `ALLOWED_ORIGINS` 使用 `gcloud run services update
+   --update-env-vars` 单独追加域名，以保留当前 image、Secret env、labels 和其他配置。
+4. 部署 Web。Web 仅在浏览器实际位于 `kiyoyo.africa` 或其 `www` hostname 时采用
+   `kiyoyo.africa` 作为 Firebase `authDomain`；`kiyoyo-dev.web.app` 与 localhost 在切换
+   前后继续使用 `kiyoyo.firebaseapp.com`。
+5. Firebase 显示 ownership active 且证书已准备完成后，才把根域 A/AAAA 和 `www`
+   CNAME 改成向导当前给出的值。不得复制历史 IP 或其他项目的 DNS 值。
+6. 验证根域、`www` 301、`/admin`、注册登录、邮箱动作、地图、媒体、结账、订单历史与
+   取餐码。确认后保留 Firebase ownership TXT，供证书自动续期。
+
+回滚 DNS 时只恢复切换前已记录的 Web A/AAAA/CNAME；不得恢复、删除或覆盖邮件记录。
+Firebase 自定义域名资源与 ownership TXT 应保留到回滚调查完成。
+
 ### 已验证链路
 
 - 线上 Hosting、API `/readyz`、12 杯饮品、6 家门店与最近门店排序均正常。
