@@ -7,6 +7,7 @@ import {
   dedupeByBarcode,
   deriveCategoryKind,
   deriveCategorySlug,
+  mapCategorySlug,
   normalizeCategoryRow,
   normalizePospalProductRow,
   normalizeProductRow,
@@ -175,12 +176,31 @@ test("分类派生:slug NFKD 化、空名兜底、kind 按分类名判断", () =
   assert.equal(deriveCategoryKind("H咖啡豆Coffee beans"), "GOODS");
   assert.equal(deriveCategoryKind("J杯子 Cup"), "GOODS");
   assert.equal(deriveCategoryKind("A奶茶BOBA TEA"), "DRINK");
+  assert.equal(deriveCategoryKind("VIP储值卡 promotional"), "GOODS");
+});
+
+test("分类 slug 白名单映射:银豹分类名归入 Web 规范分类,未命中走派生", () => {
+  const uid = "11112222333344445555";
+  assert.equal(mapCategorySlug("A奶茶BOBA TEA", uid), "milk-tea");
+  assert.equal(mapCategorySlug("B水果茶VITAMIN C", uid), "fruit-tea");
+  assert.equal(mapCategorySlug("C果咖FRUIT coffee", uid), "coffee");
+  assert.equal(mapCategorySlug("D冻冻茶JELLY TEA", uid), "jelly-tea");
+  assert.equal(mapCategorySlug("E 奶昔ROCKING SHAKE", uid), "shake");
+  assert.equal(mapCategorySlug("F 圣代SUMMY SUNDAE", uid), "sundae");
+  assert.equal(mapCategorySlug("S冰沙 FRUIT SMOOTHIE", uid), "cheese-smoothie");
+  assert.equal(mapCategorySlug("L舒芙蕾 Shufulei", uid), "souffle");
+  assert.equal(mapCategorySlug("G 热饮HOT DRINK", uid), "hot-drinks");
+  assert.equal(mapCategorySlug("J加料ADD ONS", uid), "add-ons");
+  assert.equal(mapCategorySlug("H咖啡豆Coffee beans", uid), "coffee-beans");
+  assert.equal(mapCategorySlug("J杯子 Cup", uid), "cups");
+  assert.equal(mapCategorySlug("VIP储值卡 Promotional", uid), "promotional-card");
+  assert.equal(mapCategorySlug("未知分类XYZ", uid), "xyz"); // 未命中 → 派生
 });
 
 test("分类/口味归一化:uid 字符串化、字段透传", () => {
   assert.deepEqual(
     normalizeCategoryRow({ uid: "1736582354288124477", name: "A奶茶BOBA TEA", parentUid: "0", enable: 1, categoryOrder: 1 }),
-    { uid: "1736582354288124477", name: "A奶茶BOBA TEA", parentUid: "0", enable: 1, categoryOrder: 1, categorySlug: "a-boba-tea", kind: "DRINK" },
+    { uid: "1736582354288124477", name: "A奶茶BOBA TEA", parentUid: "0", enable: 1, categoryOrder: 1, categorySlug: "milk-tea", kind: "DRINK" },
   );
   assert.deepEqual(
     normalizeTasteRow({ uid: "111", attributeName: "boba", attributeValue: "50", isDefault: 0, packageUid: "p1", packageName: "ADD ONS", packageType: 1 }),
@@ -207,13 +227,13 @@ test("商品行归一化:分类映射注入、口味/图片透传、noStock 三�
     },
     categoryByUid,
   );
-  assert.equal(row.categorySlug, "a-boba-tea");
+  assert.equal(row.categorySlug, "milk-tea");
   assert.equal(row.kind, "DRINK");
   assert.equal(row.basePrice, 46); // products.base_price 为 KES 整元(映射表才是分)
   assert.equal(row.noStock, true);
   assert.equal(row.images?.length, 1);
   assert.equal(row.tastes?.length, 1);
-  assert.match(row.slug, /^a-boba-tea-mango-tea-[a-f0-9]{8}$/);
+  assert.match(row.slug, /^milk-tea-mango-tea-[a-f0-9]{8}$/);
 
   const fallback = normalizePospalProductRow({ uid: "u2", barcode: "d2", name: "X", noStock: 0 }, categoryByUid);
   assert.equal(fallback.categorySlug, "uncategorized");
@@ -408,7 +428,7 @@ test("字典同步 v2:分类/口味先落库、商品开扩展 flags、重复条
   // 调用顺序:categories → tastes → 每页 products+mappings → align
   assert.deepEqual(store.calls, ["categories", "tastes", "products", "mappings", "products", "mappings", "align"]);
   assert.equal(store.categoryRows.length, 1);
-  assert.equal(store.categoryRows[0].categorySlug, "a-boba-tea");
+  assert.equal(store.categoryRows[0].categorySlug, "milk-tea");
   assert.equal(store.tasteRows.length, 1);
   for (const input of productInputs) {
     assert.equal(input.needImages, true);

@@ -150,7 +150,29 @@ async function main() {
   const { rows: tasteRows } = await pool.query("select count(*)::int as n from pospal_taste_options");
   assert.equal(tasteRows[0].n, 2);
 
+  // ── 0008 数据迁移回归(生产顺序:迁移先于同步):B2/D4 绑条码 + 清同步游标 ──
+  console.log("== 0008 数据迁移回归 ==");
+  await pool.query(
+    `insert into products (kind, category_slug, slug, name_en, name_zh, base_price, active, external_code)
+     values ('DRINK','fruit-tea','b2-migration-test','Aroma Lemonade','香水柠檬',199,true,'B2'),
+            ('DRINK','jelly-tea','d4-migration-test','Pineapple Passion Jelly Tea','菠萝百香果冻冻茶',480,true,'D4')`,
+  );
+  await pool.query(
+    "insert into pospal_sync_state (scope, last_id) values ('product-dict:hq-account', '999') on conflict (scope) do update set last_id = excluded.last_id",
+  );
+  await pool.query(readFileSync(resolve(process.cwd(), "migrations/0008_bind_barcodes_full_resync.sql"), "utf8"));
+  const { rows: bound } = await pool.query(
+    "select external_code, pospal_barcode from products where external_code in ('B2','D4') order by external_code",
+  );
+  assert.deepEqual(bound, [
+    { external_code: "B2", pospal_barcode: "2601222157299" },
+    { external_code: "D4", pospal_barcode: "2601251618136" },
+  ]);
+  const { rows: cursorLeft } = await pool.query("select count(*)::int as n from pospal_sync_state");
+  assert.equal(cursorLeft[0].n, 0, "0008 应清空 product-dict 游标,强制全量重同步");
+
   // ── 真实数据回归:用 POC 转储的门店目录全量跑一遍 ──
+  // B2/D4 已占 2601222157299 / 2601251618136,真实目录中 B6/B5 按条码命中更新(生产同路径)
   const dumpPath = process.env.PGTEST_DUMP ?? resolve(process.cwd(), "pospal-dump/pospal-catalog-lovemixue02.json");
   const dump = JSON.parse(readFileSync(dumpPath, "utf8"));
   console.log(`== 真实数据回归:${dump.meta.account} 转储(${dump.products.length} 商品)==`);
@@ -167,13 +189,27 @@ async function main() {
   console.log(
     `  分类 ${realCategories.length} · 口味 ${realTastes.length} · 商品 ${realProducts.length} · created ${realUpsert.created} · updated ${realUpsert.updated} · 价差 ${realUpsert.priceDiffs.length}`,
   );
+  assert.equal(realUpsert.created, realProducts.length - 2, "B6/B5 条码命中 B2/D4 → 走 UPDATE,其余全部 INSERT");
+  assert.equal(realUpsert.updated, 2);
 
   const { rows: totalRows } = await pool.query("select count(*)::int as n from products");
-  assert.equal(totalRows[0].n, 2 + realProducts.length, "商品总数 = 合成 2 条 + 真实目录全部");
+  assert.equal(totalRows[0].n, 4 + realProducts.length - 2, "商品总数 = 合成 2 + 迁移 2 + 真实目录(去 B6/B5 两条合并)");
   const { rows: noBarcodeRows } = await pool.query("select count(*)::int as n from products where pospal_barcode is null");
   assert.equal(noBarcodeRows[0].n, 0, "有 barcode 的商品全部入 products");
 
-  console.log("\n全部断言通过 ✓ —— 合成 + 真实数据在真实 Postgres 上全部通过");
+  // ── 手动改码守卫:admin 手动改条码后,旧条码字典行(uid 已在库)不重复建商品 ──
+  console.log("== 手动改码守卫 ==");
+  await pool.query("update products set pospal_barcode = 'd1-manual' where pospal_barcode = 'd1'");
+  const relink = await store.upsertProducts([
+    { ...productA1, barcode: "d1", basePrice: 999 }, // 旧条码 + 已存在 uid → 不得重复建
+    { ...productA1, barcode: "d1-manual", basePrice: 999 }, // 新条码 → 命中手动改码商品,重新连接
+  ]);
+  assert.equal(relink.created, 0, "旧条码行 uid 已在库,不得建重复商品");
+  assert.equal(relink.updated, 1, "新条码行应命中手动改码商品");
+  const { rows: dupCheck } = await pool.query("select count(*)::int as n from products where pospal_uid = 'u1'");
+  assert.equal(dupCheck[0].n, 1, "同一 uid 的商品只有一条");
+
+  console.log("\n全部断言通过 ✓ —— 合成 + 0008 数据迁移 + 真实数据 + 手动改码守卫全部通过");
   await pool.end();
 }
 

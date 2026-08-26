@@ -116,7 +116,7 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
                 v.base_price, jsonb_build_object('One size', v.base_price), 0, true,
                 v.barcode, v.pospal_uid, v.category_uid, v.tastes, v.images, v.no_stock, 1
          from v
-         where not exists (select 1 from products p where p.pospal_barcode = v.barcode)`,
+         where not exists (select 1 from products p where p.pospal_barcode = v.barcode or p.pospal_uid = v.pospal_uid)`,
         flat,
       );
 

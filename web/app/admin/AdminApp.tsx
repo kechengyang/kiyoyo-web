@@ -988,7 +988,8 @@ export default function AdminApp({
       setProductError("Refresh the cloud catalog before editing.");
       return;
     }
-    // 银豹为商品唯一数据源:pospalUid 商品的银豹侧字段不提交(服务端同步覆盖)
+    // 银豹为商品唯一数据源:pospalUid 商品的银豹侧字段不提交(服务端同步覆盖);
+    // 条码例外 —— 手动改码是运营刚需,提交后下次同步按新条码重连
     const isPospalManaged = Boolean(editingProduct.pospalUid);
     const productBody = {
       ...(isPospalManaged
@@ -997,7 +998,6 @@ export default function AdminApp({
             name_en: editingProduct.name.trim(),
             category_slug: categorySlug(editingProduct.category),
             base_price: editingProduct.price,
-            pospal_barcode: editingProduct.pospalBarcode?.trim() || null,
           }),
       name_zh: editingProduct.nameZh.trim(),
       description_en: editingProduct.description.trim(),
@@ -1007,6 +1007,7 @@ export default function AdminApp({
         Math.min(90, Number(editingProduct.discountPercent) || 0),
       ),
       tag_id: editingProduct.tagId ?? null,
+      pospal_barcode: editingProduct.pospalBarcode?.trim() || null,
     };
     setProductBusy(true);
     setProductError("");

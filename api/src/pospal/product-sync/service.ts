@@ -115,9 +115,39 @@ export function deriveCategorySlug(name: string, uid: string): string {
   return stem || `category-${uid.slice(-8)}`;
 }
 
-/** 分类名 → kind:咖啡豆/杯子类为 GOODS,其余 DRINK(lovemixue02 实测口径) */
+/**
+ * 银豹分类名 → Web 规范分类 slug 白名单。
+ * Web 店铺只渲染 drinkCategoryOrder/goodsCategoryOrder 里的分类,
+ * 派生 slug(如 f-summy-sundae)会让整类商品在客户端不可见。
+ * 不在白名单的分类走派生 slug(可在 pospal_categories 表手工调整)。
+ */
+const POSPAL_CATEGORY_SLUGS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/奶茶/i, "milk-tea"],
+  [/水果茶/i, "fruit-tea"],
+  // 咖啡豆必须先于咖啡:"H咖啡豆Coffee beans" 同时含两词
+  [/咖啡豆|coffee beans/i, "coffee-beans"],
+  [/果咖|咖啡/i, "coffee"],
+  [/冻冻茶/i, "jelly-tea"],
+  [/奶昔/i, "shake"],
+  [/圣代/i, "sundae"],
+  [/冰沙/i, "cheese-smoothie"],
+  [/舒芙蕾|shufulei/i, "souffle"],
+  [/热饮|hot drink/i, "hot-drinks"],
+  [/加料|add ons/i, "add-ons"],
+  [/杯子|\bcup\b/i, "cups"],
+  [/储值卡|promotional/i, "promotional-card"],
+];
+
+export function mapCategorySlug(name: string, uid: string): string {
+  for (const [pattern, slug] of POSPAL_CATEGORY_SLUGS) {
+    if (pattern.test(name)) return slug;
+  }
+  return deriveCategorySlug(name, uid);
+}
+
+/** 分类名 → kind:咖啡豆/杯子/储值卡类为 GOODS,其余 DRINK(lovemixue02 实测口径) */
 export function deriveCategoryKind(name: string): "DRINK" | "GOODS" {
-  return /咖啡豆|coffee beans|cup|杯子/i.test(name) ? "GOODS" : "DRINK";
+  return /咖啡豆|coffee beans|cup|杯子|储值卡|promotional/i.test(name) ? "GOODS" : "DRINK";
 }
 
 export function normalizeCategoryRow(category: PospalCategory): CategoryRow {
@@ -130,7 +160,7 @@ export function normalizeCategoryRow(category: PospalCategory): CategoryRow {
     // DB 列 not null:缺失视为默认启用/排序 0(银豹语义:缺省 = 默认值)
     enable: category.enable ?? 1,
     categoryOrder: category.categoryOrder ?? 0,
-    categorySlug: deriveCategorySlug(name, uid),
+    categorySlug: mapCategorySlug(name, uid),
     kind: deriveCategoryKind(name),
   };
 }

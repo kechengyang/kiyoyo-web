@@ -177,6 +177,7 @@ const drinkCategoryLabels: Record<string, string> = {
   "fruit-tea": "Fruit Tea",
   "jelly-tea": "Jelly Tea",
   coffee: "Coffee",
+  "hot-drinks": "Hot Drinks",
   shake: "Shake",
   sundae: "Sundae",
   "cheese-smoothie": "Cheese Smoothie",

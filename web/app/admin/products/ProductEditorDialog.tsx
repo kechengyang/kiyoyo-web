@@ -252,7 +252,6 @@ export function ProductEditorDialog({
         <span>POSPAL barcode</span>
         <input
           value={editingProduct.pospalBarcode ?? ""}
-          readOnly={isPospalManaged}
           onChange={(e) =>
             setEditingProduct({
               ...editingProduct,
@@ -262,9 +261,9 @@ export function ProductEditorDialog({
           placeholder="e.g. 0273400877705"
         />
         <small>
-          {isPospalManaged
-            ? "Set by POSPAL sync — the link key between this product and the POSPAL dictionary."
-            : "The barcode of the matching item in the POSPAL dictionary. Sync links products to POSPAL by this code."}
+          The barcode of the matching item in the POSPAL dictionary. Sync
+          links products to POSPAL by this code; a manual change takes effect
+          on the next sync.
         </small>
       </label>
     )}
