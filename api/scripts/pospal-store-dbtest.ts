@@ -197,7 +197,19 @@ async function main() {
   const { rows: noBarcodeRows } = await pool.query("select count(*)::int as n from products where pospal_barcode is null");
   assert.equal(noBarcodeRows[0].n, 0, "有 barcode 的商品全部入 products");
 
-  console.log("\n全部断言通过 ✓ —— 合成 + 0008 数据迁移 + 真实数据在真实 Postgres 上全部通过");
+  // ── 手动改码守卫:admin 手动改条码后,旧条码字典行(uid 已在库)不重复建商品 ──
+  console.log("== 手动改码守卫 ==");
+  await pool.query("update products set pospal_barcode = 'd1-manual' where pospal_barcode = 'd1'");
+  const relink = await store.upsertProducts([
+    { ...productA1, barcode: "d1", basePrice: 999 }, // 旧条码 + 已存在 uid → 不得重复建
+    { ...productA1, barcode: "d1-manual", basePrice: 999 }, // 新条码 → 命中手动改码商品,重新连接
+  ]);
+  assert.equal(relink.created, 0, "旧条码行 uid 已在库,不得建重复商品");
+  assert.equal(relink.updated, 1, "新条码行应命中手动改码商品");
+  const { rows: dupCheck } = await pool.query("select count(*)::int as n from products where pospal_uid = 'u1'");
+  assert.equal(dupCheck[0].n, 1, "同一 uid 的商品只有一条");
+
+  console.log("\n全部断言通过 ✓ —— 合成 + 0008 数据迁移 + 真实数据 + 手动改码守卫全部通过");
   await pool.end();
 }
 
