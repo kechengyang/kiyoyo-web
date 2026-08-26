@@ -37,8 +37,11 @@
    A/AAAA/CNAME 流量记录。
 2. 在 DNS 服务商添加 Firebase 返回的 ownership、ACME 和必要的 CAA 记录；保留邮件的
    MX、SPF、DKIM、DMARC 记录，也不更换 nameserver。
-3. 应用 Terraform，把 `custom_domains` 同步到 Cloud Run `ALLOWED_ORIGINS`、Cloud
-   Storage CORS、Maps browser referrer 与 Identity Platform authorized domains。
+3. 审查完整 Terraform plan。若 plan 包含域名之外的运行时漂移（例如回退 Cloud Run
+   image、删除手工注入的 Secret env 或修改 Cloud SQL authorized networks），不得直接
+   apply。只对 Maps key、Cloud Storage bucket 和 Identity Platform config 执行经审查的
+   targeted apply；Cloud Run `ALLOWED_ORIGINS` 使用 `gcloud run services update
+   --update-env-vars` 单独追加域名，以保留当前 image、Secret env、labels 和其他配置。
 4. 部署 Web。Web 仅在浏览器实际位于 `kiyoyo.africa` 或其 `www` hostname 时采用
    `kiyoyo.africa` 作为 Firebase `authDomain`；`kiyoyo-dev.web.app` 与 localhost 在切换
    前后继续使用 `kiyoyo.firebaseapp.com`。
