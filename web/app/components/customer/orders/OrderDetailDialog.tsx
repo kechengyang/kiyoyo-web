@@ -156,6 +156,13 @@ export function OrderDetailDialog({
           item.sugar,
           item.ice,
           ...(item.toppings ?? []),
+          ...(item.addOns ?? []).map((uid) => {
+            const name = product?.pospalTastes?.find(
+              (taste) => taste.uid === uid,
+            )?.attributeName;
+            if (!name) return uid;
+            return lang === "zh" ? (t.tasteLabels?.[name] ?? name) : name;
+          }),
         ].filter(Boolean);
         const lineTotal =
           item.lineTotal ??

@@ -8,14 +8,15 @@ import { fetchCatalog, fetchProductTags } from "./platform";
 export const CATALOG_STORAGE_KEY = "kiyoyo-catalog";
 export const PRODUCT_TAGS_STORAGE_KEY = "kiyoyo-product-tags";
 
-const isBucketCatalog = (value: unknown): value is Product[] =>
+// API 目录必有 apiId(seed 目录没有);以银豹为源后新商品 imageKey 可为空,
+// 不能用 gcs:// 前缀判目录来源
+const isApiCatalog = (value: unknown): value is Product[] =>
   Array.isArray(value) &&
   value.every(
     (product) =>
       product &&
       typeof product === "object" &&
-      typeof (product as Product).imageKey === "string" &&
-      (product as Product).imageKey?.startsWith("gcs://"),
+      typeof (product as Product).apiId === "string",
   );
 
 export const defaultProductTags: ProductTag[] = [
@@ -74,6 +75,13 @@ export const salePrice = (product: Product, size?: string) => {
   return Math.round(selectedPrice * (1 - discount / 100));
 };
 
+/** 银豹口味组加料合计(ADD ONS 等;attributeValue 为加价金额 KES) */
+export const addOnsPrice = (product: Product, item: { addOns?: string[] }) =>
+  (item.addOns ?? []).reduce((sum, uid) => {
+    const taste = product.pospalTastes?.find((candidate) => candidate.uid === uid);
+    return sum + (taste ? Math.round(Number(taste.attributeValue ?? 0)) : 0);
+  }, 0);
+
 export function useCatalog() {
   const [catalog, setCatalog] = useState<Product[]>(seedProducts);
   const [ready, setReady] = useState(false);
@@ -81,11 +89,11 @@ export function useCatalog() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CATALOG_STORAGE_KEY);
-      // Hydrate a verified bucket-backed catalog after server rendering.
+      // Hydrate a verified API catalog after server rendering.
       if (stored) {
         const parsed: unknown = JSON.parse(stored);
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (isBucketCatalog(parsed)) setCatalog(parsed);
+        if (isApiCatalog(parsed)) setCatalog(parsed);
         else localStorage.removeItem(CATALOG_STORAGE_KEY);
       }
     } catch {
@@ -114,7 +122,7 @@ export function useCatalog() {
       if (event.key !== CATALOG_STORAGE_KEY || !event.newValue) return;
       try {
         const parsed: unknown = JSON.parse(event.newValue);
-        if (isBucketCatalog(parsed)) setCatalog(parsed);
+        if (isApiCatalog(parsed)) setCatalog(parsed);
       } catch {
         /* ignore invalid external value */
       }

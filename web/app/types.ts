@@ -10,6 +10,23 @@ export type ProductTag = {
   createdAt: string;
 };
 
+export type PospalImage = {
+  path: string;
+  isCover?: number;
+  orderIndex?: number;
+};
+
+export type PospalTaste = {
+  uid: string;
+  attributeName: string;
+  attributeValue?: string;
+  isDefault?: number;
+  suggest?: number;
+  packageUid?: string;
+  packageName?: string;
+  packageType?: number;
+};
+
 export type Product = {
   id: string;
   apiId?: string;
@@ -36,6 +53,9 @@ export type Product = {
   pospalName?: string;
   pospalSellPriceCents?: number;
   pospalSyncedAt?: string;
+  // 银豹商品数据(以银豹为源:图片热链 / 口味组)
+  pospalImages?: PospalImage[];
+  pospalTastes?: PospalTaste[];
 };
 
 export type Store = {
@@ -58,6 +78,8 @@ export type CartItem = {
   sugar?: string;
   ice?: string;
   toppings?: string[];
+  /** 银豹口味组加料 uid 列表(ADD ONS 组,加价走商品 pospalTastes) */
+  addOns?: string[];
   productName?: string;
   productNameZh?: string;
   productImage?: string;

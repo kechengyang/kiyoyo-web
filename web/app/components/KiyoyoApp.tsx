@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { haversineKm, stores } from "../data";
 import { drinkCategoryOrder } from "../menu";
 import {
+  addOnsPrice,
   resolveProductTag,
   salePrice,
   useCatalog,
@@ -126,6 +127,7 @@ export default function KiyoyoApp({
     sugar: "50%",
     ice: "Less ice",
     toppings: [] as string[],
+    addOns: [] as string[],
   });
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [verificationGate, setVerificationGate] = useState(false);
@@ -440,6 +442,7 @@ export default function KiyoyoApp({
       (sum, item) =>
         sum +
         (salePrice(item.product, item.size) +
+          addOnsPrice(item.product, item) +
           (item.toppings ?? []).reduce(
             (toppingSum, toppingId) =>
               toppingSum +
@@ -472,6 +475,7 @@ export default function KiyoyoApp({
     (sum, item) =>
       sum +
       (salePrice(item.product, item.size) +
+        addOnsPrice(item.product, item) +
         (item.toppings ?? []).reduce(
           (toppingSum, toppingId) =>
             toppingSum +
@@ -669,11 +673,24 @@ export default function KiyoyoApp({
 
   const openProduct = (product: Product) => {
     setModalProduct(product);
+    // 默认选项:有银豹口味组时取组内默认值(50% 糖 / 50% 冰),否则回退固定值
+    const tastes = product.pospalTastes ?? [];
+    const sugarOptions = tastes
+      .filter((taste) => taste.packageName === "sugar")
+      .map((taste) => taste.attributeName);
+    const iceOptions = tastes
+      .filter((taste) => taste.packageName === "ICE")
+      .map((taste) => taste.attributeName);
     setCustom({
       size: productSizeEntries(product)[0]?.[0] ?? "One size",
-      sugar: "50%",
-      ice: "Less ice",
+      sugar: sugarOptions.includes("50%sugar")
+        ? "50%sugar"
+        : (sugarOptions[0] ?? "50%"),
+      ice: iceOptions.includes("50%iced")
+        ? "50%iced"
+        : (iceOptions[0] ?? "Less ice"),
       toppings: [],
+      addOns: [],
     });
   };
 
@@ -682,7 +699,7 @@ export default function KiyoyoApp({
     const options =
       modalProduct.kind === "drink"
         ? custom
-        : { size: undefined, sugar: undefined, ice: undefined, toppings: [] };
+        : { size: undefined, sugar: undefined, ice: undefined, toppings: [], addOns: [] };
     const key = `${modalProduct.id}-${Date.now()}`;
     setCart([
       ...cart,
@@ -990,6 +1007,7 @@ export default function KiyoyoApp({
               sugar: item.sugar,
               ice: item.ice,
               toppings: item.toppings ?? [],
+              add_ons: item.addOns ?? [],
             },
           })),
           fulfillment: {
@@ -1016,6 +1034,7 @@ export default function KiyoyoApp({
         items: detailedCart.map(({ product, ...item }) => {
           const unitPrice =
             salePrice(product, item.size) +
+            addOnsPrice(product, item) +
             (item.toppings ?? []).reduce(
               (sum, toppingId) =>
                 sum +
