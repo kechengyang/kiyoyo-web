@@ -22,6 +22,8 @@ export function ProductEditorDialog({
   productUploadPercent: number | null;
 }) {
   const isNew = !editingProduct.apiId;
+  // 银豹为商品唯一数据源:有 pospalUid 的商品其银豹侧字段只读
+  const isPospalManaged = Boolean(editingProduct.pospalUid);
   return (
 <div className="modal-backdrop">
   <div className="admin-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-editor-title">
@@ -35,6 +37,13 @@ export function ProductEditorDialog({
     </button>
     <span className="red-label">{isNew ? "NEW PRODUCT" : "EDIT PRODUCT"}</span>
     <h2 id="product-editor-title">{editingProduct.name || "Create product"}</h2>
+    {isPospalManaged && (
+      <small className="admin-pospal-note">
+        POSPAL-managed — English name, category, base price and barcode sync
+        from POSPAL. Edit Chinese name, descriptions, discount and visibility
+        here.
+      </small>
+    )}
     <div className="product-image-editor">
       {editingProduct.image ? (
         <img src={editingProduct.image} alt="Product preview" />
@@ -86,6 +95,7 @@ export function ProductEditorDialog({
         <span>Category</span>
         <select
           value={editingProduct.category}
+          disabled={isPospalManaged}
           onChange={(event) =>
             setEditingProduct({
               ...editingProduct,
@@ -142,9 +152,10 @@ export function ProductEditorDialog({
     </div>
     <div className="form-split">
       <label className="form-field">
-        <span>English name</span>
+        <span>English name {isPospalManaged ? "(POSPAL-managed)" : ""}</span>
         <input
           value={editingProduct.name}
+          readOnly={isPospalManaged}
           onChange={(e) =>
             setEditingProduct({
               ...editingProduct,
@@ -168,11 +179,12 @@ export function ProductEditorDialog({
     </div>
     <div className="form-split">
       <label className="form-field">
-        <span>Base price (KSh)</span>
+        <span>Base price (KSh) {isPospalManaged ? "(POSPAL-managed)" : ""}</span>
         <input
           type="number"
           min="1"
           value={editingProduct.price}
+          readOnly={isPospalManaged}
           onChange={(e) =>
             setEditingProduct({
               ...editingProduct,
@@ -240,6 +252,7 @@ export function ProductEditorDialog({
         <span>POSPAL barcode</span>
         <input
           value={editingProduct.pospalBarcode ?? ""}
+          readOnly={isPospalManaged}
           onChange={(e) =>
             setEditingProduct({
               ...editingProduct,
@@ -249,8 +262,9 @@ export function ProductEditorDialog({
           placeholder="e.g. 0273400877705"
         />
         <small>
-          The barcode of the matching item in the POSPAL dictionary. Sync
-          links products to POSPAL by this code.
+          {isPospalManaged
+            ? "Set by POSPAL sync — the link key between this product and the POSPAL dictionary."
+            : "The barcode of the matching item in the POSPAL dictionary. Sync links products to POSPAL by this code."}
         </small>
       </label>
     )}

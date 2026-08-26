@@ -4,6 +4,8 @@ import type {
   Address,
   Coupon,
   Order,
+  PospalImage,
+  PospalTaste,
   Product,
   ProductTag,
   ProductTagTone,
@@ -159,6 +161,10 @@ type ApiProduct = {
   pospal_name: string | null;
   pospal_sell_price_cents: number | null;
   pospal_synced_at: string | null;
+  // 银豹商品数据(公共与 admin 均返回;图片热链 / 口味组)
+  pospal_images_json: PospalImage[] | null;
+  pospal_tastes_json: PospalTaste[] | null;
+  pospal_no_stock: boolean | null;
 };
 
 const titleCase = (value: string) =>
@@ -181,7 +187,12 @@ const tone = (value: ApiProduct["tag_tone"]): ProductTagTone | undefined =>
   value?.toLowerCase() as ProductTagTone | undefined;
 
 export function mapApiProduct(product: ApiProduct): Product {
-  const image = mediaUrlFromBucketPath(product.image_key, API_BASE_URL);
+  // 图片:银豹封面热链优先,无银豹图回退 Web 私有桶(gcs://)
+  const pospalImages = product.pospal_images_json ?? [];
+  const cover = pospalImages.find((img) => img.isCover === 1) ?? pospalImages[0];
+  const image = cover
+    ? cover.path
+    : mediaUrlFromBucketPath(product.image_key, API_BASE_URL);
   return {
     id: product.external_code ?? product.id,
     apiId: product.id,
@@ -211,6 +222,11 @@ export function mapApiProduct(product: ApiProduct): Product {
     pospalName: product.pospal_name ?? undefined,
     pospalSellPriceCents: product.pospal_sell_price_cents ?? undefined,
     pospalSyncedAt: product.pospal_synced_at ?? undefined,
+    pospalImages: pospalImages.length > 0 ? pospalImages : undefined,
+    pospalTastes:
+      (product.pospal_tastes_json ?? []).length > 0
+        ? product.pospal_tastes_json ?? undefined
+        : undefined,
   };
 }
 

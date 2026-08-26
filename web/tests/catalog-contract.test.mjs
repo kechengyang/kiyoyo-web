@@ -63,7 +63,9 @@ test("customer product seeds resolve images through GCS bucket paths", () => {
   assert.match(dataSource, /seededProductMedia\("products\/goods\//);
   assert.doesNotMatch(menuSource, /image:\s*`\/images\/drinks\/menu\//);
   assert.doesNotMatch(dataSource, /image:\s*"\/images\/goods\//);
-  assert.match(readFileSync(webCatalogPath, "utf8"), /isBucketCatalog/);
+  // 以银豹为源后新商品 image_key 可为空,gcs:// 前缀不再区分目录来源;
+  // API 目录必有 apiId(seed 目录无)
+  assert.match(readFileSync(webCatalogPath, "utf8"), /isApiCatalog/);
 });
 
 test("the media proxy accepts encoded UUID product paths", () => {

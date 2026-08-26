@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- Local prototype assets retain original campaign cropping. */
 
-import { salePrice } from "../../../catalog";
+import { addOnsPrice, salePrice } from "../../../catalog";
 import { money } from "../../../data";
 import type { AuthSession, CartItem, Lang, Product } from "../../../types";
 import type { CustomerCopy } from "../core/copy";
@@ -85,11 +85,26 @@ export function CartView({
                         .filter(Boolean)
                         .join(", ")}`
                     : ""}
+                  {item.addOns?.length
+                    ? ` · ${item.addOns
+                        .map((uid) => {
+                          const name = item.product.pospalTastes?.find(
+                            (taste) => taste.uid === uid,
+                          )?.attributeName;
+                          if (!name) return undefined;
+                          return lang === "zh"
+                            ? (t.tasteLabels?.[name] ?? name)
+                            : name;
+                        })
+                        .filter(Boolean)
+                        .join(", ")}`
+                    : ""}
                 </small>
               )}
               <strong>
                 {money(
                   salePrice(item.product, item.size) +
+                    addOnsPrice(item.product, item) +
                     (item.toppings ?? []).reduce(
                       (sum, toppingId) =>
                         sum +

@@ -988,19 +988,25 @@ export default function AdminApp({
       setProductError("Refresh the cloud catalog before editing.");
       return;
     }
+    // 银豹为商品唯一数据源:pospalUid 商品的银豹侧字段不提交(服务端同步覆盖)
+    const isPospalManaged = Boolean(editingProduct.pospalUid);
     const productBody = {
-      name_en: editingProduct.name.trim(),
+      ...(isPospalManaged
+        ? {}
+        : {
+            name_en: editingProduct.name.trim(),
+            category_slug: categorySlug(editingProduct.category),
+            base_price: editingProduct.price,
+            pospal_barcode: editingProduct.pospalBarcode?.trim() || null,
+          }),
       name_zh: editingProduct.nameZh.trim(),
       description_en: editingProduct.description.trim(),
       description_zh: editingProduct.descriptionZh.trim(),
-      category_slug: categorySlug(editingProduct.category),
-      base_price: editingProduct.price,
       discount_percent: Math.max(
         0,
         Math.min(90, Number(editingProduct.discountPercent) || 0),
       ),
       tag_id: editingProduct.tagId ?? null,
-      pospal_barcode: editingProduct.pospalBarcode?.trim() || null,
     };
     setProductBusy(true);
     setProductError("");

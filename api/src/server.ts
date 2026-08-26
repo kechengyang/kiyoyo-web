@@ -373,7 +373,16 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedEmail }, async (request, 
     const productPrice = Math.round(basePrice * (100 - product.discount_percent) / 100);
     const toppingPrice = (Array.isArray(item.customization.toppings) ? item.customization.toppings : [])
       .reduce((sum: number, code: unknown) => sum + (typeof code === "string" ? Number(toppingByCode.get(code)?.effective_price ?? 0) : 0), 0);
-    return { ...item, product, unitPrice: productPrice + toppingPrice };
+    // 银豹口味组加价(ADD ONS 等):customization.add_ons 为口味 uid 列表,
+    // attributeValue 为加价金额(KES);uid 按字符串比对(19 位超长整数)
+    const tastePrice = (Array.isArray(item.customization.add_ons) ? item.customization.add_ons : [])
+      .reduce((sum: number, uid: unknown) => {
+        if (typeof uid !== "string") return sum;
+        const tastes = Array.isArray(product.pospal_tastes_json) ? product.pospal_tastes_json : [];
+        const taste = tastes.find((candidate: any) => String(candidate?.uid) === uid);
+        return sum + (taste ? Math.round(Number(taste.attributeValue ?? 0)) : 0);
+      }, 0);
+    return { ...item, product, unitPrice: productPrice + toppingPrice + tastePrice };
   });
   const subtotal = pricedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const deliveryFee = input.fulfillment.type === "DELIVERY" ? 150 : input.fulfillment.type === "SHIPPING" ? 300 : 0;
