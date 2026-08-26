@@ -7,9 +7,11 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
   return {
     async upsertCategories(rows: CategoryRow[]) {
       if (rows.length === 0) return;
+      // 步长 = 每行参数个数(7,last_synced_at 是 now() 字面量):
+      // 参数号必须连续,否则 Postgres 对空档号报 42P18
       // 可空参数显式转类型:null 值时 node-postgres 不带类型,42P18 无法推断
       const placeholders = rows
-        .map((_, i) => `($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}::text, $${i * 8 + 4}::int, $${i * 8 + 5}::int, $${i * 8 + 6}, $${i * 8 + 7}, now())`)
+        .map((_, i) => `($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}::text, $${i * 7 + 4}::int, $${i * 7 + 5}::int, $${i * 7 + 6}, $${i * 7 + 7}, now())`)
         .join(", ");
       await pool.query(
         `insert into pospal_categories
@@ -59,11 +61,15 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
       );
       const oldByBarcode = new Map(oldRows.map((row) => [row.pospal_barcode, row.base_price]));
 
-      // 可空参数显式转类型:null 值时 node-postgres 不带类型,42P18 无法推断
+      // 步长 = 每行参数个数(11);参数号连续 + 全部显式转类型:
+      // null 参数不带类型会 42P18;未标注的 VALUES 列会被推断成 text,
+      // INSERT ... SELECT 不自动强转会报 "integer vs text"
       const placeholders = rows
-        .map((_, i) => `($${i * 11 + 1}, $${i * 11 + 2}, $${i * 11 + 3}, $${i * 11 + 4}, $${i * 11 + 5}, $${i * 11 + 6}, $${i * 11 + 7}, $${i * 11 + 8}::jsonb, $${i * 11 + 9}::jsonb, $${i * 11 + 10}::boolean, $${i * 11 + 11})`)
+        .map((_, i) => `($${i * 11 + 1}::text, $${i * 11 + 2}::text, $${i * 11 + 3}::int, $${i * 11 + 4}::text, $${i * 11 + 5}::text, $${i * 11 + 6}::text, $${i * 11 + 7}::text, $${i * 11 + 8}::jsonb, $${i * 11 + 9}::jsonb, $${i * 11 + 10}::boolean, $${i * 11 + 11}::text)`)
         .join(", ");
       // 列序:barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug
+      // jsonb 列在 JS 侧 JSON.stringify 后交 ::jsonb 解析
+      // (node-postgres 会把 JS 数组转成 Postgres 数组字面量,直接 ::jsonb 报 invalid input syntax)
       const flat = rows.flatMap((row) => [
         row.barcode,
         row.name,
@@ -72,8 +78,8 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
         row.kind,
         row.uid,
         row.categoryUid,
-        row.tastes,
-        row.images,
+        row.tastes == null ? null : JSON.stringify(row.tastes),
+        row.images == null ? null : JSON.stringify(row.images),
         row.noStock,
         row.slug,
       ]);
@@ -126,8 +132,9 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
     },
     async upsertMappings(rows) {
       if (rows.length === 0) return;
+      // 可空参数显式转类型(barcode/cents 可空,null 时 42P18)
       const placeholders = rows
-        .map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4}, now())`)
+        .map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}::text, $${i * 4 + 3}, $${i * 4 + 4}::int, now())`)
         .join(", ");
       await pool.query(
         `insert into pospal_product_mappings

@@ -127,8 +127,9 @@ export function normalizeCategoryRow(category: PospalCategory): CategoryRow {
     uid,
     name,
     parentUid: category.parentUid != null ? String(category.parentUid) : null,
-    enable: category.enable ?? null,
-    categoryOrder: category.categoryOrder ?? null,
+    // DB 列 not null:缺失视为默认启用/排序 0(银豹语义:缺省 = 默认值)
+    enable: category.enable ?? 1,
+    categoryOrder: category.categoryOrder ?? 0,
     categorySlug: deriveCategorySlug(name, uid),
     kind: deriveCategoryKind(name),
   };
@@ -139,7 +140,8 @@ export function normalizeTasteRow(taste: PospalTaste): TasteRow {
     uid: String(taste.uid),
     attributeName: taste.attributeName ?? "",
     attributeValue: taste.attributeValue ?? null,
-    isDefault: taste.isDefault ?? null,
+    // DB 列 not null:缺失视为非默认项
+    isDefault: taste.isDefault ?? 0,
     packageUid: taste.packageUid != null ? String(taste.packageUid) : null,
     packageName: taste.packageName ?? null,
     packageType: taste.packageType ?? null,

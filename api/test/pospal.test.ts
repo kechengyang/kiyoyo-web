@@ -186,6 +186,10 @@ test("分类/口味归一化:uid 字符串化、字段透传", () => {
     normalizeTasteRow({ uid: "111", attributeName: "boba", attributeValue: "50", isDefault: 0, packageUid: "p1", packageName: "ADD ONS", packageType: 1 }),
     { uid: "111", attributeName: "boba", attributeValue: "50", isDefault: 0, packageUid: "p1", packageName: "ADD ONS", packageType: 1 },
   );
+  // 缺失 enable/categoryOrder → 默认启用/排序 0(DB 列 not null)
+  const defaults = normalizeCategoryRow({ uid: "x", name: "咖啡" });
+  assert.equal(defaults.enable, 1);
+  assert.equal(defaults.categoryOrder, 0);
 });
 
 test("商品行归一化:分类映射注入、口味/图片透传、noStock 三态、未知分类兜底", () => {
