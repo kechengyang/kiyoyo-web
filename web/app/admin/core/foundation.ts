@@ -9,6 +9,9 @@ export const goodsCategoryOrder = [
   "Beauty",
   "Collectibles",
   "Sport",
+  "Coffee Beans",
+  "Cups",
+  "Promotional Cards",
 ] as const;
 
 export const categorySlug = (category: string) =>

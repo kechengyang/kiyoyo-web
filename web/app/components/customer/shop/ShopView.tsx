@@ -197,6 +197,9 @@ export function ShopView({
             "Pets",
             "Accessories",
             "Collectibles",
+            "Coffee Beans",
+            "Cups",
+            "Promotional Cards",
           ].map((f) => (
             <button
               key={f}
@@ -207,7 +210,13 @@ export function ShopView({
                 ? lang === "zh"
                   ? "全部商品"
                   : "All goods"
-                : f}
+                : lang === "zh"
+                  ? ({
+                      "Coffee Beans": "咖啡豆",
+                      Cups: "杯子",
+                      "Promotional Cards": "储值卡",
+                    } as Record<string, string>)[f] ?? f
+                  : f}
             </button>
           ))}
         </div>

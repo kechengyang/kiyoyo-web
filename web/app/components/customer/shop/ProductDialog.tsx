@@ -94,7 +94,7 @@ export function ProductDialog({
               onChange={(size) => setCustom({ ...custom, size })}
             />
           )}
-          {!["Sundae", "Soufflé"].includes(modalProduct.category) && (
+          {!["Sundae", "Soufflé", "Hot Drinks"].includes(modalProduct.category) && (
             <>
               <Option
                 title={t.sugar}
