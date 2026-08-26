@@ -56,6 +56,19 @@ export type Product = {
   // 银豹商品数据(以银豹为源:图片热链 / 口味组)
   pospalImages?: PospalImage[];
   pospalTastes?: PospalTaste[];
+  // 手动锁定:true 时银豹同步不覆盖该商品(线上/线下不一致的例外场景)
+  pospalManualOverride?: boolean;
+};
+
+export type PospalSyncDiff = {
+  barcode: string | null;
+  name: string;
+  oldBasePrice: number | null;
+  newBasePrice: number | null;
+  oldName: string | null;
+  newName: string | null;
+  oldCategorySlug: string | null;
+  newCategorySlug: string | null;
 };
 
 export type Store = {

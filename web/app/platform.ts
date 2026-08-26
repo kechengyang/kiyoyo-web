@@ -5,6 +5,7 @@ import type {
   Coupon,
   Order,
   PospalImage,
+  PospalSyncDiff,
   PospalTaste,
   Product,
   ProductTag,
@@ -165,6 +166,7 @@ type ApiProduct = {
   pospal_images_json: PospalImage[] | null;
   pospal_tastes_json: PospalTaste[] | null;
   pospal_no_stock: boolean | null;
+  pospal_manual_override: boolean;
 };
 
 const titleCase = (value: string) =>
@@ -228,6 +230,7 @@ export function mapApiProduct(product: ApiProduct): Product {
       (product.pospal_tastes_json ?? []).length > 0
         ? product.pospal_tastes_json ?? undefined
         : undefined,
+    pospalManualOverride: product.pospal_manual_override,
   };
 }
 
@@ -262,12 +265,21 @@ export async function fetchAdminCatalog() {
   return payload.data.map(mapApiProduct);
 }
 
-/** 手动触发银豹商品字典同步(需 pospal.manage 权限),返回同步统计 */
+/** 手动触发银豹商品字典同步(需 pospal.manage 权限),返回同步统计与差分报表 */
 export async function syncPospalProducts() {
-  const payload = await apiFetch<{ data: { pages: number; items: number; matchedProducts: number } }>(
-    "/v1/admin/pospal/product-sync",
-    { method: "POST" },
-  );
+  const payload = await apiFetch<{
+    data: {
+      pages: number;
+      items: number;
+      productsCreated: number;
+      productsUpdated: number;
+      diffs: PospalSyncDiff[];
+      matchedProducts: number;
+      categories: number;
+      tastes: number;
+      skippedNoBarcode: number;
+    };
+  }>("/v1/admin/pospal/product-sync", { method: "POST" });
   return payload.data;
 }
 

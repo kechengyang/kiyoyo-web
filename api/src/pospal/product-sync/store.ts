@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { CategoryRow, PospalProductRow, PriceDiff, ProductRow, ProductSyncStore, TasteRow } from "./service.js";
+import type { CategoryRow, PospalProductRow, ProductDiff, ProductRow, ProductSyncStore, TasteRow } from "./service.js";
 import { syncScope } from "./service.js";
 
 /** PostgreSQL 实现的同步存储:字典 upsert + 商品本体 upsert + 映射表 + 游标持久化 */
@@ -51,15 +51,20 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
       );
     },
 
-    async upsertProducts(rows: PospalProductRow[]): Promise<{ created: number; updated: number; priceDiffs: PriceDiff[] }> {
-      if (rows.length === 0) return { created: 0, updated: 0, priceDiffs: [] };
+    async upsertProducts(rows: PospalProductRow[]): Promise<{ created: number; updated: number; diffs: ProductDiff[] }> {
+      if (rows.length === 0) return { created: 0, updated: 0, diffs: [] };
 
-      // 更新前读旧价,用于 priceDiffs 报表(base_price not null)
-      const { rows: oldRows } = await pool.query<{ pospal_barcode: string; base_price: number }>(
-        "select pospal_barcode, base_price from products where pospal_barcode = any($1)",
+      // 更新前读旧值,用于差分报表(价格/名字/分类);手动锁定的商品不参与
+      const { rows: oldRows } = await pool.query<{
+        pospal_barcode: string;
+        base_price: number;
+        name_en: string;
+        category_slug: string;
+      }>(
+        "select pospal_barcode, base_price, name_en, category_slug from products where pospal_barcode = any($1) and pospal_manual_override = false",
         [rows.map((row) => row.barcode as string)],
       );
-      const oldByBarcode = new Map(oldRows.map((row) => [row.pospal_barcode, row.base_price]));
+      const oldByBarcode = new Map(oldRows.map((row) => [row.pospal_barcode, row]));
 
       // 步长 = 每行参数个数(11);参数号连续 + 全部显式转类型:
       // null 参数不带类型会 42P18;未标注的 VALUES 列会被推断成 text,
@@ -101,7 +106,7 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
              catalog_version = p.catalog_version + 1,
              updated_at = now()
          from v
-         where p.pospal_barcode = v.barcode`,
+         where p.pospal_barcode = v.barcode and p.pospal_manual_override = false`,
         flat,
       );
 
@@ -120,15 +125,28 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
         flat,
       );
 
-      const priceDiffs: PriceDiff[] = [];
+      const diffs: ProductDiff[] = [];
       for (const row of rows) {
         const old = oldByBarcode.get(row.barcode as string);
+        if (old == null) continue; // 新增商品不算差分
         const next = row.basePrice ?? 0;
-        if (old != null && old !== next) {
-          priceDiffs.push({ barcode: row.barcode, name: row.name, oldBasePrice: old, newBasePrice: next });
-        }
+        const nextCategory = row.categorySlug;
+        const priceChanged = old.base_price !== next;
+        const nameChanged = old.name_en !== row.name;
+        const categoryChanged = old.category_slug !== nextCategory;
+        if (!priceChanged && !nameChanged && !categoryChanged) continue;
+        diffs.push({
+          barcode: row.barcode,
+          name: row.name,
+          oldBasePrice: priceChanged ? old.base_price : null,
+          newBasePrice: priceChanged ? next : null,
+          oldName: nameChanged ? old.name_en : null,
+          newName: nameChanged ? row.name : null,
+          oldCategorySlug: categoryChanged ? old.category_slug : null,
+          newCategorySlug: categoryChanged ? nextCategory : null,
+        });
       }
-      return { created: insertResult.rowCount ?? 0, updated: updateResult.rowCount ?? 0, priceDiffs };
+      return { created: insertResult.rowCount ?? 0, updated: updateResult.rowCount ?? 0, diffs };
     },
     async upsertMappings(rows) {
       if (rows.length === 0) return;

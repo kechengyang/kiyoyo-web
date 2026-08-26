@@ -104,13 +104,15 @@ async function main() {
 
   console.log("== upsertProducts 首轮:两条都 INSERT(null tastes/images/noStock)==");
   const first = await store.upsertProducts([productA1, productNew]);
-  assert.deepEqual({ created: first.created, updated: first.updated, priceDiffs: first.priceDiffs }, { created: 2, updated: 0, priceDiffs: [] });
+  assert.deepEqual({ created: first.created, updated: first.updated, diffs: first.diffs }, { created: 2, updated: 0, diffs: [] });
 
-  console.log("== upsertProducts 次轮:d1 改价 400 → UPDATE + priceDiffs ==");
+  console.log("== upsertProducts 次轮:d1 改价 400 → UPDATE + 差分 ==");
   const second = await store.upsertProducts([{ ...productA1, basePrice: 400 }]);
   assert.equal(second.created, 0);
   assert.equal(second.updated, 1);
-  assert.deepEqual(second.priceDiffs, [{ barcode: "d1", name: "A1 Assam Boba Tea", oldBasePrice: 380, newBasePrice: 400 }]);
+  assert.deepEqual(second.diffs, [
+    { barcode: "d1", name: "A1 Assam Boba Tea", oldBasePrice: 380, newBasePrice: 400, oldName: null, newName: null, oldCategorySlug: null, newCategorySlug: null },
+  ]);
 
   console.log("== alignByBarcode + 游标 ==");
   const matched = await store.alignByBarcode();
@@ -187,10 +189,11 @@ async function main() {
   await store.upsertTastes(realTastes);
   const realUpsert = await store.upsertProducts(realProducts);
   console.log(
-    `  分类 ${realCategories.length} · 口味 ${realTastes.length} · 商品 ${realProducts.length} · created ${realUpsert.created} · updated ${realUpsert.updated} · 价差 ${realUpsert.priceDiffs.length}`,
+    `  分类 ${realCategories.length} · 口味 ${realTastes.length} · 商品 ${realProducts.length} · created ${realUpsert.created} · updated ${realUpsert.updated} · 差分 ${realUpsert.diffs.length}`,
   );
   assert.equal(realUpsert.created, realProducts.length - 2, "B6/B5 条码命中 B2/D4 → 走 UPDATE,其余全部 INSERT");
   assert.equal(realUpsert.updated, 2);
+  assert.equal(realUpsert.diffs.length, 2, "B2←B6(改名)与 D4←B5(改价/名/分类)各产生一条差分");
 
   const { rows: totalRows } = await pool.query("select count(*)::int as n from products");
   assert.equal(totalRows[0].n, 4 + realProducts.length - 2, "商品总数 = 合成 2 + 迁移 2 + 真实目录(去 B6/B5 两条合并)");
@@ -209,7 +212,21 @@ async function main() {
   const { rows: dupCheck } = await pool.query("select count(*)::int as n from products where pospal_uid = 'u1'");
   assert.equal(dupCheck[0].n, 1, "同一 uid 的商品只有一条");
 
-  console.log("\n全部断言通过 ✓ —— 合成 + 0008 数据迁移 + 真实数据 + 手动改码守卫全部通过");
+  // ── 手动锁定:锁定的商品同步不覆盖;解锁后恢复 ──
+  console.log("== 手动锁定 ==");
+  await pool.query("update products set pospal_manual_override = true where pospal_barcode = 'd1-manual'");
+  const locked = await store.upsertProducts([{ ...productA1, barcode: "d1-manual", basePrice: 1, name: "LOCKED NAME" }]);
+  assert.equal(locked.updated, 0, "锁定商品不应被同步更新");
+  const { rows: lockedRow } = await pool.query("select base_price, name_en from products where pospal_barcode = 'd1-manual'");
+  assert.equal(lockedRow[0].base_price, 999, "锁定商品价格保持手动值");
+  assert.equal(lockedRow[0].name_en, "A1 Assam Boba Tea", "锁定商品名字保持");
+
+  await pool.query("update products set pospal_manual_override = false where pospal_barcode = 'd1-manual'");
+  const unlocked = await store.upsertProducts([{ ...productA1, barcode: "d1-manual", basePrice: 1, name: "LOCKED NAME" }]);
+  assert.equal(unlocked.updated, 1, "解锁后恢复银豹覆盖");
+  assert.equal(unlocked.diffs.length, 1, "解锁后的覆盖产生差分");
+
+  console.log("\n全部断言通过 ✓ —— 合成 + 0008 数据迁移 + 真实数据 + 手动改码守卫 + 手动锁定全部通过");
   await pool.end();
 }
 

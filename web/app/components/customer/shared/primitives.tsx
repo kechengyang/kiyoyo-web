@@ -88,7 +88,6 @@ export function DrinkMenuCard({ product, lang, saved, onSave, onOpen }: {
       </button>
       <div className="drink-menu-copy">
         <div className="drink-menu-title">
-          <span>{product.id}</span>
           <h3>{lang === "zh" ? product.nameZh : product.name}</h3>
           <button className={`heart ${saved ? "saved" : ""}`} onClick={onSave} aria-label="Save product">
             {saved ? "♥" : "♡"}

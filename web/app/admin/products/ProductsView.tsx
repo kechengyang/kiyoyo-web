@@ -3,7 +3,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { resolveProductTag, salePrice } from "../../catalog";
 import { money } from "../../data";
-import type { Product, ProductTag, ProductTagTone } from "../../types";
+import type { PospalSyncDiff, Product, ProductTag, ProductTagTone } from "../../types";
 
 export function ProductsView({
   catalog, productTags, showTagManager, setShowTagManager, newTag, setNewTag,
@@ -12,6 +12,7 @@ export function ProductsView({
   productVisibility, setProductVisibility,
   shownProducts, toggleProduct, openProductEditor, openNewProductEditor,
   canWrite, syncingPospal, onSyncPospal, canManagePospal,
+  pospalSyncDiffs, onClosePospalDiffs,
 }: {
   catalog: Product[];
   productTags: ProductTag[];
@@ -39,6 +40,8 @@ export function ProductsView({
   syncingPospal: boolean;
   onSyncPospal: () => void;
   canManagePospal: boolean;
+  pospalSyncDiffs: PospalSyncDiff[];
+  onClosePospalDiffs: () => void;
 }) {
   return (
 <section className="admin-panel wide product-management">
@@ -66,6 +69,42 @@ export function ProductsView({
       )}
     </div>
   </div>
+  {pospalSyncDiffs.length > 0 && (
+    <section className="tag-manager">
+      <div>
+        <span className="red-label">POSPAL SYNC REVIEW</span>
+        <h3>{pospalSyncDiffs.length} changes applied from POSPAL</h3>
+        <p>
+          Review the changes below. To keep a product’s manual values
+          (online vs in-store differences), open it and enable “Manual
+          override (skip POSPAL sync)”.
+        </p>
+      </div>
+      <button onClick={onClosePospalDiffs}>Dismiss</button>
+      <div className="pospal-diff-list">
+        {pospalSyncDiffs.map((diff) => (
+          <article key={`${diff.barcode}-${diff.name}`}>
+            <strong>{diff.name}</strong>
+            {diff.oldName != null && (
+              <span>
+                Name: {diff.oldName} → {diff.newName}
+              </span>
+            )}
+            {diff.oldBasePrice != null && (
+              <span>
+                Price: KSh {diff.oldBasePrice} → {diff.newBasePrice}
+              </span>
+            )}
+            {diff.oldCategorySlug != null && (
+              <span>
+                Category: {diff.oldCategorySlug} → {diff.newCategorySlug}
+              </span>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  )}
   {canWrite && showTagManager && (
     <section className="tag-manager">
       <div>
