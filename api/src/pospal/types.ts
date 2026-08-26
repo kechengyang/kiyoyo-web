@@ -69,3 +69,41 @@ export const productPageResultSchema = z.object({
   list: z.array(pospalProductSchema),
 });
 export type ProductPageResult = z.infer<typeof productPageResultSchema>;
+
+/** 商品分类(product/category-page);uid 为 19 位字符串 */
+export const pospalCategorySchema = z
+  .object({
+    uid: z.union([z.string(), z.number()]),
+    name: z.string().optional(),
+    parentUid: z.union([z.string(), z.number()]).nullable().optional(),
+    enable: z.number().optional(),
+    categoryOrder: z.number().optional(),
+  })
+  .passthrough();
+export type PospalCategory = z.infer<typeof pospalCategorySchema>;
+
+export const categoryPageResultSchema = z.object({
+  ...pageResultBase,
+  list: z.array(pospalCategorySchema),
+});
+export type CategoryPageResult = z.infer<typeof categoryPageResultSchema>;
+
+/** 商品口味(可选项,product/attribute-page);packageType 1多选非必选 2单选非必选 3多选必选 4单选必选 */
+export const pospalTasteSchema = z
+  .object({
+    uid: z.union([z.string(), z.number()]),
+    attributeName: z.string().optional(),
+    attributeValue: z.string().nullable().optional(),
+    isDefault: z.number().optional(),
+    packageUid: z.union([z.string(), z.number()]).nullable().optional(),
+    packageName: z.string().nullable().optional(),
+    packageType: z.number().nullable().optional(),
+  })
+  .passthrough();
+export type PospalTaste = z.infer<typeof pospalTasteSchema>;
+
+export const tastePageResultSchema = z.object({
+  ...pageResultBase,
+  list: z.array(pospalTasteSchema),
+});
+export type TastePageResult = z.infer<typeof tastePageResultSchema>;

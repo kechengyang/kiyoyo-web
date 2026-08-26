@@ -16,6 +16,7 @@ import {
 import { listActiveProviders } from "./modules/auth/repository.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { createPickupToken, hashPickupToken, verifyPickupSignature } from "./crypto.js";
+import { productSlug } from "./product-slug.js";
 import { calculateCouponDiscount, type CouponRow } from "./coupons.js";
 import { registerAdminAccessRoutes } from "./admin/access-routes.js";
 import { registerAdminSessionRoutes } from "./admin/session-routes.js";
@@ -117,7 +118,8 @@ app.get("/v1/stores/:id", async (request, reply) => {
 
 const productColumns = `p.id,p.external_code,p.kind,p.category_slug,p.slug,p.name_en,p.name_zh,p.description_en,p.description_zh,
   p.image_key,p.base_price,p.size_prices_json,p.discount_percent,round(p.base_price*(100-p.discount_percent)/100.0)::integer as effective_price,
-  p.active,p.catalog_version,p.updated_at,t.id as tag_id,t.label as tag_label,t.tone as tag_tone`;
+  p.active,p.catalog_version,p.updated_at,t.id as tag_id,t.label as tag_label,t.tone as tag_tone,
+  p.pospal_images_json,p.pospal_tastes_json,p.pospal_no_stock`;
 
 const productSelect = `select ${productColumns}
   from products p left join product_tags t on t.id=p.tag_id and t.active=true`;
@@ -128,16 +130,6 @@ const adminProductSelect = `select ${productColumns},
   m.pospal_uid,p.pospal_barcode,m.pospal_name,m.pospal_sell_price_cents,m.last_synced_at as pospal_synced_at
   from products p left join product_tags t on t.id=p.tag_id and t.active=true
   left join pospal_product_mappings m on m.product_id=p.id and m.status='ACTIVE'`;
-
-const productSlug = (name: string, category: string) => {
-  const stem = `${category}-${name}`
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120);
-  return `${stem || "product"}-${randomUUID().slice(0, 8)}`;
-};
 
 const productWriteSchema = z.object({
   name_en: z.string().trim().min(1).max(160),
@@ -660,9 +652,14 @@ app.patch("/v1/admin/products/:id", { preHandler: requirePermission("products.wr
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const input = productWriteSchema.partial().extend({ active: z.boolean().optional(), catalog_version: z.number().int().positive() }).parse(request.body);
   if (Object.hasOwn(input, "tag_id") && !(await assertActiveTag(input.tag_id ?? null, reply))) return;
-  const current = await query<{ image_key: string | null; catalog_version: number }>("select image_key,catalog_version from products where id=$1", [id]);
+  const current = await query<{ image_key: string | null; catalog_version: number; pospal_images_json: unknown }>(
+    "select image_key,catalog_version,pospal_images_json from products where id=$1",
+    [id],
+  );
   if (!current.rowCount) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Product not found" } });
-  if (input.active === true && !current.rows[0].image_key?.startsWith(`gcs://${config.mediaBucket}/products/`)) {
+  // 上架要求有图:Web 图(gcs)或银豹同步图(热链 CDN)二者有一即可
+  const hasPospalImage = Array.isArray(current.rows[0].pospal_images_json) && current.rows[0].pospal_images_json.length > 0;
+  if (input.active === true && !current.rows[0].image_key?.startsWith(`gcs://${config.mediaBucket}/products/`) && !hasPospalImage) {
     return reply.code(422).send({ error: { code: "PRODUCT_IMAGE_REQUIRED", message: "Upload a product image to the KIYOYO media bucket before publishing" } });
   }
   const result = await query(

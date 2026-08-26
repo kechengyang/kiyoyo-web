@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  categoryPageResultSchema,
   pospalErrorSchema,
   pospalSuccessSchema,
   productPageResultSchema,
+  tastePageResultSchema,
   userPageResultSchema,
+  type CategoryPageResult,
   type ProductPageResult,
+  type TastePageResult,
   type UserPageResult,
 } from "./types.js";
 
@@ -104,9 +108,34 @@ export function createPospalClient(config: PospalClientConfig) {
     getUserPage(input: { account: string; lastId?: string | number }): Promise<UserPageResult> {
       return request(`${API_BASE_PATH}/user/page`, { account: input.account, ...(input.lastId != null && { lastId: input.lastId }) }, userPageResultSchema);
     },
-    /** 查询商品(游标分页;lastId 为上次响应的 nextLastId,字符串与数字均可) */
-    getProductPage(input: { account: string; lastId?: string | number }): Promise<ProductPageResult> {
-      return request(`${API_BASE_PATH}/product/increment-page`, { account: input.account, ...(input.lastId != null && { lastId: input.lastId }) }, productPageResultSchema);
+    /** 查询商品(游标分页;needImages/needTastes 开启扩展字段,每个开关 +20 token/页) */
+    getProductPage(input: { account: string; lastId?: string | number; needImages?: boolean; needTastes?: boolean }): Promise<ProductPageResult> {
+      return request(
+        `${API_BASE_PATH}/product/increment-page`,
+        {
+          account: input.account,
+          ...(input.lastId != null && { lastId: input.lastId }),
+          ...(input.needImages && { needImages: true }),
+          ...(input.needTastes && { needTastes: true }),
+        },
+        productPageResultSchema,
+      );
+    },
+    /** 查询商品分类(字典;limit 默认/最大 100) */
+    getCategoryPage(input: { account: string; lastId?: string | number; limit?: number }): Promise<CategoryPageResult> {
+      return request(
+        `${API_BASE_PATH}/product/category-page`,
+        { account: input.account, ...(input.lastId != null && { lastId: input.lastId }), ...(input.limit != null && { limit: input.limit }) },
+        categoryPageResultSchema,
+      );
+    },
+    /** 查询商品口味(可选项字典;sugar/ICE/ADD ONS 等口味组) */
+    getAttributePage(input: { account: string; lastId?: string | number; limit?: number }): Promise<TastePageResult> {
+      return request(
+        `${API_BASE_PATH}/product/attribute-page`,
+        { account: input.account, ...(input.lastId != null && { lastId: input.lastId }), ...(input.limit != null && { limit: input.limit }) },
+        tastePageResultSchema,
+      );
     },
   };
 }

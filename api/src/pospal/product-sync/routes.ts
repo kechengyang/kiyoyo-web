@@ -55,6 +55,9 @@ export function registerProductSyncRoutes(app: FastifyInstance, deps: ProductSyn
       matched_count: string;
       unmatched_product_count: string;
       unmatched_pospal_count: string;
+      pospal_categories: string;
+      pospal_tastes: string;
+      products_with_pospal_uid: string;
       last_synced_at: string | null;
     }>(
       `select
@@ -63,6 +66,9 @@ export function registerProductSyncRoutes(app: FastifyInstance, deps: ProductSyn
          (select count(*) from products p where not exists (
             select 1 from pospal_product_mappings m2 where m2.product_id = p.id and m2.status='ACTIVE')) as unmatched_product_count,
          (select count(*) from pospal_product_mappings m3 where m3.status='ACTIVE' and m3.product_id is null) as unmatched_pospal_count,
+         (select count(*) from pospal_categories) as pospal_categories,
+         (select count(*) from pospal_taste_options) as pospal_tastes,
+         (select count(*) from products p where p.pospal_uid is not null) as products_with_pospal_uid,
          (select last_synced_at from pospal_sync_state where scope=$1) as last_synced_at`,
       [scope],
     );
