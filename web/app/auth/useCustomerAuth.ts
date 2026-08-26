@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { apiFetch } from "../platform";
 import type { Lang } from "../types";
 import { authErrorCode } from "./errors";
 import {
   consumeRedirectResult,
+  beginMemberPhoneVerification,
   linkMemberPassword,
   linkMemberProvider,
   observeMember,
@@ -17,6 +18,7 @@ import {
   signOutMember,
   unlinkMemberProvider,
   providersFromUser,
+  type MemberPhoneChallenge,
 } from "./service";
 import type { AuthPhase } from "./state";
 import type {
@@ -31,6 +33,9 @@ type BootstrapResponse = {
   auth: {
     uid: string;
     emailVerified: boolean;
+    phoneNumber: string | null;
+    phoneVerified: boolean;
+    membershipReady: boolean;
     providers: Array<"PASSWORD" | "GOOGLE">;
   };
 };
@@ -41,6 +46,7 @@ export function useCustomerAuth(lang: Lang) {
   const [phase, setPhase] = useState<AuthPhase>("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<AuthErrorCode | null>(null);
+  const phoneChallenge = useRef<MemberPhoneChallenge | null>(null);
 
   const syncUser = useCallback(
     async (user: User | null) => {
@@ -65,6 +71,9 @@ export function useCustomerAuth(lang: Lang) {
         memberId: payload.data.id,
         email: user.email,
         emailVerified: payload.auth.emailVerified,
+        phoneNumber: payload.auth.phoneNumber,
+        phoneVerified: payload.auth.phoneVerified,
+        membershipReady: payload.auth.membershipReady,
         providers: providersFromUser(user),
         status: payload.data.status,
       };
@@ -126,6 +135,36 @@ export function useCustomerAuth(lang: Lang) {
     [run, syncUser],
   );
 
+  const resetPhoneVerification = useCallback(() => {
+    phoneChallenge.current?.clear();
+    phoneChallenge.current = null;
+  }, []);
+
+  useEffect(() => () => resetPhoneVerification(), [resetPhoneVerification]);
+
+  const sendPhoneCode = useCallback(
+    (phoneNumber: string, recaptchaContainer: HTMLElement) =>
+      run(async () => {
+        resetPhoneVerification();
+        phoneChallenge.current = await beginMemberPhoneVerification(
+          phoneNumber,
+          recaptchaContainer,
+        );
+      }),
+    [resetPhoneVerification, run],
+  );
+
+  const confirmPhoneCode = useCallback(
+    (code: string) =>
+      run(async () => {
+        if (!phoneChallenge.current) throw new Error("PHONE_CHALLENGE_REQUIRED");
+        const user = await phoneChallenge.current.confirm(code);
+        resetPhoneVerification();
+        return syncUser(user);
+      }),
+    [resetPhoneVerification, run, syncUser],
+  );
+
   return {
     session,
     phase,
@@ -140,6 +179,9 @@ export function useCustomerAuth(lang: Lang) {
     resendVerification: () =>
       run(() => sendMemberVerification("/?auth=verified")),
     refresh,
+    sendPhoneCode,
+    confirmPhoneCode,
+    resetPhoneVerification,
     linkProvider: () =>
       refreshAfterProviderChange(() => linkMemberProvider()),
     linkPassword: (email: string, password: string) =>

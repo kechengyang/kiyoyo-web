@@ -28,6 +28,10 @@ export function registerAuthRoutes(
         auth: {
           uid: actor.authId,
           emailVerified: actor.emailVerified,
+          phoneNumber: actor.phoneNumber,
+          phoneVerified: actor.phoneVerified,
+          membershipReady:
+            Boolean(actor.email && actor.emailVerified) && actor.phoneVerified,
           providers: actor.providers.map((identity) => identity.provider),
         },
         permissions: { admin: actor.isAdmin },

@@ -30,6 +30,8 @@ test("all providers and safe recovery actions are implemented", () => {
   assert.doesNotMatch(service, /FacebookAuthProvider/);
   assert.match(service, /sendPasswordResetEmail/);
   assert.match(service, /sendEmailVerification/);
+  assert.match(service, /linkWithPhoneNumber/);
+  assert.match(service, /RecaptchaVerifier/);
   assert.match(actionPage, /applyEmailVerification/);
   assert.match(actionPage, /applyPasswordReset/);
 });
@@ -39,6 +41,7 @@ test("checkout verification and local-state preservation remain explicit", () =>
   const hook = source("../app/auth/useCustomerAuth.ts");
 
   assert.match(app, /if \(!session\.emailVerified\)/);
+  assert.match(app, /if \(!session\.phoneVerified\)/);
   assert.match(app, /setVerificationGate\(true\)/);
   assert.match(app, /saveMemberFavorite/);
   assert.match(app, /fetchMemberFavorites/);
@@ -47,6 +50,19 @@ test("checkout verification and local-state preservation remain explicit", () =>
   assert.match(hook, /setPhase\("bootstrapError"\)/);
   assert.match(app, /shouldClearMemberData\(customerAuth\.phase\)/);
   assert.doesNotMatch(serviceSource(), /pendingLinkCredential/);
+});
+
+test("verified phone membership is enforced across UI and infrastructure", () => {
+  const gate = source(
+    "../app/components/customer/auth/PhoneVerificationGate.tsx",
+  );
+  const terraform = source("../../infra/terraform/firebase.tf");
+
+  assert.match(gate, /autoComplete="one-time-code"/);
+  assert.match(gate, /normalizeKenyanMobile/);
+  assert.match(gate, /role="alert"/);
+  assert.match(terraform, /phone_number\s*{\s*enabled = true/s);
+  assert.match(terraform, /allowed_regions = \["KE"\]/);
 });
 
 function serviceSource() {

@@ -2,7 +2,7 @@
 
 状态：已实施
 
-最后更新：2026-08-12
+最后更新：2026-08-26
 
 适用范围：顾客 Web、Commerce API、Cloud SQL、Firebase Authentication / Google Cloud Identity Platform
 
@@ -16,9 +16,10 @@ KIYOYO 顾客账号统一使用 Firebase Authentication 处理身份凭据，KIY
 - Google 登录；
 - 忘记密码和安全重置；
 - 注册后邮箱验证、验证邮件重发和链接过期处理；
+- 注册/首次登录后通过 SMS 验证并绑定唯一肯尼亚手机号；
 - 同一 Firebase 用户关联多种登录方式；
 - 防止移除最后一种登录方式；
-- 未验证邮箱可浏览和维护购物车，但不能提交结账；
+- 未完成邮箱或手机号验证的账号保持 Pending 会员状态，可浏览和维护购物车，但不能提交结账；
 - 登录时把游客收藏并入会员收藏，保留本地购物车和结账返回状态；
 - 停用会员在 API 层被统一拒绝。
 
@@ -28,12 +29,12 @@ KIYOYO 数据库不保存密码、密码哈希、Firebase refresh token、Google
 
 | 层级 | 技术 | 职责 |
 | --- | --- | --- |
-| 浏览器身份 | Firebase Authentication Web SDK | 注册、登录、OAuth 弹窗/重定向、验证邮件、重置密码、账号关联、会话持久化 |
-| API 身份校验 | Firebase Admin SDK | 验证 ID token，从可信 claims 读取 uid、email、email_verified 和 provider identities |
+| 浏览器身份 | Firebase Authentication Web SDK | 注册、登录、OAuth 弹窗/重定向、验证邮件、SMS 手机验证、账号关联、会话持久化 |
+| API 身份校验 | Firebase Admin SDK | 验证 ID token，从可信 claims 读取 uid、email、email_verified、phone_number 和 provider identities |
 | Web 应用 | Next.js / React / TypeScript | 双语登录 UI、会话 hook、验证 gate、状态恢复 |
-| API | Fastify / TypeScript / Zod | bootstrap、账号状态和 verified-email middleware、兼容响应 |
-| 业务数据库 | PostgreSQL / Cloud SQL | 会员主记录和 provider identity 映射，不保存第三方凭据 |
-| 基础设施 | Terraform + Firebase / Identity Platform 控制台 | 项目、Web App、授权域名、邮件登录和运行环境 |
+| API | Fastify / TypeScript / Zod | bootstrap、账号状态和 verified-membership middleware、兼容响应 |
+| 业务数据库 | PostgreSQL / Cloud SQL | 会员主记录、唯一 E.164 手机号和 provider identity 映射，不保存第三方凭据 |
+| 基础设施 | Terraform + Firebase / Identity Platform 控制台 | 项目、Web App、授权域名、邮件/手机登录、肯尼亚 SMS allowlist 和运行环境 |
 
 选择 Firebase/Identity Platform 的主要原因是：已有 GCP/Firebase 基础设施；三种登录方式使用同一 token 校验链路；密码和 OAuth 凭据不进入 KIYOYO 系统；密码重置、验证邮件和 provider linking 可使用成熟 SDK。
 
@@ -43,6 +44,7 @@ KIYOYO 数据库不保存密码、密码哈希、Firebase refresh token、Google
 web/app/auth/
   firebase.ts          Firebase 初始化
   service.ts           Firebase SDK 操作和账号关联
+  phone.ts             肯尼亚手机号规范化与脱敏展示
   errors.ts            SDK 错误到稳定业务错误码
   types.ts             会话、provider、状态类型
   useCustomerAuth.ts   会话监听、bootstrap、pending action
@@ -51,6 +53,7 @@ web/app/components/customer/auth/
   AuthDialog.tsx       登录、注册、找回密码入口
   PasswordFields.tsx   密码输入、显示和确认
   VerificationGate.tsx 结账邮箱验证 gate
+  PhoneVerificationGate.tsx SMS 验证和会员激活 gate
   ProviderManager.tsx  登录方式关联/移除
 
 web/app/auth/action/page.tsx
@@ -61,7 +64,7 @@ api/src/modules/auth/
   schemas.ts           请求 schema
   service.ts           bootstrap 业务编排
   repository.ts        用户及 identity SQL
-  middleware.ts        token、状态、邮箱验证 gate
+  middleware.ts        token、状态、邮箱/手机会员验证 gate
   types.ts             服务端身份类型
 ```
 
@@ -82,7 +85,7 @@ flowchart LR
 
 Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Google 和密码登录关联到同一 Firebase 用户后，只产生一个 `users` 会员记录，因此不会复制订单、积分或优惠券账户。
 
-请求体中的 `email` 或 `provider` 不参与授权；API 只读取 Firebase Admin SDK 验证后的 claims。
+请求体中的 `email`、`phone` 或 `provider` 不参与授权；API 只读取 Firebase Admin SDK 验证后的 claims。配送地址里的联系电话是履约数据，不能充当会员认证号码。
 
 ## 5. 数据模型
 
@@ -93,6 +96,8 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 | `external_auth_id` | text, unique | Firebase uid；继续兼容原有 bootstrap |
 | `email` | text | 最近一次可信 token 中的邮箱 |
 | `email_verified_at` | timestamptz, nullable | 当前邮箱已验证的时间；未验证时为空 |
+| `phone_e164` | text, nullable, unique | 最近一次可信 token 中的 E.164 手机号；一个号码只能属于一个会员 |
+| `phone_verified_at` | timestamptz, nullable | 当前手机号完成 Firebase SMS 验证的时间；与 `phone_e164` 同为空或同为非空 |
 | `last_login_at` | timestamptz | 最近一次 bootstrap 时间 |
 | `status` | text | `ACTIVE`、`SUSPENDED`、`DELETED` |
 
@@ -128,7 +133,8 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 2. Firebase 创建身份并立即发送验证邮件。
 3. Web 取得 ID token，调用 `POST /v1/auth/bootstrap`。
 4. API 从 token 同步 uid、邮箱、验证状态和可信的 social provider identities。
-5. 用户可继续浏览、收藏和维护购物车；结账前必须验证邮箱。
+5. Web 要求用户继续完成 SMS 手机验证；未完成前账号显示为 Pending 会员。
+6. 用户可继续浏览、收藏和维护购物车；结账前必须同时验证邮箱和手机号。
 
 密码仅从浏览器发送给 Google Identity Toolkit，不经过 KIYOYO API。
 
@@ -138,17 +144,23 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 
 如果 Firebase 返回“同邮箱已有其他登录方式”，用户先使用已有方式进入同一账号，再从 Account security 关联新 provider。关联完成后强制刷新 token 并重新 bootstrap。
 
-### 6.3 忘记密码
+### 6.3 手机号验证和强绑定
+
+Web 将肯尼亚本地号码规范化为 E.164（例如 `0712 345 678` → `+254712345678`），通过 Firebase `RecaptchaVerifier` 和 `linkWithPhoneNumber` 向当前 Firebase uid 关联 Phone Credential。验证码只提交给 Firebase，不经过 KIYOYO API。
+
+验证码成功后强制刷新 ID token，再调用 bootstrap。API 只接受 token 的 `phone_number`，同步到 `users.phone_e164`；数据库格式约束和唯一索引提供第二层保护。号码已属于其他 Firebase 账号时必须阻止绑定并进入原账号登录/人工恢复流程，禁止自动覆盖或只按号码合并业务数据。
+
+### 6.4 忘记密码
 
 找回页面始终显示相同成功文案：“如果账号存在，重置邮件已发送”，避免泄露邮箱是否注册。`/auth/action` 校验 action code、要求新密码并处理过期、无效或已使用链接。
 
-### 6.4 邮箱验证和结账恢复
+### 6.5 邮箱、手机号验证和结账恢复
 
-前端在开始结账时检查 `emailVerified`，API 在 `POST /v1/checkouts` 再次执行 `requireVerifiedEmail`。未验证时返回稳定错误码 `EMAIL_VERIFICATION_REQUIRED`。
+前端在开始结账时先检查 `phoneVerified`，再检查 `emailVerified`；API 在 `POST /v1/checkouts` 再次执行 `requireVerifiedMembership`。未验证时分别返回稳定错误码 `PHONE_VERIFICATION_REQUIRED` 或 `EMAIL_VERIFICATION_REQUIRED`。
 
 验证完成后，Web reload Firebase 用户并强制刷新 ID token，再 bootstrap。购物车、门店、语言、游客收藏和 pending checkout 不被清空，用户可回到原结账流程。API bootstrap 暂时失败时进入独立错误状态，不按“已登出”清除本地订单兜底数据。
 
-### 6.5 登录方式管理
+### 6.6 登录方式管理
 
 Account security 展示两种 provider。用户可增加 Google 或密码方式；只有存在至少两种有效方式时才允许移除。页面不直接调用 Firebase SDK，所有动作通过 auth hook 完成。账号冲突不会跨对话框暂存 OAuth credential；用户使用原方式登录后，再从 Account security 主动关联新方式。
 
@@ -177,6 +189,9 @@ Content-Type: application/json
   "auth": {
     "uid": "firebase-uid",
     "emailVerified": true,
+    "phoneNumber": "+254712345678",
+    "phoneVerified": true,
+    "membershipReady": true,
     "providers": ["GOOGLE"]
   },
   "permissions": {
@@ -191,6 +206,7 @@ Content-Type: application/json
 
 - Firebase 本地会话持久化由 SDK 管理，不创建自定义长期 session localStorage；旧 `kiyoyo-session` 会被清除。
 - 生产环境应启用 email enumeration protection；官方建议所有项目开启。
+- Phone provider 只允许 `KE` 区域；Web 使用 Firebase reCAPTCHA，监控发送/验证比率和异常费用，真实短信仅在 Blaze 方案发送。
 - 密码最少 10 个字符，允许密码管理器粘贴；服务端策略需在 Identity Platform 设置为 enforce。
 - 重置密码文案不披露账号存在性。
 - Admin 邮箱 allowlist 只在 token 的邮箱已验证时生效。
@@ -204,9 +220,9 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 
 每个环境按以下清单配置：
 
-1. Firebase Authentication → Sign-in method：启用 Email/Password 与 Google。
+1. Firebase Authentication → Sign-in method：启用 Email/Password、Google 与 Phone。
 2. Authentication → Settings：加入正式 Web 域名和预览域名；移除不再使用的域名。
-3. 启用 email enumeration protection。
+3. SMS region policy 仅允许肯尼亚 `KE`，并启用 email enumeration protection。
 4. Password policy：enforce，最少 10 字符；已有用户迁移阶段不强制升级旧密码。
 5. Email templates：设置发件人、品牌文案，并把验证/重置 Action URL 指向正式站点 `/auth/action`。
 6. Google OAuth consent screen 切换生产状态前，完成域名验证、隐私政策与必要审核。
@@ -216,6 +232,7 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 - [Identity Platform 密码策略](https://cloud.google.com/identity-platform/docs/password-policy)
 - [Email enumeration protection](https://cloud.google.com/identity-platform/docs/admin/email-enumeration-protection)
 - [Firebase Google 登录](https://firebase.google.com/docs/auth/web/google-signin)
+- [Firebase Web 手机认证](https://firebase.google.com/docs/auth/web/phone-auth)
 - [Firebase 自定义邮件 action handler](https://firebase.google.com/docs/auth/custom-email-handler)
 
 ## 10. 成本
@@ -230,23 +247,23 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 | 250,000 | 约 USD 965 |
 | 1,000,000 | 约 USD 4,415 |
 
-以上不包含 Cloud Run、Cloud SQL、网络流量、自定义邮件发送、监控以及人工运维成本。Google provider 本身不会形成另一份 Identity Platform Tier 1 计费，但 Google 的审核、隐私材料和账号运营需要人力。
+以上不包含 Cloud Run、Cloud SQL、网络流量、自定义邮件发送、SMS 和人工运维成本。肯尼亚验证短信按发送条数单独计费；2026-08-26 官方公开价为每条 USD 0.14、每天前 10 条免费，重发也计入发送量，预算必须以上线当期价格为准。Google provider 本身不会形成另一份 Identity Platform Tier 1 计费，但 Google 的审核、隐私材料和账号运营需要人力。
 
 ## 11. 测试与验收
 
 自动化验证包含：
 
 - Web ESLint、TypeScript、Vinext SSR/契约测试、Vinext build 和 Next production build；
-- auth 模块边界、Google/password provider、验证/重置 action、结账 gate、状态保留的契约测试；
+- auth 模块边界、Google/password/phone provider、号码规范化、验证/重置 action、结账 gate、状态保留的契约测试；
 - API TypeScript、provider claims 映射、bootstrap service、注入式路由、稳定错误码测试；
-- migration 前向扩展、provider 约束、有效 identity 唯一性契约；
+- migration 前向扩展、手机号格式/唯一性、provider 约束、有效 identity 唯一性契约；
 - 仓库统一 `scripts/verify-refactor.sh`、Terraform format 和 Git whitespace。
 
-人工/集成环境仍需使用测试 Firebase 项目验证：真实邮件投递、过期 action code、Google 取消与回调、同邮箱关联、停用用户，以及 390/768/1280/1440px 中英文键盘操作。
+人工/集成环境仍需使用 Firebase 测试号码验证：reCAPTCHA、正确/错误/过期验证码、重复号码冲突、短信重发限流；另需验证真实邮件投递、Google 取消与回调、同邮箱关联、停用用户，以及 390/768/1280/1440px 中英文键盘操作。自动化测试禁止发送真实短信。
 
 ## 12. 运维与回滚
 
-- 发布顺序：数据库 migration → API → Web → OAuth provider 生产开关。
+- 发布顺序：数据库 migration → API → Identity Platform Phone provider 与 `KE` allowlist → Web → 受控测试号码验收 → 正式开放。
 - API 和 Web 均兼容旧 bootstrap 路径及旧用户主表字段。
 - 回滚 Web/API 不需要回滚 migration；新增列和 `user_identities` 可保留。
 - 不执行向后 migration，不删除用户身份数据。

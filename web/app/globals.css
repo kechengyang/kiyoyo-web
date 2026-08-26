@@ -1739,7 +1739,7 @@ button {
 }
 .profile-facts {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   margin: 25px 0;
   border: 1px solid var(--line);
 }
@@ -2254,6 +2254,42 @@ button {
   line-height: 1.5;
 }
 .auth-terms { text-align: center; }
+.phone-consent {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.phone-code-destination {
+  padding: 12px;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  background: var(--cream);
+  color: var(--muted);
+  font-size: 11px;
+}
+.phone-code-destination strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 13px;
+}
+.phone-recaptcha {
+  min-height: 1px;
+}
+.phone-verification-banner {
+  border-color: var(--red);
+  background: #fff1ef;
+}
+.member-card.membership-pending {
+  background: var(--cream);
+  color: var(--ink);
+}
+.member-card.membership-pending .logo,
+.member-card.membership-pending i {
+  color: var(--red);
+}
 .verification-gate > strong {
   display: block;
   margin: 20px 0;

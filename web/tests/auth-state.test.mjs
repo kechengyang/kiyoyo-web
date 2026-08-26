@@ -27,6 +27,7 @@ const toolkitErrors = await importTypeScriptModule(
 const providerMapping = await importTypeScriptModule(
   "../app/auth/providers.ts",
 );
+const phone = await importTypeScriptModule("../app/auth/phone.ts");
 
 test("only explicitly guest-owned favourites are uploaded", () => {
   assert.deepEqual(
@@ -141,4 +142,13 @@ test("provider display never infers password from a social email", () => {
     ]),
     ["password"],
   );
+});
+
+test("Kenyan member phones normalize to one E.164 identity", () => {
+  assert.equal(phone.normalizeKenyanMobile("0712 345 678"), "+254712345678");
+  assert.equal(phone.normalizeKenyanMobile("254-712-345-678"), "+254712345678");
+  assert.equal(phone.normalizeKenyanMobile("+254 (112) 345 678"), "+254112345678");
+  assert.equal(phone.normalizeKenyanMobile("+1 650 555 0101"), null);
+  assert.equal(phone.normalizeKenyanMobile("0712"), null);
+  assert.equal(phone.maskedPhoneNumber("+254712345678"), "+254 ••• ••678");
 });

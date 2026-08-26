@@ -52,6 +52,7 @@ import { StoreDialog } from "./customer/fulfillment/StoreDialog";
 import { CheckoutDialog } from "./customer/cart/CheckoutDialog";
 import { AuthDialog } from "./customer/auth/AuthDialog";
 import { VerificationGate } from "./customer/auth/VerificationGate";
+import { PhoneVerificationGate } from "./customer/auth/PhoneVerificationGate";
 import { ProfileDialog } from "./customer/account/ProfileDialog";
 import { AddressDialog } from "./customer/account/AddressDialog";
 import { OrderAddressDialog } from "./customer/orders/OrderAddressDialog";
@@ -131,6 +132,7 @@ export default function KiyoyoApp({
   });
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [verificationGate, setVerificationGate] = useState(false);
+  const [phoneVerificationGate, setPhoneVerificationGate] = useState(false);
   const [profileModal, setProfileModal] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileForm, setProfileForm] = useState({
@@ -749,6 +751,10 @@ export default function KiyoyoApp({
   const completeAuth = (nextSession: typeof session) => {
     if (!nextSession) return;
     setAuthMode(null);
+    if (!nextSession.phoneVerified) {
+      setPhoneVerificationGate(true);
+      return;
+    }
     if (!pendingCheckout) return;
     if (!nextSession.emailVerified) {
       setVerificationGate(true);
@@ -923,6 +929,11 @@ export default function KiyoyoApp({
     if (hasUnavailable) return;
     if (!session) {
       openAuth("signin", true);
+      return;
+    }
+    if (!session.phoneVerified) {
+      setPendingCheckout(true);
+      setPhoneVerificationGate(true);
       return;
     }
     if (!session.emailVerified) {
@@ -1318,6 +1329,10 @@ export default function KiyoyoApp({
             unlinkProvider={customerAuth.unlinkProvider}
             resendVerification={customerAuth.resendVerification}
             refreshVerification={customerAuth.refresh}
+            openPhoneVerification={() => {
+              customerAuth.clearError();
+              setPhoneVerificationGate(true);
+            }}
             go={go}
           />
         )}
@@ -1437,11 +1452,50 @@ export default function KiyoyoApp({
             if (!refreshed?.emailVerified) return false;
             setVerificationGate(false);
             if (pendingCheckout) {
-              setCheckout(true);
-              setCheckoutChannel(null);
-              setPendingCheckout(false);
+              if (!refreshed.phoneVerified) {
+                setPhoneVerificationGate(true);
+              } else {
+                setCheckout(true);
+                setCheckoutChannel(null);
+                setPendingCheckout(false);
+              }
             }
             return true;
+          }}
+        />
+      )}
+
+      {phoneVerificationGate && session && (
+        <PhoneVerificationGate
+          t={t}
+          busy={customerAuth.busy}
+          error={customerAuth.error}
+          onClearError={customerAuth.clearError}
+          onReset={() => {
+            customerAuth.resetPhoneVerification();
+            customerAuth.clearError();
+          }}
+          onClose={() => {
+            customerAuth.resetPhoneVerification();
+            customerAuth.clearError();
+            setPhoneVerificationGate(false);
+            setPendingCheckout(false);
+          }}
+          onSend={customerAuth.sendPhoneCode}
+          onConfirm={async (code) => {
+            const refreshed = await customerAuth.confirmPhoneCode(code);
+            if (!refreshed?.phoneVerified) return refreshed;
+            setPhoneVerificationGate(false);
+            if (pendingCheckout) {
+              if (!refreshed.emailVerified) {
+                setVerificationGate(true);
+              } else {
+                setCheckout(true);
+                setCheckoutChannel(null);
+                setPendingCheckout(false);
+              }
+            }
+            return refreshed;
           }}
         />
       )}

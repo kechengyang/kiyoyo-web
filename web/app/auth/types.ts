@@ -5,6 +5,9 @@ export type AuthSession = {
   memberId: string;
   email: string | null;
   emailVerified: boolean;
+  phoneNumber: string | null;
+  phoneVerified: boolean;
+  membershipReady: boolean;
   providers: AuthProvider[];
   status: "ACTIVE" | "SUSPENDED" | "DELETED";
 };
@@ -20,6 +23,10 @@ export type AuthErrorCode =
   | "network"
   | "popup"
   | "provider"
+  | "phoneInvalid"
+  | "phoneInUse"
+  | "codeInvalid"
+  | "captcha"
   | "rateLimit"
   | "recentLogin"
   | "weakPassword"
