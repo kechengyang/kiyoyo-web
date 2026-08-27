@@ -1275,19 +1275,9 @@ button {
 }
 .drink-menu-title {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: start;
   gap: 8px;
-}
-.drink-menu-title > span {
-  min-width: 26px;
-  padding: 4px 5px;
-  border-radius: 99px;
-  background: var(--red);
-  color: #fff;
-  font-size: 8px;
-  font-weight: 900;
-  text-align: center;
 }
 .drink-menu-title h3 {
   margin: 2px 0 0;
@@ -4077,7 +4067,7 @@ button {
     font-size: 6px;
   }
   .drink-menu-title {
-    grid-template-columns: auto minmax(0, 1fr) 32px;
+    grid-template-columns: minmax(0, 1fr) 32px;
     gap: 5px;
   }
   .drink-menu-title h3 {
