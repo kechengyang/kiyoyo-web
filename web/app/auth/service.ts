@@ -14,7 +14,6 @@ import {
   linkWithPhoneNumber,
   onAuthStateChanged,
   reload,
-  sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
@@ -93,12 +92,6 @@ export async function signInStaff(username: string, password: string) {
 }
 
 export const consumeRedirectResult = () => getRedirectResult(auth);
-
-export const sendMemberVerification = async (returnTo = "/") => {
-  if (!auth.currentUser) throw new Error("Sign in required");
-  auth.languageCode = document.documentElement.lang || "en";
-  await sendEmailVerification(auth.currentUser, actionSettings(returnTo));
-};
 
 export const sendMemberPasswordReset = (email: string, returnTo = "/") => {
   auth.languageCode = document.documentElement.lang || "en";

@@ -46,16 +46,16 @@ test("trustedProviderIdentities does not infer password from email claims", () =
   assert.deepEqual(providers, []);
 });
 
-test("verified membership gate requires both email and phone", () => {
+test("verified membership gate requires phone but not verified email", () => {
   assert.deepEqual(verifiedMembershipError(undefined), {
-    code: "EMAIL_VERIFICATION_REQUIRED",
-    message: "Verify your email before checking out",
+    code: "PHONE_VERIFICATION_REQUIRED",
+    message: "Verify your phone number before checking out",
   });
   assert.deepEqual(
     verifiedMembershipError({
       authId: "firebase-user-3",
       email: "member@example.com",
-      emailVerified: true,
+      emailVerified: false,
       phoneNumber: null,
       phoneVerified: false,
       authTime: 0,
@@ -75,7 +75,7 @@ test("verified membership gate requires both email and phone", () => {
     verifiedMembershipError({
       authId: "firebase-user-3",
       email: "member@example.com",
-      emailVerified: true,
+      emailVerified: false,
       phoneNumber: "+254712345678",
       phoneVerified: true,
       authTime: 0,
@@ -95,7 +95,7 @@ test("bootstrap service only persists trusted actor identity", async () => {
   const actor = {
     authId: "trusted-firebase-uid",
     email: "trusted@example.com",
-    emailVerified: true,
+    emailVerified: false,
     phoneNumber: "+254712345678",
     phoneVerified: true,
     authTime: 0,
@@ -119,7 +119,7 @@ test("bootstrap service only persists trusted actor identity", async () => {
     email: actor.email,
     nickname: "Member",
     locale: "en",
-    emailVerified: true,
+    emailVerified: false,
     phoneNumber: actor.phoneNumber,
     providers: actor.providers,
   });
@@ -130,7 +130,7 @@ test("bootstrap route validates input and returns compatible auth metadata", asy
   const actor = {
     authId: "firebase-route-user",
     email: "route@example.com",
-    emailVerified: true,
+    emailVerified: false,
     phoneNumber: "+254711222333",
     phoneVerified: true,
     authTime: 0,
@@ -162,7 +162,7 @@ test("bootstrap route validates input and returns compatible auth metadata", asy
     data: { id: "member-route", status: "ACTIVE", locale: "zh" },
     auth: {
       uid: actor.authId,
-      emailVerified: true,
+      emailVerified: false,
       phoneNumber: actor.phoneNumber,
       phoneVerified: true,
       membershipReady: true,

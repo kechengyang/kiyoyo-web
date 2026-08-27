@@ -19,8 +19,7 @@ export function AccountView({
   userCoupons, selectedCouponId, setSelectedCouponId, setCouponCodeInput,
   cart, orders, openOrderDetails, setEditingOrderId, signOut,
   authBusy, authError, linkProvider, linkPassword, unlinkProvider,
-  resendVerification, refreshVerification, go,
-  openPhoneVerification,
+  go, openPhoneVerification,
 }: {
   t: CustomerCopy;
   lang: Lang;
@@ -47,8 +46,6 @@ export function AccountView({
   linkProvider: () => Promise<unknown>;
   linkPassword: (email: string, password: string) => Promise<unknown>;
   unlinkProvider: (provider: AuthProvider) => Promise<unknown>;
-  resendVerification: () => Promise<unknown>;
-  refreshVerification: () => Promise<AuthSession | null>;
   openPhoneVerification: () => void;
   go: (tab: Tab) => void;
 }) {
@@ -117,29 +114,6 @@ export function AccountView({
         <Logo />
         <i>{session.membershipReady ? "VIP" : t.membershipPending}</i>
       </div>
-      {!session.emailVerified && (
-        <aside className="verification-banner" aria-live="polite">
-          <div>
-            <strong>{t.verifyEmail}</strong>
-            <span>{t.verifyEmailHelp}</span>
-          </div>
-          <div>
-            <button
-              disabled={authBusy}
-              onClick={() => void resendVerification().catch(() => undefined)}
-            >
-              {t.resendVerification}
-            </button>
-            <button
-              className="primary"
-              disabled={authBusy}
-              onClick={() => void refreshVerification().catch(() => undefined)}
-            >
-              {t.checkVerification}
-            </button>
-          </div>
-        </aside>
-      )}
       {!session.phoneVerified && (
         <aside className="verification-banner phone-verification-banner" aria-live="polite">
           <div>

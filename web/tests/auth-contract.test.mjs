@@ -29,20 +29,26 @@ test("all providers and safe recovery actions are implemented", () => {
   assert.match(service, /GoogleAuthProvider/);
   assert.doesNotMatch(service, /FacebookAuthProvider/);
   assert.match(service, /sendPasswordResetEmail/);
-  assert.match(service, /sendEmailVerification/);
+  assert.doesNotMatch(service, /sendEmailVerification/);
   assert.match(service, /linkWithPhoneNumber/);
   assert.match(service, /RecaptchaVerifier/);
   assert.match(actionPage, /applyEmailVerification/);
   assert.match(actionPage, /applyPasswordReset/);
 });
 
-test("checkout verification and local-state preservation remain explicit", () => {
+test("checkout requires verified phone and preserves local state", () => {
   const app = source("../app/components/KiyoyoApp.tsx");
+  const account = source(
+    "../app/components/customer/account/AccountView.tsx",
+  );
   const hook = source("../app/auth/useCustomerAuth.ts");
 
-  assert.match(app, /if \(!session\.emailVerified\)/);
+  assert.doesNotMatch(app, /if \(!session\.emailVerified\)/);
   assert.match(app, /if \(!session\.phoneVerified\)/);
-  assert.match(app, /setVerificationGate\(true\)/);
+  assert.doesNotMatch(app, /setVerificationGate\(true\)/);
+  assert.doesNotMatch(account, /session\.emailVerified/);
+  assert.doesNotMatch(account, /verifyEmail|resendVerification/);
+  assert.doesNotMatch(hook, /sendMemberVerification/);
   assert.match(app, /saveMemberFavorite/);
   assert.match(app, /fetchMemberFavorites/);
   assert.doesNotMatch(app, /setCart\(\[\]\).*setSession/s);
@@ -68,12 +74,3 @@ test("verified phone membership is enforced across UI and infrastructure", () =>
 function serviceSource() {
   return source("../app/auth/service.ts");
 }
-
-test("verification errors remain visible and handled", () => {
-  const gate = source(
-    "../app/components/customer/auth/VerificationGate.tsx",
-  );
-  assert.match(gate, /role="alert"/);
-  assert.match(gate, /verificationNotComplete/);
-  assert.match(gate, /\.catch\(\(\) => undefined\)/);
-});

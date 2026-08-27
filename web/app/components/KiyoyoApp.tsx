@@ -51,7 +51,6 @@ import { ProductDialog } from "./customer/shop/ProductDialog";
 import { StoreDialog } from "./customer/fulfillment/StoreDialog";
 import { CheckoutDialog } from "./customer/cart/CheckoutDialog";
 import { AuthDialog } from "./customer/auth/AuthDialog";
-import { VerificationGate } from "./customer/auth/VerificationGate";
 import { PhoneVerificationGate } from "./customer/auth/PhoneVerificationGate";
 import { ProfileDialog } from "./customer/account/ProfileDialog";
 import { AddressDialog } from "./customer/account/AddressDialog";
@@ -131,7 +130,6 @@ export default function KiyoyoApp({
     addOns: [] as string[],
   });
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
-  const [verificationGate, setVerificationGate] = useState(false);
   const [phoneVerificationGate, setPhoneVerificationGate] = useState(false);
   const [profileModal, setProfileModal] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -756,10 +754,6 @@ export default function KiyoyoApp({
       return;
     }
     if (!pendingCheckout) return;
-    if (!nextSession.emailVerified) {
-      setVerificationGate(true);
-      return;
-    }
     setCheckout(true);
     setCheckoutChannel(null);
     setPendingCheckout(false);
@@ -934,11 +928,6 @@ export default function KiyoyoApp({
     if (!session.phoneVerified) {
       setPendingCheckout(true);
       setPhoneVerificationGate(true);
-      return;
-    }
-    if (!session.emailVerified) {
-      setPendingCheckout(true);
-      setVerificationGate(true);
       return;
     }
     setSelectedAddressId(
@@ -1327,8 +1316,6 @@ export default function KiyoyoApp({
             linkProvider={customerAuth.linkProvider}
             linkPassword={customerAuth.linkPassword}
             unlinkProvider={customerAuth.unlinkProvider}
-            resendVerification={customerAuth.resendVerification}
-            refreshVerification={customerAuth.refresh}
             openPhoneVerification={() => {
               customerAuth.clearError();
               setPhoneVerificationGate(true);
@@ -1436,35 +1423,6 @@ export default function KiyoyoApp({
         />
       )}
 
-      {verificationGate && session && (
-        <VerificationGate
-          email={session.email}
-          t={t}
-          busy={customerAuth.busy}
-          error={customerAuth.error}
-          onClose={() => {
-            setVerificationGate(false);
-            setPendingCheckout(false);
-          }}
-          onResend={customerAuth.resendVerification}
-          onRefresh={async () => {
-            const refreshed = await customerAuth.refresh();
-            if (!refreshed?.emailVerified) return false;
-            setVerificationGate(false);
-            if (pendingCheckout) {
-              if (!refreshed.phoneVerified) {
-                setPhoneVerificationGate(true);
-              } else {
-                setCheckout(true);
-                setCheckoutChannel(null);
-                setPendingCheckout(false);
-              }
-            }
-            return true;
-          }}
-        />
-      )}
-
       {phoneVerificationGate && session && (
         <PhoneVerificationGate
           t={t}
@@ -1487,13 +1445,9 @@ export default function KiyoyoApp({
             if (!refreshed?.phoneVerified) return refreshed;
             setPhoneVerificationGate(false);
             if (pendingCheckout) {
-              if (!refreshed.emailVerified) {
-                setVerificationGate(true);
-              } else {
-                setCheckout(true);
-                setCheckoutChannel(null);
-                setPendingCheckout(false);
-              }
+              setCheckout(true);
+              setCheckoutChannel(null);
+              setPendingCheckout(false);
             }
             return refreshed;
           }}

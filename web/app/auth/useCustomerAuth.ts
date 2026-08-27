@@ -13,7 +13,6 @@ import {
   observeMember,
   refreshMember,
   sendMemberPasswordReset,
-  sendMemberVerification,
   signInMember,
   signOutMember,
   unlinkMemberProvider,
@@ -117,9 +116,6 @@ export function useCustomerAuth(lang: Lang) {
       run(async () => {
         const user = await signInMember(provider, mode, email, password);
         if (!user) return null;
-        if (provider === "password" && mode === "signup") {
-          await sendMemberVerification("/?auth=verified");
-        }
         return syncUser(user);
       }),
     [run, syncUser],
@@ -176,8 +172,6 @@ export function useCustomerAuth(lang: Lang) {
     signOut: () => run(signOutMember),
     sendPasswordReset: (email: string) =>
       run(() => sendMemberPasswordReset(email, "/?auth=reset")),
-    resendVerification: () =>
-      run(() => sendMemberVerification("/?auth=verified")),
     refresh,
     sendPhoneCode,
     confirmPhoneCode,

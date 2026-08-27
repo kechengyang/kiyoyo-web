@@ -2,7 +2,7 @@
 
 状态：已实施
 
-最后更新：2026-08-26
+最后更新：2026-08-27
 
 适用范围：顾客 Web、Commerce API、Cloud SQL、Firebase Authentication / Google Cloud Identity Platform
 
@@ -15,11 +15,11 @@ KIYOYO 顾客账号统一使用 Firebase Authentication 处理身份凭据，KIY
 - 邮箱 + 密码注册和登录；
 - Google 登录；
 - 忘记密码和安全重置；
-- 注册后邮箱验证、验证邮件重发和链接过期处理；
+- 邮箱密码注册和密码重置；顾客会员不要求邮箱验证；
 - 注册/首次登录后通过 SMS 验证并绑定唯一肯尼亚手机号；
 - 同一 Firebase 用户关联多种登录方式；
 - 防止移除最后一种登录方式；
-- 未完成邮箱或手机号验证的账号保持 Pending 会员状态，可浏览和维护购物车，但不能提交结账；
+- 未完成手机号验证的账号保持 Pending 会员状态，可浏览和维护购物车，但不能提交结账；
 - 登录时把游客收藏并入会员收藏，保留本地购物车和结账返回状态；
 - 停用会员在 API 层被统一拒绝。
 
@@ -29,14 +29,14 @@ KIYOYO 数据库不保存密码、密码哈希、Firebase refresh token、Google
 
 | 层级 | 技术 | 职责 |
 | --- | --- | --- |
-| 浏览器身份 | Firebase Authentication Web SDK | 注册、登录、OAuth 弹窗/重定向、验证邮件、SMS 手机验证、账号关联、会话持久化 |
+| 浏览器身份 | Firebase Authentication Web SDK | 注册、登录、OAuth 弹窗/重定向、SMS 手机验证、账号关联、会话持久化 |
 | API 身份校验 | Firebase Admin SDK | 验证 ID token，从可信 claims 读取 uid、email、email_verified、phone_number 和 provider identities |
 | Web 应用 | Next.js / React / TypeScript | 双语登录 UI、会话 hook、验证 gate、状态恢复 |
 | API | Fastify / TypeScript / Zod | bootstrap、账号状态和 verified-membership middleware、兼容响应 |
 | 业务数据库 | PostgreSQL / Cloud SQL | 会员主记录、唯一 E.164 手机号和 provider identity 映射，不保存第三方凭据 |
 | 基础设施 | Terraform + Firebase / Identity Platform 控制台 | 项目、Web App、授权域名、邮件/手机登录、肯尼亚 SMS allowlist 和运行环境 |
 
-选择 Firebase/Identity Platform 的主要原因是：已有 GCP/Firebase 基础设施；三种登录方式使用同一 token 校验链路；密码和 OAuth 凭据不进入 KIYOYO 系统；密码重置、验证邮件和 provider linking 可使用成熟 SDK。
+选择 Firebase/Identity Platform 的主要原因是：已有 GCP/Firebase 基础设施；三种登录方式使用同一 token 校验链路；密码和 OAuth 凭据不进入 KIYOYO 系统；密码重置和 provider linking 可使用成熟 SDK。
 
 ## 3. 模块边界
 
@@ -52,19 +52,18 @@ web/app/auth/
 web/app/components/customer/auth/
   AuthDialog.tsx       登录、注册、找回密码入口
   PasswordFields.tsx   密码输入、显示和确认
-  VerificationGate.tsx 结账邮箱验证 gate
   PhoneVerificationGate.tsx SMS 验证和会员激活 gate
   ProviderManager.tsx  登录方式关联/移除
 
 web/app/auth/action/page.tsx
-  邮箱验证与密码重置 action handler
+  历史邮箱验证链接与密码重置 action handler
 
 api/src/modules/auth/
   routes.ts            HTTP、Zod 和兼容响应
   schemas.ts           请求 schema
   service.ts           bootstrap 业务编排
   repository.ts        用户及 identity SQL
-  middleware.ts        token、状态、邮箱/手机会员验证 gate
+  middleware.ts        token、状态和手机会员验证 gate
   types.ts             服务端身份类型
 ```
 
@@ -130,11 +129,11 @@ Firebase `uid` 是身份真相来源，`users.id` 是 KIYOYO 业务主键。Goog
 ### 6.1 邮箱注册
 
 1. 前端校验邮箱、密码确认和项目密码策略。
-2. Firebase 创建身份并立即发送验证邮件。
+2. Firebase 创建身份，不发送验证邮件。
 3. Web 取得 ID token，调用 `POST /v1/auth/bootstrap`。
 4. API 从 token 同步 uid、邮箱、验证状态和可信的 social provider identities。
 5. Web 要求用户继续完成 SMS 手机验证；未完成前账号显示为 Pending 会员。
-6. 用户可继续浏览、收藏和维护购物车；结账前必须同时验证邮箱和手机号。
+6. 用户可继续浏览、收藏和维护购物车；结账前只要求验证手机号，不要求验证邮箱。
 
 密码仅从浏览器发送给 Google Identity Toolkit，不经过 KIYOYO API。
 
@@ -154,9 +153,9 @@ Web 将肯尼亚本地号码规范化为 E.164（例如 `0712 345 678` → `+254
 
 找回页面始终显示相同成功文案：“如果账号存在，重置邮件已发送”，避免泄露邮箱是否注册。`/auth/action` 校验 action code、要求新密码并处理过期、无效或已使用链接。
 
-### 6.5 邮箱、手机号验证和结账恢复
+### 6.5 手机号验证和结账恢复
 
-前端在开始结账时先检查 `phoneVerified`，再检查 `emailVerified`；API 在 `POST /v1/checkouts` 再次执行 `requireVerifiedMembership`。未验证时分别返回稳定错误码 `PHONE_VERIFICATION_REQUIRED` 或 `EMAIL_VERIFICATION_REQUIRED`。
+前端在开始结账时检查 `phoneVerified`；API 在 `POST /v1/checkouts` 再次执行 `requireVerifiedMembership`。未验证时返回稳定错误码 `PHONE_VERIFICATION_REQUIRED`。`emailVerified` 继续作为 Identity 元数据返回和保存，但不参与顾客会员激活或结账授权。
 
 验证完成后，Web reload Firebase 用户并强制刷新 ID token，再 bootstrap。购物车、门店、语言、游客收藏和 pending checkout 不被清空，用户可回到原结账流程。API bootstrap 暂时失败时进入独立错误状态，不按“已登出”清除本地订单兜底数据。
 
@@ -259,7 +258,7 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 - migration 前向扩展、手机号格式/唯一性、provider 约束、有效 identity 唯一性契约；
 - 仓库统一 `scripts/verify-refactor.sh`、Terraform format 和 Git whitespace。
 
-人工/集成环境仍需使用 Firebase 测试号码验证：reCAPTCHA、正确/错误/过期验证码、重复号码冲突、短信重发限流；另需验证真实邮件投递、Google 取消与回调、同邮箱关联、停用用户，以及 390/768/1280/1440px 中英文键盘操作。自动化测试禁止发送真实短信。
+人工/集成环境仍需使用 Firebase 测试号码验证：reCAPTCHA、正确/错误/过期验证码、重复号码冲突、短信重发限流；另需验证密码重置邮件投递、Google 取消与回调、同邮箱关联、停用用户，以及 390/768/1280/1440px 中英文键盘操作。自动化测试禁止发送真实短信。
 
 ## 12. 运维与回滚
 
@@ -268,4 +267,4 @@ Terraform 已管理 Firebase 项目、Web App、邮箱密码登录和授权域�
 - 回滚 Web/API 不需要回滚 migration；新增列和 `user_identities` 可保留。
 - 不执行向后 migration，不删除用户身份数据。
 - provider 故障时可在 Firebase 控制台单独停用 Google，邮箱密码登录继续工作。
-- 监控重点：登录失败率、bootstrap 5xx、`EMAIL_VERIFICATION_REQUIRED` 比例、provider linking 冲突、密码重置发送失败和停用账号访问。
+- 监控重点：登录失败率、bootstrap 5xx、`PHONE_VERIFICATION_REQUIRED` 比例、provider linking 冲突、密码重置发送失败和停用账号访问。

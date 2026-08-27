@@ -110,7 +110,7 @@ Firebase 自定义域名资源与 ownership TXT 应保留到回滚调查完成�
 
 - Email/Password 已启用；Google 前端入口已完成，但 provider 需要真实 OAuth
   Client ID / Client Secret 后才能启用。不得使用伪造或共享凭据。
-- 上生产前启用邮箱验证和重置密码邮件模板。
+- 上生产前配置重置密码邮件模板；顾客会员不发送或要求邮箱验证邮件。
 - Google OAuth 配置 consent screen、正式域名和 dev/staging/prod 回调地址。
 - 客户前端只使用公开 Web config；provider secret 仅存在 GCP/Identity Platform。Commerce API 验证 Identity Platform ID token 后才读写个人资料和地址。
 - 本地开发使用 emulator 或明确标记的 mock adapter；正式 build 中禁止自动回退到 mock auth。

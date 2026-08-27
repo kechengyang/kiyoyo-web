@@ -11,7 +11,7 @@
 ## 客户认证
 
 - Identity Platform 负责邮箱密码与 Google OAuth；KIYOYO 服务绝不接收或保存用户密码。
-- 邮箱注册启用邮箱验证、找回密码、弱密码策略与登录限流。
+- 邮箱注册保留找回密码、弱密码策略与登录限流；顾客会员激活与结账不要求邮箱验证。
 - Google token 只在官方 SDK/后端验证流程中使用，不写日志或 localStorage。
 - OAuth state、nonce、PKCE 和 redirect URI 必须由官方 SDK/配置管理；不同环境使用不同 OAuth 应用或严格的回调域名列表。
 - 客户资料中的昵称、性别、年龄和地址均为个人信息；编辑、导出、删除和保留期限纳入隐私流程。
