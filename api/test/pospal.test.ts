@@ -12,6 +12,7 @@ import {
   normalizePospalProductRow,
   normalizeProductRow,
   normalizeTasteRow,
+  stripSizeVariantSuffix,
   syncProductDictionary,
   type CategoryRow,
   type PospalProductRow,
@@ -241,6 +242,11 @@ test("商品行归一化:分类映射注入、口味/图片透传、noStock 三�
   assert.equal(fallback.noStock, false);
 });
 
+test("大杯变体条码拆分:-1 后缀剥离,非变体原样返回", () => {
+  assert.equal(stripSizeVariantSuffix("2886489262843-1"), "2886489262843");
+  assert.equal(stripSizeVariantSuffix("2886489262843"), "2886489262843");
+});
+
 test("按条码去重:首个生效,无条码行保留", () => {
   const baseRow = (uid: string, barcode: string | null): PospalProductRow => ({
     uid,
@@ -254,6 +260,7 @@ test("按条码去重:首个生效,无条码行保留", () => {
     images: null,
     noStock: null,
     slug: `s-${uid}`,
+    lSizePrice: null,
   });
   const result = dedupeByBarcode([baseRow("u1", "d1"), baseRow("u2", "d1"), baseRow("u3", null)]);
   assert.equal(result.length, 2);
@@ -380,7 +387,7 @@ test("字典同步:游标分页直至 hasMore=false,保存游标并执行条码�
   assert.equal(result.tastes, 0);
   assert.equal(result.skippedNoBarcode, 0);
   assert.deepEqual(requestedLastIds, [undefined, "100"], "第二页应携带上一页的 nextLastId(字符串)");
-  assert.deepEqual(store.cursors, ["100", "200"], "含最后一页的终态游标(hasMore=false 时也保存,避免下次重拉)");
+  assert.deepEqual(store.cursors, ["200"], "仅在全量处理成功后保存终态游标(失败重跑不丢页)");
   assert.equal(store.upserted.length, 3);
   assert.equal(store.upserted[2].uid, "3");
 });
@@ -417,7 +424,14 @@ test("字典同步 v2:分类/口味先落库、商品开扩展 flags、重复条
       hasMore: true,
       nextLastId: "100",
     },
-    { list: [{ uid: "4", barcode: "d2", name: "Milk Tea", sellPrice: 5 }], hasMore: false, nextLastId: "200" },
+    {
+      list: [
+        { uid: "4", barcode: "d2", name: "Milk Tea", sellPrice: 5 },
+        { uid: "5", barcode: "d2-1", name: "Milk Tea", sellPrice: 6 }, // 大杯变体 → 并入 d2 的 L 价
+      ],
+      hasMore: false,
+      nextLastId: "200",
+    },
   ];
   const fakeClient = {
     getCategoryPage: async (input: { limit?: number }) => {
@@ -436,8 +450,8 @@ test("字典同步 v2:分类/口味先落库、商品开扩展 flags、重复条
 
   const result = await syncProductDictionary(fakeClient, store, "store001");
 
-  // 调用顺序:categories → tastes → 每页 products+mappings → align
-  assert.deepEqual(store.calls, ["categories", "tastes", "products", "mappings", "products", "mappings", "align"]);
+  // 调用顺序:categories → tastes → 每页 mappings → 一次性 products → align
+  assert.deepEqual(store.calls, ["categories", "tastes", "mappings", "mappings", "products", "align"]);
   assert.equal(store.categoryRows.length, 1);
   assert.equal(store.categoryRows[0].categorySlug, "milk-tea");
   assert.equal(store.tasteRows.length, 1);
@@ -445,11 +459,12 @@ test("字典同步 v2:分类/口味先落库、商品开扩展 flags、重复条
     assert.equal(input.needImages, true);
     assert.equal(input.needTastes, true);
   }
-  // 重复条码只 upsert 一次(首个生效);无条码行跳过
+  // 重复条码只 upsert 一次(首个生效);无条码行跳过;大杯变体不建档、售价并入 L 价
   assert.deepEqual(store.productRows.map((row) => row.barcode), ["d1", "d2"]);
+  assert.equal(store.productRows[1].lSizePrice, 6, "d2 的 -1 变体售价应并入 L 价");
   assert.deepEqual(result, {
     pages: 2,
-    items: 4,
+    items: 5,
     productsCreated: 1,
     productsUpdated: 1,
     diffs: [

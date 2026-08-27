@@ -66,13 +66,13 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
       );
       const oldByBarcode = new Map(oldRows.map((row) => [row.pospal_barcode, row]));
 
-      // 步长 = 每行参数个数(11);参数号连续 + 全部显式转类型:
+      // 步长 = 每行参数个数(12);参数号连续 + 全部显式转类型:
       // null 参数不带类型会 42P18;未标注的 VALUES 列会被推断成 text,
       // INSERT ... SELECT 不自动强转会报 "integer vs text"
       const placeholders = rows
-        .map((_, i) => `($${i * 11 + 1}::text, $${i * 11 + 2}::text, $${i * 11 + 3}::int, $${i * 11 + 4}::text, $${i * 11 + 5}::text, $${i * 11 + 6}::text, $${i * 11 + 7}::text, $${i * 11 + 8}::jsonb, $${i * 11 + 9}::jsonb, $${i * 11 + 10}::boolean, $${i * 11 + 11}::text)`)
+        .map((_, i) => `($${i * 12 + 1}::text, $${i * 12 + 2}::text, $${i * 12 + 3}::int, $${i * 12 + 4}::text, $${i * 12 + 5}::text, $${i * 12 + 6}::text, $${i * 12 + 7}::text, $${i * 12 + 8}::jsonb, $${i * 12 + 9}::jsonb, $${i * 12 + 10}::boolean, $${i * 12 + 11}::text, $${i * 12 + 12}::int)`)
         .join(", ");
-      // 列序:barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug
+      // 列序:barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug, l_size_price
       // jsonb 列在 JS 侧 JSON.stringify 后交 ::jsonb 解析
       // (node-postgres 会把 JS 数组转成 Postgres 数组字面量,直接 ::jsonb 报 invalid input syntax)
       const flat = rows.flatMap((row) => [
@@ -87,11 +87,13 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
         row.images == null ? null : JSON.stringify(row.images),
         row.noStock,
         row.slug,
+        row.lSizePrice,
       ]);
 
       // 更新已匹配商品:只覆盖银豹侧字段;name_zh/描述/slug/tag/discount/active/image_key 不动
+      // 大杯变体价并入 size_prices_json 的 L 价(无变体不动)
       const updateResult = await pool.query(
-        `with v(barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug) as (values ${placeholders})
+        `with v(barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug, l_size_price) as (values ${placeholders})
          update products p
          set name_en = v.name,
              base_price = v.base_price,
@@ -103,6 +105,11 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
              pospal_images_json = v.images,
              pospal_no_stock = v.no_stock,
              pospal_barcode = v.barcode,
+             size_prices_json = case
+               when v.l_size_price is not null
+                 then coalesce(p.size_prices_json, '{}'::jsonb) || jsonb_build_object('L', v.l_size_price)
+               else p.size_prices_json
+             end,
              catalog_version = p.catalog_version + 1,
              updated_at = now()
          from v
@@ -110,15 +117,21 @@ export function createPgProductSyncStore(pool: Pool, account: string): ProductSy
         flat,
       );
 
-      // 插入银豹独有商品(active=true 直接上架:银豹为准;admin 可在 Web 侧下架)
+      // 插入银豹独有商品(active=true 直接上架:银豹为准;admin 可在 Web 侧下架);
+      // 有大杯变体时 size_prices_json = {M: 主价, L: 变体价},否则 {One size: 主价}
       const insertResult = await pool.query(
-        `with v(barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug) as (values ${placeholders})
+        `with v(barcode, name, base_price, category_slug, kind, pospal_uid, category_uid, tastes, images, no_stock, slug, l_size_price) as (values ${placeholders})
          insert into products
            (kind, category_slug, slug, name_en, name_zh, description_en, description_zh, image_key,
             base_price, size_prices_json, discount_percent, active,
             pospal_barcode, pospal_uid, pospal_category_uid, pospal_tastes_json, pospal_images_json, pospal_no_stock, catalog_version)
          select v.kind, v.category_slug, v.slug, v.name, v.name, '', '', null,
-                v.base_price, jsonb_build_object('One size', v.base_price), 0, true,
+                v.base_price,
+                case when v.l_size_price is not null
+                  then jsonb_build_object('M', v.base_price, 'L', v.l_size_price)
+                  else jsonb_build_object('One size', v.base_price)
+                end,
+                0, true,
                 v.barcode, v.pospal_uid, v.category_uid, v.tastes, v.images, v.no_stock, 1
          from v
          where not exists (select 1 from products p where p.pospal_barcode = v.barcode or p.pospal_uid = v.pospal_uid)`,
