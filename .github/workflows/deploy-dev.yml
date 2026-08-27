@@ -17,7 +17,9 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-dev
+  # v2 leaves the unrecoverable legacy queue lock behind while continuing to
+  # serialize dev deployments across push and manual dispatch events.
+  group: deploy-dev-v2
   cancel-in-progress: false
 
 env:
