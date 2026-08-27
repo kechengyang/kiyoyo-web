@@ -58,7 +58,17 @@ export type PospalProductRow = {
   noStock: boolean | null;
   /** 新建商品的 slug(服务端生成,唯一) */
   slug: string;
+  /** 大杯变体(条码 -1 后缀)售价,KES 整元;null = 无变体。合并进 size_prices_json 的 L 价 */
+  lSizePrice: number | null;
 };
+
+/** 银豹大杯变体条码后缀:"<base>-1"(银豹按杯型拆商品) */
+export const SIZE_VARIANT_SUFFIX = "-1";
+
+/** 变体条码 → 主商品条码;非变体原样返回 */
+export function stripSizeVariantSuffix(barcode: string): string {
+  return barcode.endsWith(SIZE_VARIANT_SUFFIX) ? barcode.slice(0, -SIZE_VARIANT_SUFFIX.length) : barcode;
+}
 
 export type ProductDiff = {
   barcode: string | null;
@@ -203,6 +213,7 @@ export function normalizePospalProductRow(
     images: Array.isArray(product.images) ? (product.images as unknown[]) : null,
     noStock: typeof product.noStock === "number" ? product.noStock === 1 : null,
     slug: productSlug(name, category?.categorySlug ?? "pospal"),
+    lSizePrice: null,
   };
 }
 
@@ -259,14 +270,14 @@ export async function syncProductDictionary(
 
   const categoryByUid = new Map(categories.map((c) => [String(c.uid), normalizeCategoryRow(c)]));
 
-  // 2) 商品分页:开启图片/口味扩展(每个开关 +20 token/页)
+  // 2) 商品分页:开启图片/口味扩展(每个开关 +20 token/页)。
+  //    先拉全量(变体可能与其主商品跨页),再一次性 upsert;
+  //    游标在 upsert 成功后才保存,失败重跑不会丢页
   let cursor = await store.loadCursor();
   let pages = 0;
   let items = 0;
-  let created = 0;
-  let updated = 0;
-  let skippedNoBarcode = 0;
-  const diffs: ProductDiff[] = [];
+  let finalCursor: string | null = null;
+  const allRows: PospalProductRow[] = [];
 
   while (true) {
     const page = await client.getProductPage({
@@ -278,27 +289,45 @@ export async function syncProductDictionary(
     pages += 1;
     if (page.list.length === 0) break;
 
-    const rows = dedupeByBarcode(page.list.map((p) => normalizePospalProductRow(p, categoryByUid)));
-    const barcoded = rows.filter((row) => row.barcode != null);
-    skippedNoBarcode += rows.length - barcoded.length;
-
-    const upsertResult = await store.upsertProducts(barcoded);
-    created += upsertResult.created;
-    updated += upsertResult.updated;
-    diffs.push(...upsertResult.diffs);
-
+    allRows.push(...dedupeByBarcode(page.list.map((p) => normalizePospalProductRow(p, categoryByUid))));
     await store.upsertMappings(page.list.map(normalizeProductRow));
     items += page.list.length;
 
     if (!page.hasMore) {
-      // 保存最终游标:下次同步从增量点继续,避免重拉最后一页
-      if (page.nextLastId != null) await store.saveCursor(String(page.nextLastId));
+      if (page.nextLastId != null) finalCursor = String(page.nextLastId);
       break;
     }
     cursor = page.nextLastId != null ? String(page.nextLastId) : null;
     if (cursor == null) break; // hasMore 但无 nextLastId:视为同步完成
-    await store.saveCursor(cursor);
   }
+
+  // 3) 大杯变体合并:条码 "-1" 后缀的商品不独立建档,售价并入主商品 L 价
+  const variantByBase = new Map<string, number>();
+  const productRows: PospalProductRow[] = [];
+  for (const row of allRows) {
+    if (row.barcode != null && row.barcode.endsWith(SIZE_VARIANT_SUFFIX)) {
+      if (row.basePrice != null) variantByBase.set(stripSizeVariantSuffix(row.barcode), row.basePrice);
+      continue;
+    }
+    productRows.push(row);
+  }
+  const barcoded = productRows
+    .filter((row) => row.barcode != null)
+    .map((row) => ({ ...row, lSizePrice: variantByBase.get(row.barcode as string) ?? null }));
+  const skippedNoBarcode = productRows.length - barcoded.length;
+
+  let created = 0;
+  let updated = 0;
+  const diffs: ProductDiff[] = [];
+  if (barcoded.length > 0) {
+    const upsertResult = await store.upsertProducts(barcoded);
+    created = upsertResult.created;
+    updated = upsertResult.updated;
+    diffs.push(...upsertResult.diffs);
+  }
+
+  // 全部处理成功后保存终态游标:下次同步从增量点继续
+  if (finalCursor != null) await store.saveCursor(finalCursor);
 
   const matchedProducts = await store.alignByBarcode();
   return {

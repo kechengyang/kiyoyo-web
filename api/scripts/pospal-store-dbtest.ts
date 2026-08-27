@@ -12,10 +12,7 @@ import { resolve } from "node:path";
 import { Pool } from "pg";
 import { createPgProductSyncStore } from "../src/pospal/product-sync/store.js";
 import {
-  dedupeByBarcode,
-  normalizeCategoryRow,
-  normalizePospalProductRow,
-  normalizeTasteRow,
+  syncProductDictionary,
   type CategoryRow,
   type PospalProductRow,
   type ProductRow,
@@ -71,6 +68,7 @@ const productA1: PospalProductRow = {
   images: null,
   noStock: null,
   slug: "a-boba-tea-a1-abcdef01",
+  lSizePrice: null,
 };
 
 const productNew: PospalProductRow = {
@@ -85,6 +83,7 @@ const productNew: PospalProductRow = {
   images: [{ path: "https://img.pospal.cn/x.jpg", isCover: 1 }],
   noStock: true,
   slug: "h-coffee-beans-s1-abcdef02",
+  lSizePrice: null,
 };
 
 async function main() {
@@ -173,32 +172,36 @@ async function main() {
   const { rows: cursorLeft } = await pool.query("select count(*)::int as n from pospal_sync_state");
   assert.equal(cursorLeft[0].n, 0, "0008 应清空 product-dict 游标,强制全量重同步");
 
-  // ── 真实数据回归:用 POC 转储的门店目录全量跑一遍 ──
-  // B2/D4 已占 2601222157299 / 2601251618136,真实目录中 B6/B5 按条码命中更新(生产同路径)
+  // ── 真实数据回归:用 POC 转储的门店目录走完整 syncProductDictionary 生产路径 ──
+  // B2/D4 已占 2601222157299 / 2601251618136,真实目录中 B6/B5 按条码命中更新;
+  // -1 大杯变体不建档,售价并入主商品 L 价
   const dumpPath = process.env.PGTEST_DUMP ?? resolve(process.cwd(), "pospal-dump/pospal-catalog-lovemixue02.json");
   const dump = JSON.parse(readFileSync(dumpPath, "utf8"));
-  console.log(`== 真实数据回归:${dump.meta.account} 转储(${dump.products.length} 商品)==`);
-  const realCategories = dump.categories.map(normalizeCategoryRow);
-  const realTastes = dump.tastes.map(normalizeTasteRow);
-  const categoryByUid = new Map(realCategories.map((c) => [c.uid, c]));
-  const realProducts = dedupeByBarcode(
-    dump.products.map((p: Record<string, unknown>) => normalizePospalProductRow(p as never, categoryByUid)),
-  ).filter((row) => row.barcode != null);
-
-  await store.upsertCategories(realCategories);
-  await store.upsertTastes(realTastes);
-  const realUpsert = await store.upsertProducts(realProducts);
+  console.log(`== 真实数据回归:${dump.meta.account} 转储(${dump.products.length} 商品,完整生产路径)==`);
+  const realClient = {
+    getCategoryPage: async () => ({ list: dump.categories, hasMore: false }),
+    getAttributePage: async () => ({ list: dump.tastes, hasMore: false }),
+    getProductPage: async () => ({ list: dump.products, hasMore: false }),
+  };
+  const syncResult = await syncProductDictionary(realClient, store, "hq-real");
   console.log(
-    `  分类 ${realCategories.length} · 口味 ${realTastes.length} · 商品 ${realProducts.length} · created ${realUpsert.created} · updated ${realUpsert.updated} · 差分 ${realUpsert.diffs.length}`,
+    `  分类 ${syncResult.categories} · 口味 ${syncResult.tastes} · 商品 ${syncResult.items} · created ${syncResult.productsCreated} · updated ${syncResult.productsUpdated} · 差分 ${syncResult.diffs.length} · 变体跳过 ${syncResult.items - syncResult.productsCreated - syncResult.productsUpdated - syncResult.skippedNoBarcode}`,
   );
-  assert.equal(realUpsert.created, realProducts.length - 2, "B6/B5 条码命中 B2/D4 → 走 UPDATE,其余全部 INSERT");
-  assert.equal(realUpsert.updated, 2);
-  assert.equal(realUpsert.diffs.length, 2, "B2←B6(改名)与 D4←B5(改价/名/分类)各产生一条差分");
+  assert.equal(syncResult.items, 78);
+  assert.equal(syncResult.productsCreated, 68, "78 - 8 个 -1 变体 - 2 条 B6/B5 合并(B2/D4)");
+  assert.equal(syncResult.productsUpdated, 2, "B6/B5 条码命中 B2/D4 → 走 UPDATE");
+  assert.equal(syncResult.diffs.length, 2, "B2←B6(改名)与 D4←B5(改价/名/分类)各产生一条差分");
+  assert.equal(syncResult.skippedNoBarcode, 0);
 
   const { rows: totalRows } = await pool.query("select count(*)::int as n from products");
-  assert.equal(totalRows[0].n, 4 + realProducts.length - 2, "商品总数 = 合成 2 + 迁移 2 + 真实目录(去 B6/B5 两条合并)");
+  assert.equal(totalRows[0].n, 72, "商品总数 = 合成 2 + 迁移 2 + 真实 68");
   const { rows: noBarcodeRows } = await pool.query("select count(*)::int as n from products where pospal_barcode is null");
   assert.equal(noBarcodeRows[0].n, 0, "有 barcode 的商品全部入 products");
+  const { rows: variantRows } = await pool.query("select count(*)::int as n from products where pospal_barcode like '%-1'");
+  assert.equal(variantRows[0].n, 0, "-1 大杯变体不独立建档");
+  const { rows: a1Rows } = await pool.query("select size_prices_json from products where pospal_barcode = '2886489262843'");
+  assert.equal(a1Rows.length, 1);
+  assert.deepEqual(a1Rows[0].size_prices_json, { M: 380, L: 480 }, "A1 大杯变体价并入 sizePrices L");
 
   // ── 手动改码守卫:admin 手动改条码后,旧条码字典行(uid 已在库)不重复建商品 ──
   console.log("== 手动改码守卫 ==");
@@ -226,7 +229,20 @@ async function main() {
   assert.equal(unlocked.updated, 1, "解锁后恢复银豹覆盖");
   assert.equal(unlocked.diffs.length, 1, "解锁后的覆盖产生差分");
 
-  console.log("\n全部断言通过 ✓ —— 合成 + 0008 数据迁移 + 真实数据 + 手动改码守卫 + 手动锁定全部通过");
+  // ── 0010 数据迁移回归:删除已建变体商品 + 清游标 ──
+  console.log("== 0010 数据迁移回归 ==");
+  await pool.query(
+    "insert into products (kind, category_slug, slug, name_en, name_zh, base_price, active, pospal_barcode, pospal_uid) values ('DRINK','milk-tea','variant-migration-test','A1 Assam Boba Tea','阿萨姆珍珠奶茶',480,true,'2886489262843-1','u-variant')",
+  );
+  await pool.query(readFileSync(resolve(process.cwd(), "migrations/0010_size_variant_dedupe.sql"), "utf8"));
+  const { rows: variantLeft } = await pool.query(
+    "select count(*)::int as n from products where pospal_barcode like '%-1' and pospal_uid is not null",
+  );
+  assert.equal(variantLeft[0].n, 0, "0010 应删除已同步创建的变体商品");
+  const { rows: cursorLeft2 } = await pool.query("select count(*)::int as n from pospal_sync_state where scope like 'product-dict:%'");
+  assert.equal(cursorLeft2[0].n, 0, "0010 应清空 product-dict 游标");
+
+  console.log("\n全部断言通过 ✓ —— 合成 + 0008/0010 数据迁移 + 真实数据(生产路径)+ 手动改码守卫 + 手动锁定全部通过");
   await pool.end();
 }
 
