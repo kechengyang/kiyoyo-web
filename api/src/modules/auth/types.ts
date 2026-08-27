@@ -22,6 +22,8 @@ export type AuthActor = {
   authId: string;
   email: string | null;
   emailVerified: boolean;
+  phoneNumber: string | null;
+  phoneVerified: boolean;
   authTime: number;
   providers: ProviderIdentity[];
   userId: string | null;
@@ -33,7 +35,7 @@ export type AuthActor = {
 
 export type TrustedIdentity = Pick<
   DecodedIdToken,
-  "uid" | "email" | "email_verified" | "firebase"
+  "uid" | "email" | "email_verified" | "phone_number" | "firebase"
 >;
 
 declare module "fastify" {

@@ -11,7 +11,7 @@ import {
   requireAdmin,
   requirePermission,
   requireProfile,
-  requireVerifiedEmail,
+  requireVerifiedMembership,
 } from "./modules/auth/middleware.js";
 import { listActiveProviders } from "./modules/auth/repository.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
@@ -208,13 +208,18 @@ app.get("/v1/media/:encodedKey", async (request, reply) => {
 registerAuthRoutes(app);
 
 app.get("/v1/me", { preHandler: requireProfile }, async (request) => {
-  const result = await query("select id,email,nickname,gender,birth_year,locale,status,email_verified_at,last_login_at,created_at,updated_at from users where id=$1", [request.actor!.userId]);
+  const result = await query("select id,email,nickname,gender,birth_year,locale,status,email_verified_at,phone_e164,phone_verified_at,last_login_at,created_at,updated_at from users where id=$1", [request.actor!.userId]);
   const providers = await listActiveProviders(request.actor!.userId!);
   return {
     data: result.rows[0],
     auth: {
       uid: request.actor!.authId,
       emailVerified: request.actor!.emailVerified,
+      phoneNumber: request.actor!.phoneNumber,
+      phoneVerified: request.actor!.phoneVerified,
+      membershipReady:
+        Boolean(request.actor!.email && request.actor!.emailVerified) &&
+        request.actor!.phoneVerified,
       providers,
     },
     permissions: { admin: request.actor!.isAdmin },
@@ -346,7 +351,7 @@ const checkoutSchema = z.object({
   payment_method: z.object({ provider: z.literal("MOCK"), token: z.enum(["test_ok", "test_declined", "test_timeout"]) }),
 });
 
-app.post("/v1/checkouts", { preHandler: requireVerifiedEmail }, async (request, reply) => {
+app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (request, reply) => {
   const input = checkoutSchema.parse(request.body);
   const idempotencyKey = String(request.headers["idempotency-key"] ?? "");
   if (!idempotencyKey) return reply.code(400).send({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Idempotency-Key header is required" } });
@@ -1006,8 +1011,8 @@ app.get("/v1/admin/customers", { preHandler: requirePermission("customers.read")
   const input = z.object({ query: z.string().max(100).optional() }).parse(request.query);
   const term = input.query ? `%${input.query}%` : null;
   const result = await query(
-    `select u.id,u.email,u.nickname,u.gender,u.birth_year,u.locale,u.status,u.created_at,count(o.id)::int as order_count,coalesce(sum(o.total),0)::int as lifetime_value
-     from users u left join orders o on o.user_id=u.id where ($1::text is null or u.email ilike $1 or u.nickname ilike $1)
+    `select u.id,u.email,u.phone_e164,u.phone_verified_at,u.nickname,u.gender,u.birth_year,u.locale,u.status,u.created_at,count(o.id)::int as order_count,coalesce(sum(o.total),0)::int as lifetime_value
+     from users u left join orders o on o.user_id=u.id where ($1::text is null or u.email ilike $1 or u.phone_e164 ilike $1 or u.nickname ilike $1)
      group by u.id order by u.created_at desc limit 100`,
     [term],
   );
@@ -1017,7 +1022,7 @@ app.get("/v1/admin/customers", { preHandler: requirePermission("customers.read")
 app.get("/v1/admin/customers/:id", { preHandler: requirePermission("customers.read") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
   const [member, addresses, orders, coupons] = await Promise.all([
-    query("select id,email,nickname,gender,birth_year,locale,status,created_at,updated_at from users where id=$1", [id]),
+    query("select id,email,phone_e164,phone_verified_at,nickname,gender,birth_year,locale,status,created_at,updated_at from users where id=$1", [id]),
     query("select * from addresses where user_id=$1 order by is_default desc,created_at desc", [id]),
     query("select order_number,total,payment_status,is_test,created_at from orders where user_id=$1 order by created_at desc limit 50", [id]),
     query(

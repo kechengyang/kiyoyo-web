@@ -36,7 +36,13 @@ resource "google_identity_platform_config" "app" {
     }
 
     phone_number {
-      enabled = false
+      enabled = true
+    }
+  }
+
+  sms_region_config {
+    allowlist_only {
+      allowed_regions = ["KE"]
     }
   }
 

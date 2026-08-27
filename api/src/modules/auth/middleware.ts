@@ -73,6 +73,11 @@ export async function authenticate(
     const decoded = await getAuth().verifyIdToken(header.slice(7), true);
     const email = decoded.email?.toLowerCase() ?? null;
     const emailVerified = decoded.email_verified === true;
+    const phoneNumber =
+      typeof decoded.phone_number === "string" &&
+      /^\+[1-9]\d{7,14}$/.test(decoded.phone_number)
+        ? decoded.phone_number
+        : null;
     const result = await query<ActorRow>(
       `select u.id,u.status,sa.username,sa.status as staff_status,r.code as role,
               coalesce(array_agg(ssa.store_id::text) filter(where ssa.store_id is not null),'{}') as store_ids
@@ -110,6 +115,8 @@ export async function authenticate(
       authId: decoded.uid,
       email,
       emailVerified,
+      phoneNumber,
+      phoneVerified: phoneNumber !== null,
       authTime: Number(decoded.auth_time ?? 0),
       providers: trustedProviderIdentities(decoded),
       userId: user?.id ?? null,
@@ -128,13 +135,13 @@ export async function authenticate(
   }
 }
 
-export async function requireVerifiedEmail(
+export async function requireVerifiedMembership(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
   await requireProfile(request, reply);
   if (reply.sent) return;
-  const verificationError = verifiedEmailError(request.actor);
+  const verificationError = verifiedMembershipError(request.actor);
   if (verificationError) {
     return reply.code(403).send({
       error: verificationError,
@@ -142,12 +149,20 @@ export async function requireVerifiedEmail(
   }
 }
 
-export function verifiedEmailError(actor: AuthActor | undefined) {
-  if (actor?.email && actor.emailVerified) return null;
-  return {
-    code: "EMAIL_VERIFICATION_REQUIRED" as const,
-    message: "Verify your email before checking out",
-  };
+export function verifiedMembershipError(actor: AuthActor | undefined) {
+  if (!actor?.email || !actor.emailVerified) {
+    return {
+      code: "EMAIL_VERIFICATION_REQUIRED" as const,
+      message: "Verify your email before checking out",
+    };
+  }
+  if (!actor.phoneVerified || !actor.phoneNumber) {
+    return {
+      code: "PHONE_VERIFICATION_REQUIRED" as const,
+      message: "Verify your phone number before checking out",
+    };
+  }
+  return null;
 }
 
 export async function requireProfile(

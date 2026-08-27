@@ -3,6 +3,7 @@
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
+  RecaptchaVerifier,
   applyActionCode,
   browserLocalPersistence,
   checkActionCode,
@@ -10,6 +11,7 @@ import {
   createUserWithEmailAndPassword,
   getRedirectResult,
   linkWithPopup,
+  linkWithPhoneNumber,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
@@ -158,6 +160,64 @@ export async function linkMemberPassword(email: string, password: string) {
   await reload(auth.currentUser);
   await auth.currentUser.getIdToken(true);
   return auth.currentUser;
+}
+
+export type MemberPhoneChallenge = {
+  confirm: (code: string) => Promise<User>;
+  clear: () => void;
+};
+
+export async function beginMemberPhoneVerification(
+  phoneNumber: string,
+  recaptchaContainer: HTMLElement,
+): Promise<MemberPhoneChallenge> {
+  if (!auth.currentUser) throw new Error("Sign in required");
+  auth.languageCode = document.documentElement.lang || "en";
+  const verifier = new RecaptchaVerifier(auth, recaptchaContainer, {
+    size: "invisible",
+  });
+  try {
+    await verifier.render();
+    const confirmation = await linkWithPhoneNumber(
+      auth.currentUser,
+      phoneNumber,
+      verifier,
+    );
+    return {
+      clear: () => verifier.clear(),
+      confirm: async (code: string) => {
+        try {
+          const result = await confirmation.confirm(code);
+          await reload(result.user);
+          await result.user.getIdToken(true);
+          return result.user;
+        } catch (error) {
+          if (
+            error instanceof FirebaseError &&
+            error.code === "auth/credential-already-in-use"
+          ) {
+            throw new FirebaseError(
+              "auth/phone-number-already-exists",
+              "This phone number is already linked to another account",
+            );
+          }
+          throw error;
+        }
+      },
+    };
+  } catch (error) {
+    verifier.clear();
+    if (
+      error instanceof FirebaseError &&
+      error.code === "auth/credential-already-in-use"
+    ) {
+      throw new FirebaseError(
+        "auth/phone-number-already-exists",
+        "This phone number is already linked to another account",
+      );
+    }
+    throw error;
+  }
 }
 
 export async function unlinkMemberProvider(provider: AuthProvider) {

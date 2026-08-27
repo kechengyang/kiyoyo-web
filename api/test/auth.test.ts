@@ -10,7 +10,7 @@ process.env.POSPAL_APP_ID ??= "auth-contract-pospal-app-id";
 process.env.POSPAL_APP_KEY ??= "auth-contract-pospal-app-key";
 process.env.POSPAL_HQ_ACCOUNT ??= "auth-contract-pospal-hq";
 
-const { trustedProviderIdentities, verifiedEmailError } = await import(
+const { trustedProviderIdentities, verifiedMembershipError } = await import(
   "../src/modules/auth/middleware.js"
 );
 const { registerAuthRoutes } = await import("../src/modules/auth/routes.js");
@@ -46,20 +46,45 @@ test("trustedProviderIdentities does not infer password from email claims", () =
   assert.deepEqual(providers, []);
 });
 
-test("verified email gate returns the stable checkout error", () => {
-  assert.deepEqual(verifiedEmailError(undefined), {
+test("verified membership gate requires both email and phone", () => {
+  assert.deepEqual(verifiedMembershipError(undefined), {
     code: "EMAIL_VERIFICATION_REQUIRED",
     message: "Verify your email before checking out",
   });
-  assert.equal(
-    verifiedEmailError({
+  assert.deepEqual(
+    verifiedMembershipError({
       authId: "firebase-user-3",
       email: "member@example.com",
       emailVerified: true,
+      phoneNumber: null,
+      phoneVerified: false,
+      authTime: 0,
       providers: [],
       userId: "member-3",
       status: "ACTIVE",
+      staff: null,
       isAdmin: false,
+      legacyAdmin: false,
+    }),
+    {
+      code: "PHONE_VERIFICATION_REQUIRED",
+      message: "Verify your phone number before checking out",
+    },
+  );
+  assert.equal(
+    verifiedMembershipError({
+      authId: "firebase-user-3",
+      email: "member@example.com",
+      emailVerified: true,
+      phoneNumber: "+254712345678",
+      phoneVerified: true,
+      authTime: 0,
+      providers: [],
+      userId: "member-3",
+      status: "ACTIVE",
+      staff: null,
+      isAdmin: false,
+      legacyAdmin: false,
     }),
     null,
   );
@@ -71,10 +96,15 @@ test("bootstrap service only persists trusted actor identity", async () => {
     authId: "trusted-firebase-uid",
     email: "trusted@example.com",
     emailVerified: true,
+    phoneNumber: "+254712345678",
+    phoneVerified: true,
+    authTime: 0,
     providers: [{ provider: "GOOGLE" as const, subject: "google-subject" }],
     userId: null,
     status: null,
     isAdmin: false,
+    staff: null,
+    legacyAdmin: false,
   };
   await bootstrapUser(
     actor,
@@ -90,6 +120,7 @@ test("bootstrap service only persists trusted actor identity", async () => {
     nickname: "Member",
     locale: "en",
     emailVerified: true,
+    phoneNumber: actor.phoneNumber,
     providers: actor.providers,
   });
 });
@@ -100,10 +131,15 @@ test("bootstrap route validates input and returns compatible auth metadata", asy
     authId: "firebase-route-user",
     email: "route@example.com",
     emailVerified: true,
+    phoneNumber: "+254711222333",
+    phoneVerified: true,
+    authTime: 0,
     providers: [{ provider: "GOOGLE" as const, subject: "google-route-user" }],
     userId: null,
     status: null,
     isAdmin: false,
+    staff: null,
+    legacyAdmin: false,
   };
   registerAuthRoutes(app, {
     authenticate: async (request) => {
@@ -127,6 +163,9 @@ test("bootstrap route validates input and returns compatible auth metadata", asy
     auth: {
       uid: actor.authId,
       emailVerified: true,
+      phoneNumber: actor.phoneNumber,
+      phoneVerified: true,
+      membershipReady: true,
       providers: ["GOOGLE"],
     },
     permissions: { admin: false },
@@ -158,5 +197,18 @@ test("customer auth migration is forward-only and enforces active identities", a
   assert.match(migration, /on delete cascade/);
   assert.match(migration, /provider in \('PASSWORD','GOOGLE','FACEBOOK'\)/);
   assert.match(migration, /where unlinked_at is null/g);
+  assert.doesNotMatch(migration, /\bdrop\b/i);
+});
+
+test("verified phone migration enforces one valid phone per member", async () => {
+  const migration = await readFile(
+    resolve(process.cwd(), "migrations/0009_verified_phone_membership.sql"),
+    "utf8",
+  );
+  assert.match(migration, /add column phone_e164 text/);
+  assert.match(migration, /add column phone_verified_at timestamptz/);
+  assert.match(migration, /users_phone_e164_unique/);
+  assert.match(migration, /where phone_e164 is not null/);
+  assert.match(migration, /users_phone_e164_format_check/);
   assert.doesNotMatch(migration, /\bdrop\b/i);
 });

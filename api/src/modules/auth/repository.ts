@@ -15,27 +15,35 @@ export async function upsertUser(input: {
   nickname: string;
   locale: "en" | "zh";
   emailVerified: boolean;
+  phoneNumber: string | null;
   providers: ProviderIdentity[];
 }) {
   const client = await pool.connect();
   try {
     await client.query("begin");
     const result = await client.query(
-      `insert into users(external_auth_id,auth_provider,email,nickname,locale,email_verified_at,last_login_at)
-       values($1,'identity-platform',$2,$3,$4,case when $5 then now() else null end,now())
+      `insert into users(external_auth_id,auth_provider,email,nickname,locale,email_verified_at,phone_e164,phone_verified_at,last_login_at)
+       values($1,'identity-platform',$2,$3,$4,case when $5 then now() else null end,$6,case when $6::text is not null then now() else null end,now())
        on conflict(external_auth_id) do update set
          email=excluded.email,
          email_verified_at=case when $5 then coalesce(users.email_verified_at,now()) else null end,
+         phone_e164=excluded.phone_e164,
+         phone_verified_at=case
+           when $6::text is null then null
+           when users.phone_e164 is distinct from $6::text then now()
+           else coalesce(users.phone_verified_at,now())
+         end,
          last_login_at=now(),
          updated_at=now()
        returning id,external_auth_id,email,nickname,gender,birth_year,locale,status,
-         email_verified_at,last_login_at,created_at`,
+         email_verified_at,phone_e164,phone_verified_at,last_login_at,created_at`,
       [
         input.authId,
         input.email,
         input.nickname,
         input.locale,
         input.emailVerified,
+        input.phoneNumber,
       ],
     );
     const user = result.rows[0];

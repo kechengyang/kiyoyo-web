@@ -16,6 +16,7 @@ export async function bootstrapUser(
     nickname,
     locale: input.locale,
     emailVerified: actor.emailVerified,
+    phoneNumber: actor.phoneNumber,
     providers: actor.providers,
   });
   if (actor.legacyAdmin && typeof user.id === "string") {

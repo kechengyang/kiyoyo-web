@@ -5,6 +5,7 @@ import type {
   Address, AuthSession, CartItem, Lang, Order, Tab, UserCoupon, UserProfile,
 } from "../../../types";
 import type { AuthErrorCode, AuthProvider } from "../../../auth/types";
+import { maskedPhoneNumber } from "../../../auth/phone";
 import type { CustomerCopy } from "../core/copy";
 import { couponStatusLabel } from "../core/foundation";
 import { Logo, SectionHead } from "../shared/primitives";
@@ -19,6 +20,7 @@ export function AccountView({
   cart, orders, openOrderDetails, setEditingOrderId, signOut,
   authBusy, authError, linkProvider, linkPassword, unlinkProvider,
   resendVerification, refreshVerification, go,
+  openPhoneVerification,
 }: {
   t: CustomerCopy;
   lang: Lang;
@@ -47,6 +49,7 @@ export function AccountView({
   unlinkProvider: (provider: AuthProvider) => Promise<unknown>;
   resendVerification: () => Promise<unknown>;
   refreshVerification: () => Promise<AuthSession | null>;
+  openPhoneVerification: () => void;
   go: (tab: Tab) => void;
 }) {
   return (
@@ -104,15 +107,15 @@ export function AccountView({
     </div>
   ) : (
     <>
-      <div className="member-card">
+      <div className={`member-card${session.membershipReady ? "" : " membership-pending"}`}>
         <div>
-          <span>{t.member}</span>
+          <span>{session.membershipReady ? t.member : t.phoneRequired}</span>
           <h1>{profile.nickname || t.memberHello}</h1>
-          <small>{t.points}</small>
-          <strong>2,480</strong>
+          <small>{session.membershipReady ? t.points : t.phoneRequiredHelp}</small>
+          <strong>{session.membershipReady ? "2,480" : "—"}</strong>
         </div>
         <Logo />
-        <i>VIP</i>
+        <i>{session.membershipReady ? "VIP" : t.membershipPending}</i>
       </div>
       {!session.emailVerified && (
         <aside className="verification-banner" aria-live="polite">
@@ -133,6 +136,19 @@ export function AccountView({
               onClick={() => void refreshVerification().catch(() => undefined)}
             >
               {t.checkVerification}
+            </button>
+          </div>
+        </aside>
+      )}
+      {!session.phoneVerified && (
+        <aside className="verification-banner phone-verification-banner" aria-live="polite">
+          <div>
+            <strong>{t.phoneRequired}</strong>
+            <span>{t.phoneRequiredHelp}</span>
+          </div>
+          <div>
+            <button className="primary" disabled={authBusy} onClick={openPhoneVerification}>
+              {t.verifyPhone} →
             </button>
           </div>
         </aside>
@@ -162,6 +178,10 @@ export function AccountView({
               {lang === "zh" ? "登录方式" : "Sign-in method"}
             </span>
             <strong>{session.providers.map((provider) => t.providerNames[provider]).join(", ")}</strong>
+          </div>
+          <div>
+            <span>{t.phoneVerified}</span>
+            <strong>{maskedPhoneNumber(session.phoneNumber) || t.phoneRequired}</strong>
           </div>
         </div>
         <div className="address-head">
