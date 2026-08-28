@@ -22,6 +22,13 @@ import { registerAdminAccessRoutes } from "./admin/access-routes.js";
 import { registerAdminSessionRoutes } from "./admin/session-routes.js";
 import { registerProductSyncRoutes } from "./pospal/product-sync/routes.js";
 import {
+  calculateEarnedPoints,
+  calculatePointsRedemption,
+  earnRatePercent,
+  lockLoyaltyWallet,
+  recordLoyaltyTransaction,
+} from "./loyalty.js";
+import {
   closeOrderEventListener,
   ensureOrderEventListener,
   notifyOrderCreated,
@@ -224,6 +231,36 @@ app.get("/v1/me", { preHandler: requireProfile }, async (request) => {
   };
 });
 
+app.get("/v1/me/loyalty", { preHandler: requireProfile }, async (request) => {
+  const [wallet, settings, transactions] = await Promise.all([
+    query<{ balance_points: number; lifetime_earned_points: number; lifetime_redeemed_points: number }>(
+      `select balance_points,lifetime_earned_points,lifetime_redeemed_points
+         from loyalty_wallets where user_id=$1`,
+      [request.actor!.userId],
+    ),
+    query<{ earn_rate_basis_points: number }>(
+      "select earn_rate_basis_points from loyalty_settings where singleton=true",
+    ),
+    query(
+      `select id,transaction_type,points,balance_after,order_id,reason,external_reference,earn_rate_basis_points,created_at
+         from loyalty_transactions where user_id=$1 order by created_at desc limit 50`,
+      [request.actor!.userId],
+    ),
+  ]);
+  const rate = settings.rows[0]?.earn_rate_basis_points ?? 100;
+  return {
+    data: {
+      balance_points: wallet.rows[0]?.balance_points ?? 0,
+      lifetime_earned_points: wallet.rows[0]?.lifetime_earned_points ?? 0,
+      lifetime_redeemed_points: wallet.rows[0]?.lifetime_redeemed_points ?? 0,
+      earn_rate_basis_points: rate,
+      earn_rate_percent: earnRatePercent(rate),
+      point_value_kes: 1,
+      transactions: transactions.rows,
+    },
+  };
+});
+
 app.patch("/v1/me", { preHandler: requireProfile }, async (request) => {
   const input = z.object({ nickname: z.string().trim().min(1).max(80).optional(), gender: z.enum(["FEMALE", "MALE", "NON_BINARY", "PREFER_NOT_TO_SAY"]).nullable().optional(), birth_year: z.number().int().min(1900).max(new Date().getFullYear()).nullable().optional(), locale: z.enum(["en", "zh"]).optional() }).parse(request.body);
   const result = await query(
@@ -346,6 +383,7 @@ const checkoutSchema = z.object({
   items: z.array(z.object({ product_id: z.string(), quantity: z.number().int().min(1).max(20), customization: z.record(z.string(), z.unknown()).default({}) })).min(1).max(50),
   fulfillment: z.object({ type: z.enum(["PICKUP", "DELIVERY", "SHIPPING"]), store_id: z.string().optional(), address_id: z.string().uuid().optional() }),
   coupon_code: z.string().trim().min(3).max(40).optional(),
+  points_to_redeem: z.number().int().min(0).max(1_000_000).default(0),
   payment_method: z.object({ provider: z.literal("MOCK"), token: z.enum(["test_ok", "test_declined", "test_timeout"]) }),
 });
 
@@ -353,8 +391,18 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (requ
   const input = checkoutSchema.parse(request.body);
   const idempotencyKey = String(request.headers["idempotency-key"] ?? "");
   if (!idempotencyKey) return reply.code(400).send({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Idempotency-Key header is required" } });
-  const existing = await query("select o.order_number,o.payment_status from payments p join orders o on o.id=p.order_id where p.idempotency_key=$1", [idempotencyKey]);
+  const existing = await query(
+    `select o.order_number,o.subtotal,o.discount,o.delivery_fee,o.total,o.payment_status,
+            o.points_redeemed,o.points_discount,o.points_earned,o.points_earn_rate_basis_points,o.created_at
+       from payments p join orders o on o.id=p.order_id where p.idempotency_key=$1`,
+    [idempotencyKey],
+  );
   if (existing.rowCount) return { data: existing.rows[0], idempotent_replay: true };
+  if (input.points_to_redeem > 0 && input.payment_method.token === "test_timeout") {
+    return reply.code(422).send({
+      error: { code: "POINTS_REQUIRE_IMMEDIATE_PAYMENT", message: "Points cannot be used with a pending test payment" },
+    });
+  }
 
   const ids = input.items.map((item) => item.product_id);
   const products = await query<any>(`${productSelect} where p.active=true and (p.id::text=any($1::text[]) or p.external_code=any($1::text[]))`, [ids]);
@@ -396,6 +444,17 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (requ
   const client = await pool.connect();
   try {
     await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [`checkout:${idempotencyKey}`]);
+    const concurrentExisting = await client.query(
+      `select o.order_number,o.subtotal,o.discount,o.delivery_fee,o.total,o.payment_status,
+              o.points_redeemed,o.points_discount,o.points_earned,o.points_earn_rate_basis_points,o.created_at
+         from payments p join orders o on o.id=p.order_id where p.idempotency_key=$1`,
+      [idempotencyKey],
+    );
+    if (concurrentExisting.rowCount) {
+      await client.query("commit");
+      return { data: concurrentExisting.rows[0], idempotent_replay: true };
+    }
     let appliedCoupon: CouponRow | null = null;
     let appliedUserCouponId: string | null = null;
     let discount = 0;
@@ -460,7 +519,31 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (requ
       }
       discount = calculated.discount;
     }
-    const total = Math.max(0, subtotal - discount + deliveryFee);
+    const payableBeforePoints = Math.max(0, subtotal - discount + deliveryFee);
+    const settingsResult = await client.query<{ earn_rate_basis_points: number }>(
+      "select earn_rate_basis_points from loyalty_settings where singleton=true",
+    );
+    const earnRateBasisPoints = settingsResult.rows[0]?.earn_rate_basis_points ?? 100;
+    let pointsRedeemed = 0;
+    let pointsDiscount = 0;
+    if (input.points_to_redeem > 0 && paymentStatus === "PAID") {
+      const wallet = await lockLoyaltyWallet(client, request.actor!.userId!);
+      const redemption = calculatePointsRedemption(
+        input.points_to_redeem,
+        wallet.balance_points,
+        payableBeforePoints,
+      );
+      if ("error" in redemption) {
+        await client.query("rollback");
+        return reply.code(422).send({ error: { code: "POINTS_NOT_APPLICABLE", message: redemption.error } });
+      }
+      pointsRedeemed = redemption.points;
+      pointsDiscount = redemption.discount;
+    }
+    const total = payableBeforePoints - pointsDiscount;
+    const pointsEarned = paymentStatus === "PAID"
+      ? calculateEarnedPoints(Math.max(0, subtotal - discount - pointsDiscount), earnRateBasisPoints)
+      : 0;
     let addressSnapshot = null;
     if (input.fulfillment.address_id) {
       const address = await client.query("select * from addresses where id=$1 and user_id=$2", [input.fulfillment.address_id, request.actor!.userId]);
@@ -472,8 +555,10 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (requ
       : { rows: [] };
     if (input.fulfillment.type !== "SHIPPING" && !store.rows[0]) { await client.query("rollback"); return reply.code(422).send({ error: { code: "STORE_REQUIRED", message: "Choose an active store" } }); }
     const order = await client.query(
-      `insert into orders(order_number,user_id,subtotal,discount,delivery_fee,total,payment_status,is_test) values($1,$2,$3,$4,$5,$6,$7,true) returning id,order_number,subtotal,discount,delivery_fee,total,payment_status,created_at`,
-      [orderNumber, request.actor!.userId, subtotal, discount, deliveryFee, total, paymentStatus],
+      `insert into orders(order_number,user_id,subtotal,discount,delivery_fee,total,payment_status,is_test,points_redeemed,points_discount,points_earned,points_earn_rate_basis_points)
+       values($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11)
+       returning id,order_number,subtotal,discount,delivery_fee,total,payment_status,points_redeemed,points_discount,points_earned,points_earn_rate_basis_points,created_at`,
+      [orderNumber, request.actor!.userId, subtotal, discount, deliveryFee, total, paymentStatus, pointsRedeemed, pointsDiscount, pointsEarned, paymentStatus === "PAID" ? earnRateBasisPoints : null],
     );
     const fulfillment = await client.query(
       `insert into fulfillment_groups(order_id,type,store_id,address_id,address_snapshot_json,status,promised_at)
@@ -526,6 +611,27 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (requ
         );
       }
     }
+    if (pointsRedeemed > 0) {
+      await recordLoyaltyTransaction(client, {
+        userId: request.actor!.userId!,
+        transactionType: "ORDER_REDEEM",
+        points: -pointsRedeemed,
+        orderId: order.rows[0].id,
+        reason: `Redeemed on ${orderNumber}`,
+        isTest: true,
+      });
+    }
+    if (pointsEarned > 0) {
+      await recordLoyaltyTransaction(client, {
+        userId: request.actor!.userId!,
+        transactionType: "ORDER_EARN",
+        points: pointsEarned,
+        orderId: order.rows[0].id,
+        reason: `Earned from ${orderNumber}`,
+        earnRateBasisPoints,
+        isTest: true,
+      });
+    }
     let pickupQrPayload: string | null = null;
     if (input.fulfillment.type === "PICKUP" && paymentStatus !== "DECLINED") {
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -545,7 +651,7 @@ app.post("/v1/checkouts", { preHandler: requireVerifiedMembership }, async (requ
 
 app.get("/v1/me/orders", { preHandler: requireProfile }, async (request) => {
   const result = await query(
-    `select o.order_number,o.currency,o.subtotal,o.discount,o.delivery_fee,o.total,o.payment_status,o.is_test,o.created_at,
+    `select o.order_number,o.currency,o.subtotal,o.discount,o.delivery_fee,o.points_redeemed,o.points_discount,o.points_earned,o.points_earn_rate_basis_points,o.total,o.payment_status,o.is_test,o.created_at,
       (select c.code from coupon_redemptions cr join coupons c on c.id=cr.coupon_id where cr.order_id=o.id and cr.status in ('RESERVED','REDEEMED') limit 1) as coupon_code,
       coalesce((
         select jsonb_agg(
@@ -1009,9 +1115,12 @@ app.get("/v1/admin/customers", { preHandler: requirePermission("customers.read")
   const input = z.object({ query: z.string().max(100).optional() }).parse(request.query);
   const term = input.query ? `%${input.query}%` : null;
   const result = await query(
-    `select u.id,u.email,u.phone_e164,u.phone_verified_at,u.nickname,u.gender,u.birth_year,u.locale,u.status,u.created_at,count(o.id)::int as order_count,coalesce(sum(o.total),0)::int as lifetime_value
-     from users u left join orders o on o.user_id=u.id where ($1::text is null or u.email ilike $1 or u.phone_e164 ilike $1 or u.nickname ilike $1)
-     group by u.id order by u.created_at desc limit 100`,
+    `select u.id,u.email,u.phone_e164,u.phone_verified_at,u.nickname,u.gender,u.birth_year,u.locale,u.status,u.created_at,
+            count(o.id)::int as order_count,coalesce(sum(o.total),0)::int as lifetime_value,
+            coalesce(lw.balance_points,0)::int as points_balance
+     from users u left join orders o on o.user_id=u.id left join loyalty_wallets lw on lw.user_id=u.id
+     where ($1::text is null or u.email ilike $1 or u.phone_e164 ilike $1 or u.nickname ilike $1)
+     group by u.id,lw.balance_points order by u.created_at desc limit 100`,
     [term],
   );
   return { data: result.rows };
@@ -1019,8 +1128,15 @@ app.get("/v1/admin/customers", { preHandler: requirePermission("customers.read")
 
 app.get("/v1/admin/customers/:id", { preHandler: requirePermission("customers.read") }, async (request, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-  const [member, addresses, orders, coupons] = await Promise.all([
-    query("select id,email,phone_e164,phone_verified_at,nickname,gender,birth_year,locale,status,created_at,updated_at from users where id=$1", [id]),
+  const [member, addresses, orders, coupons, loyalty] = await Promise.all([
+    query(
+      `select u.id,u.email,u.phone_e164,u.phone_verified_at,u.nickname,u.gender,u.birth_year,u.locale,u.status,u.created_at,u.updated_at,
+              coalesce(lw.balance_points,0)::int as points_balance,
+              coalesce(lw.lifetime_earned_points,0)::int as lifetime_earned_points,
+              coalesce(lw.lifetime_redeemed_points,0)::int as lifetime_redeemed_points
+         from users u left join loyalty_wallets lw on lw.user_id=u.id where u.id=$1`,
+      [id],
+    ),
     query("select * from addresses where user_id=$1 order by is_default desc,created_at desc", [id]),
     query("select order_number,total,payment_status,is_test,created_at from orders where user_id=$1 order by created_at desc limit 50", [id]),
     query(
@@ -1039,9 +1155,113 @@ app.get("/v1/admin/customers/:id", { preHandler: requirePermission("customers.re
        order by uc.issued_at desc limit 100`,
       [id],
     ),
+    query(
+      `select id,transaction_type,points,balance_after,order_id,reason,external_reference,earn_rate_basis_points,is_test,created_at
+         from loyalty_transactions where user_id=$1 order by created_at desc limit 100`,
+      [id],
+    ),
   ]);
   if (!member.rowCount) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Customer not found" } });
-  return { data: { ...member.rows[0], addresses: addresses.rows, orders: orders.rows, coupons: coupons.rows } };
+  return { data: { ...member.rows[0], addresses: addresses.rows, orders: orders.rows, coupons: coupons.rows, points_transactions: loyalty.rows } };
+});
+
+app.get("/v1/admin/loyalty/settings", { preHandler: requirePermission("loyalty.read") }, async () => {
+  const result = await query<{ earn_rate_basis_points: number; updated_at: string }>(
+    "select earn_rate_basis_points,updated_at from loyalty_settings where singleton=true",
+  );
+  const settings = result.rows[0] ?? { earn_rate_basis_points: 100, updated_at: new Date().toISOString() };
+  return { data: { ...settings, earn_rate_percent: earnRatePercent(settings.earn_rate_basis_points), point_value_kes: 1 } };
+});
+
+app.patch("/v1/admin/loyalty/settings", { preHandler: requirePermission("loyalty.settings.write") }, async (request) => {
+  const input = z.object({ earn_rate_percent: z.number().min(0).max(100) }).parse(request.body);
+  const basisPoints = Math.round(input.earn_rate_percent * 100);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query(
+      `update loyalty_settings set earn_rate_basis_points=$1,updated_by=$2,updated_at=now()
+        where singleton=true returning earn_rate_basis_points,updated_at`,
+      [basisPoints, request.actor!.userId],
+    );
+    await client.query(
+      `insert into audit_logs(actor_id,action,entity_type,entity_id,request_id,metadata_redacted_json)
+       values($1,'LOYALTY_SETTINGS_UPDATED','loyalty_settings','default',$2,$3)`,
+      [request.actor!.userId, request.id, { earn_rate_basis_points: basisPoints }],
+    );
+    await client.query("commit");
+    return { data: { ...result.rows[0], earn_rate_percent: earnRatePercent(basisPoints), point_value_kes: 1 } };
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/v1/admin/customers/:id/points-adjustments", { preHandler: requirePermission("loyalty.adjust") }, async (request, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+  const input = z.object({
+    type: z.enum(["CREDIT", "DEBIT"]),
+    points: z.number().int().min(1).max(1_000_000),
+    reason: z.string().trim().min(3).max(240),
+    external_reference: z.string().trim().max(120).optional(),
+  }).parse(request.body);
+  const idempotencyKey = String(request.headers["idempotency-key"] ?? "");
+  if (!idempotencyKey) {
+    return reply.code(400).send({ error: { code: "IDEMPOTENCY_KEY_REQUIRED", message: "Idempotency-Key header is required" } });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [idempotencyKey]);
+    const existing = await client.query(
+      `select id,user_id,transaction_type,points,balance_after,reason,external_reference,is_test,created_at
+         from loyalty_transactions where idempotency_key=$1 for update`,
+      [idempotencyKey],
+    );
+    if (existing.rowCount) {
+      const row = existing.rows[0];
+      const expectedType = input.type === "CREDIT" ? "MANUAL_CREDIT" : "MANUAL_DEBIT";
+      const expectedPoints = input.type === "CREDIT" ? input.points : -input.points;
+      if (row.user_id !== id || row.transaction_type !== expectedType || row.points !== expectedPoints) {
+        await client.query("rollback");
+        return reply.code(409).send({ error: { code: "IDEMPOTENCY_CONFLICT", message: "Idempotency key was already used for a different points adjustment" } });
+      }
+      await client.query("commit");
+      return reply.send({ data: row, idempotent_replay: true });
+    }
+    const customer = await client.query("select 1 from users where id=$1 and status='ACTIVE' for update", [id]);
+    if (!customer.rowCount) {
+      await client.query("rollback");
+      return reply.code(404).send({ error: { code: "NOT_FOUND", message: "Active customer not found" } });
+    }
+    const transaction = await recordLoyaltyTransaction(client, {
+      userId: id,
+      transactionType: input.type === "CREDIT" ? "MANUAL_CREDIT" : "MANUAL_DEBIT",
+      points: input.type === "CREDIT" ? input.points : -input.points,
+      actorId: request.actor!.userId!,
+      reason: input.reason,
+      externalReference: input.external_reference,
+      idempotencyKey,
+      isTest: config.environment !== "prod",
+    });
+    await client.query(
+      `insert into audit_logs(actor_id,action,entity_type,entity_id,request_id,metadata_redacted_json)
+       values($1,$2,'user',$3,$4,$5)`,
+      [request.actor!.userId, input.type === "CREDIT" ? "LOYALTY_POINTS_CREDITED" : "LOYALTY_POINTS_DEBITED", id, request.id, { points: input.points, reason: input.reason, external_reference: input.external_reference ?? null }],
+    );
+    await client.query("commit");
+    return reply.code(201).send({ data: transaction });
+  } catch (error) {
+    await client.query("rollback");
+    if (error instanceof Error && error.message === "LOYALTY_BALANCE_TOO_LOW") {
+      return reply.code(422).send({ error: { code: "LOYALTY_BALANCE_TOO_LOW", message: "Points debit cannot exceed the current balance" } });
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 app.patch("/v1/admin/customers/:id", { preHandler: requirePermission("customers.write") }, async (request, reply) => {

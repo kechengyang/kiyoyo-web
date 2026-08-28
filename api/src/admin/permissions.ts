@@ -18,6 +18,9 @@ export const permissionCodes = [
   "coupons.publish",
   "customer_coupons.issue",
   "customer_coupons.revoke",
+  "loyalty.read",
+  "loyalty.settings.write",
+  "loyalty.adjust",
   "stores.read",
   "stores.write",
   "access.read",
@@ -37,6 +40,7 @@ const operatorPermissions = new Set<PermissionCode>([
   "redeem.verify",
   "redeem.execute",
   "customers.read",
+  "loyalty.read",
   "stores.read",
 ]);
 

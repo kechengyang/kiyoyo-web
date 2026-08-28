@@ -13,6 +13,7 @@ import {
   apiFetch,
   fetchMemberCoupons,
   fetchMemberFavorites,
+  fetchMemberLoyalty,
   fetchMemberOrders,
   pickupTokenFingerprint,
   removeMemberFavorite,
@@ -66,12 +67,22 @@ import type {
   Address,
   CartItem,
   Lang,
+  LoyaltyWallet,
   Order,
   Product,
   Tab,
   UserCoupon,
   UserProfile,
 } from "../types";
+
+const emptyLoyalty: LoyaltyWallet = {
+  balancePoints: 0,
+  lifetimeEarnedPoints: 0,
+  lifetimeRedeemedPoints: 0,
+  earnRatePercent: 1,
+  pointValueKes: 1,
+  transactions: [],
+};
 
 export default function KiyoyoApp({
   initialTab = "home",
@@ -148,6 +159,8 @@ export default function KiyoyoApp({
   const [pendingCheckout, setPendingCheckout] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [userCoupons, setUserCoupons] = useState<UserCoupon[]>([]);
+  const [loyalty, setLoyalty] = useState<LoyaltyWallet>(emptyLoyalty);
+  const [usePoints, setUsePoints] = useState(false);
   const [couponsLoading, setCouponsLoading] = useState(false);
   const [selectedCouponId, setSelectedCouponId] = useState("");
   const [couponCodeInput, setCouponCodeInput] = useState("");
@@ -265,6 +278,8 @@ export default function KiyoyoApp({
         setOrders([]);
         setProfile(emptyProfile);
         setUserCoupons([]);
+        setLoyalty(emptyLoyalty);
+        setUsePoints(false);
         setCouponsLoading(false);
         setSelectedCouponId("");
       });
@@ -277,7 +292,7 @@ export default function KiyoyoApp({
       if (cancelled) return;
       setCouponsLoading(true);
       try {
-        const [member, addressPayload, remoteOrders, remoteCoupons] = await Promise.all([
+        const [member, addressPayload, remoteOrders, remoteCoupons, remoteLoyalty] = await Promise.all([
             apiFetch<{
               data: {
                 nickname: string;
@@ -299,9 +314,11 @@ export default function KiyoyoApp({
             }>("/v1/me/addresses"),
             fetchMemberOrders(),
             fetchMemberCoupons(),
+            fetchMemberLoyalty(),
         ]);
         if (cancelled) return;
           setUserCoupons(remoteCoupons);
+          setLoyalty(remoteLoyalty);
           setCouponsLoading(false);
           const genderMap: Record<string, UserProfile["gender"]> = {
             FEMALE: "Female",
@@ -535,10 +552,14 @@ export default function KiyoyoApp({
       : checkoutChannel === "Shipping"
         ? 300
         : 0;
-  const estimatedCheckoutTotal = Math.max(
+  const estimatedBeforePoints = Math.max(
     0,
     subtotal - estimatedCouponDiscount + checkoutDeliveryFee,
   );
+  const pointsToRedeem = usePoints
+    ? Math.min(loyalty.balancePoints, estimatedBeforePoints)
+    : 0;
+  const estimatedCheckoutTotal = estimatedBeforePoints - pointsToRedeem;
 
   const filteredProducts = products
     .filter((p) => {
@@ -993,6 +1014,10 @@ export default function KiyoyoApp({
           total: number;
           created_at: string;
           coupon_code: string | null;
+          points_redeemed: number;
+          points_discount: number;
+          points_earned: number;
+          points_earn_rate_basis_points: number | null;
           pickup_qr_payload: string | null;
         };
       }>("/v1/checkouts", {
@@ -1017,6 +1042,7 @@ export default function KiyoyoApp({
           },
           coupon_code:
             selectedCoupon?.code || couponCodeInput.trim() || undefined,
+          points_to_redeem: pointsToRedeem,
           payment_method: { provider: "MOCK", token: "test_ok" },
         }),
       });
@@ -1030,6 +1056,10 @@ export default function KiyoyoApp({
         discount: response.data.discount,
         deliveryFee: response.data.delivery_fee,
         couponCode: response.data.coupon_code ?? undefined,
+        pointsRedeemed: response.data.points_redeemed,
+        pointsDiscount: response.data.points_discount,
+        pointsEarned: response.data.points_earned,
+        pointsEarnRateBasisPoints: response.data.points_earn_rate_basis_points ?? undefined,
         total: response.data.total,
         items: detailedCart.map(({ product, ...item }) => {
           const unitPrice =
@@ -1072,7 +1102,13 @@ export default function KiyoyoApp({
       setCheckoutChannel(null);
       setSelectedCouponId("");
       setCouponCodeInput("");
-      setUserCoupons(await fetchMemberCoupons());
+      setUsePoints(false);
+      const [nextCoupons, nextLoyalty] = await Promise.all([
+        fetchMemberCoupons(),
+        fetchMemberLoyalty(),
+      ]);
+      setUserCoupons(nextCoupons);
+      setLoyalty(nextLoyalty);
       setSuccess(order);
     } catch (error) {
       setCheckoutError(
@@ -1321,6 +1357,7 @@ export default function KiyoyoApp({
               setPhoneVerificationGate(true);
             }}
             go={go}
+            loyalty={loyalty}
           />
         )}
       </main>
@@ -1403,6 +1440,10 @@ export default function KiyoyoApp({
           placingOrder={placingOrder}
           placeOrder={placeOrder}
           estimatedCheckoutTotal={estimatedCheckoutTotal}
+          loyalty={loyalty}
+          usePoints={usePoints}
+          setUsePoints={setUsePoints}
+          pointsToRedeem={pointsToRedeem}
         />
       )}
 

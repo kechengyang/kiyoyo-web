@@ -42,6 +42,13 @@ const tools: Array<{
     description: "Create offers and control their publishing lifecycle.",
   },
   {
+    tab: "loyalty",
+    icon: "loyalty",
+    title: "Loyalty points",
+    titleZh: "积分管理",
+    description: "Set the default earn rate and review how points deduct payment.",
+  },
+  {
     tab: "stores",
     icon: "stores",
     title: "Stores",

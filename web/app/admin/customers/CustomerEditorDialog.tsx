@@ -6,6 +6,7 @@ export function CustomerEditorDialog({
   selectedCustomer, setSelectedCustomer, issueCouponId, setIssueCouponId,
   coupons, couponBusy, issueCoupon, couponError, revokeUserCoupon, saveCustomer,
   canWrite, canSetPassword, setCustomerPassword,
+  canAdjustPoints, adjustCustomerPoints,
 }: {
   selectedCustomer: CustomerDetail;
   setSelectedCustomer: Dispatch<SetStateAction<CustomerDetail | null>>;
@@ -20,11 +21,19 @@ export function CustomerEditorDialog({
   canWrite: boolean;
   canSetPassword: boolean;
   setCustomerPassword: (password: string, passwordConfirm: string, reason: string) => void;
+  canAdjustPoints: boolean;
+  adjustCustomerPoints: (type: "CREDIT" | "DEBIT", points: number, reason: string, externalReference: string) => Promise<void>;
 }) {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [passwordReason, setPasswordReason] = useState("");
+  const [points, setPoints] = useState("");
+  const [adjustmentType, setAdjustmentType] = useState<"CREDIT" | "DEBIT">("CREDIT");
+  const [pointsReason, setPointsReason] = useState("");
+  const [pointsReference, setPointsReference] = useState("");
+  const [pointsSuccess, setPointsSuccess] = useState("");
+  const parsedPoints = Number(points);
   return (
 <div className="modal-backdrop">
   <section className="admin-record-modal">
@@ -78,6 +87,10 @@ export function CustomerEditorDialog({
         <strong>{money(selectedCustomer.lifetime_value)}</strong>
       </span>
       <span>
+        <small>Points / 积分</small>
+        <strong>{selectedCustomer.points_balance.toLocaleString()}</strong>
+      </span>
+      <span>
         <small>Joined</small>
         <strong>
           {new Date(selectedCustomer.created_at).toLocaleDateString(
@@ -85,6 +98,64 @@ export function CustomerEditorDialog({
           )}
         </strong>
       </span>
+    </div>
+    <h3>Points wallet / 积分钱包</h3>
+    {canAdjustPoints && (
+      <section className="customer-points-credit">
+        <p>Credit verified purchases such as a VIP card, or debit points to correct an error. Every change is audited. / 为 VIP 卡等已确认付款充值，或扣减积分纠错；所有操作都会记录。</p>
+        <div className="form-split">
+          <label className="form-field">
+            <span>Adjustment / 操作</span>
+            <select value={adjustmentType} onChange={(event) => { setAdjustmentType(event.target.value as "CREDIT" | "DEBIT"); setPointsSuccess(""); }}>
+              <option value="CREDIT">Credit / 充值</option>
+              <option value="DEBIT">Debit correction / 扣减纠错</option>
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Points / 积分</span>
+            <input type="number" min="1" max="1000000" step="1" value={points} onChange={(event) => { setPoints(event.target.value); setPointsSuccess(""); }} />
+          </label>
+        </div>
+        <div className="form-split">
+          <label className="form-field">
+            <span>Reference (optional) / 参考号</span>
+            <input value={pointsReference} onChange={(event) => setPointsReference(event.target.value)} placeholder="VIP card receipt / VIP 卡收据" />
+          </label>
+        </div>
+        <label className="form-field">
+          <span>Reason / 原因</span>
+          <input value={pointsReason} onChange={(event) => setPointsReason(event.target.value)} placeholder="VIP card purchase / 购买 VIP 卡" />
+        </label>
+        <button
+          className={adjustmentType === "DEBIT" ? "danger" : undefined}
+          disabled={couponBusy || !Number.isInteger(parsedPoints) || parsedPoints < 1 || parsedPoints > 1_000_000 || (adjustmentType === "DEBIT" && parsedPoints > selectedCustomer.points_balance) || pointsReason.trim().length < 3 || selectedCustomer.status !== "ACTIVE"}
+          onClick={async () => {
+            const verb = adjustmentType === "CREDIT" ? "Credit" : "Debit";
+            if (!window.confirm(`${verb} ${parsedPoints.toLocaleString()} points ${adjustmentType === "CREDIT" ? "to" : "from"} ${selectedCustomer.nickname}?`)) return;
+            try {
+              await adjustCustomerPoints(adjustmentType, parsedPoints, pointsReason.trim(), pointsReference.trim());
+              setPoints("");
+              setPointsReason("");
+              setPointsReference("");
+              setPointsSuccess(`${parsedPoints.toLocaleString()} points ${adjustmentType === "CREDIT" ? "credited" : "debited"} / 积分操作成功`);
+            } catch {
+              setPointsSuccess("");
+            }
+          }}
+        >
+          {couponBusy ? "Saving…" : adjustmentType === "CREDIT" ? "Credit points / 充值积分" : "Debit points / 扣减积分"}
+        </button>
+        {pointsSuccess && <span className="form-success" role="status">{pointsSuccess}</span>}
+      </section>
+    )}
+    <div className="record-list compact customer-points-history">
+      {selectedCustomer.points_transactions.length ? selectedCustomer.points_transactions.map((transaction) => (
+        <article key={transaction.id}>
+          <strong>{transaction.points > 0 ? "+" : ""}{transaction.points.toLocaleString()} points</strong>
+          <span>{transaction.transaction_type.replaceAll("_", " ")}</span>
+          <small>{transaction.reason || "No reason"} · Balance {transaction.balance_after.toLocaleString()} · {new Date(transaction.created_at).toLocaleDateString("en-KE")}</small>
+        </article>
+      )) : <small>No points activity yet. / 暂无积分记录。</small>}
     </div>
     <h3>Delivery addresses</h3>
     <div className="record-list">

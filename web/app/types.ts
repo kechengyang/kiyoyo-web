@@ -117,6 +117,10 @@ export type Order = {
   discount?: number;
   deliveryFee?: number;
   couponCode?: string;
+  pointsRedeemed?: number;
+  pointsDiscount?: number;
+  pointsEarned?: number;
+  pointsEarnRateBasisPoints?: number;
   total: number;
   items: CartItem[];
   pickupCode: string;
@@ -162,6 +166,25 @@ export type UserCoupon = Coupon & {
   issuedAt: string;
   expiresAt: string;
   redeemedAt: string | null;
+};
+
+export type LoyaltyWallet = {
+  balancePoints: number;
+  lifetimeEarnedPoints: number;
+  lifetimeRedeemedPoints: number;
+  earnRatePercent: number;
+  pointValueKes: number;
+  transactions: Array<{
+    id: string;
+    transactionType: "ORDER_EARN" | "ORDER_REDEEM" | "MANUAL_CREDIT" | "MANUAL_DEBIT";
+    points: number;
+    balanceAfter: number;
+    orderId: string | null;
+    reason: string | null;
+    externalReference: string | null;
+    earnRateBasisPoints: number | null;
+    createdAt: string;
+  }>;
 };
 
 export type { AuthProvider, AuthSession } from "./auth/types";

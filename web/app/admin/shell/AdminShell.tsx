@@ -43,6 +43,7 @@ export type AdminIconName =
   | "coupons"
   | "redeem"
   | "customers"
+  | "loyalty"
   | "stores"
   | "admin"
   | "access";
@@ -56,6 +57,7 @@ export function AdminIcon({ name }: { name: AdminIconName }) {
     coupons: <><path d="M3 7a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a3 3 0 0 0 0-6z"/><path d="m9 16 6-8M9 9h.01M15 15h.01"/></>,
     redeem: <><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><path d="M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM14 14h2v2h-2z"/></>,
     customers: <><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></>,
+    loyalty: <><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></>,
     stores: <><path d="M4 10h16l-2-6H6z"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></>,
     admin: <><path d="M12 3 4.5 6v5.5c0 4.6 3.2 7.9 7.5 9.5 4.3-1.6 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></>,
     access: <><circle cx="9" cy="8" r="4"/><path d="M2.5 21a6.5 6.5 0 0 1 13 0M17 11v6M14 14h6"/></>,
@@ -94,13 +96,13 @@ export function AdminSidebar({
             href={adminTabPath(item)}
             className={
               tab === item ||
-              (item === "admin" && ["overview", "products", "coupons", "stores", "access"].includes(tab))
+              (item === "admin" && ["overview", "products", "coupons", "loyalty", "stores", "access"].includes(tab))
                 ? "active"
                 : ""
             }
             aria-current={
               tab === item ||
-              (item === "admin" && ["overview", "products", "coupons", "stores", "access"].includes(tab))
+              (item === "admin" && ["overview", "products", "coupons", "loyalty", "stores", "access"].includes(tab))
                 ? "page"
                 : undefined
             }
@@ -147,7 +149,7 @@ export function AdminTopbar({
   soundReady: boolean;
   toggleSound: () => void;
 }) {
-  const managementTabs: AdminTab[] = ["overview", "products", "coupons", "stores", "access"];
+  const managementTabs: AdminTab[] = ["overview", "products", "coupons", "loyalty", "stores", "access"];
   const labels: Record<AdminTab, string> = {
     home: "Home",
     overview: "Business overview",
@@ -156,6 +158,7 @@ export function AdminTopbar({
     coupons: "Coupons",
     redeem: "Redeem",
     customers: "Customers",
+    loyalty: "Loyalty points",
     stores: "Stores",
     admin: "Admin",
     access: "Users & access",

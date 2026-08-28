@@ -30,6 +30,7 @@ import type {
   AdminStore,
   AdminTab,
   CustomerDetail,
+  LoyaltySettings,
   QrDetectorConstructor,
 } from "./core/types";
 import {
@@ -57,6 +58,7 @@ import { AdminSidebar, AdminTopbar } from "./shell/AdminShell";
 import { AccessManagementView } from "./access/AccessManagementView";
 import { AdminHomeView } from "./home/AdminHomeView";
 import { AdminManagementView } from "./management/AdminManagementView";
+import { LoyaltyView } from "./loyalty/LoyaltyView";
 
 type ApiAdminOrder = AdminOverview["recent_orders"][number];
 type ApiOrderAlert = { order_number: string; created_at: string };
@@ -64,7 +66,7 @@ type ApiOrderAlert = { order_number: string; created_at: string };
 const tabsForStaff = (staff: Pick<AdminSession, "role">): AdminTab[] => {
   const tabs: AdminTab[] = ["home", "orders", "redeem", "customers"];
   if (staff.role === "ADMIN") {
-    tabs.push("admin", "overview", "products", "coupons", "stores", "access");
+    tabs.push("admin", "overview", "products", "coupons", "loyalty", "stores", "access");
   }
   return tabs;
 };
@@ -126,6 +128,9 @@ export default function AdminApp({
   const [session, setSession] = useState<AdminSession | null>(null);
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings | null>(null);
+  const [loyaltyBusy, setLoyaltyBusy] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState("");
   const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
   const [syncingPospal, setSyncingPospal] = useState(false);
   const [pospalSyncDiffs, setPospalSyncDiffs] = useState<PospalSyncDiff[]>([]);
@@ -244,6 +249,7 @@ export default function AdminApp({
           setOrders([]);
           setCustomers([]);
           setCoupons([]);
+          setLoyaltySettings(null);
           setAdminStores([]);
           knownOrderIdsRef.current.clear();
           setNewOrderNotice(null);
@@ -276,7 +282,7 @@ export default function AdminApp({
             apiFetch<{ data: ApiOrderAlert[] }>("/v1/admin/order-alerts"),
           ]);
           if (staffSession.role === "ADMIN") {
-            const [productPayload, tagPayload, couponPayload, overviewPayload] = await Promise.all([
+            const [productPayload, tagPayload, couponPayload, overviewPayload, loyaltyPayload] = await Promise.all([
               apiFetch<{ data: Parameters<typeof mapApiProduct>[0][] }>(
                 "/v1/admin/products",
               ),
@@ -290,6 +296,7 @@ export default function AdminApp({
               }>("/v1/admin/product-tags"),
               apiFetch<{ data: AdminCoupon[] }>("/v1/admin/coupons"),
               apiFetch<{ data: AdminOverview }>("/v1/admin/overview"),
+              apiFetch<{ data: LoyaltySettings }>("/v1/admin/loyalty/settings"),
             ]);
             setCatalog(productPayload.data.map(mapApiProduct));
             setProductTags(
@@ -302,9 +309,11 @@ export default function AdminApp({
             );
             setCoupons(couponPayload.data);
             setOverview(overviewPayload.data);
+            setLoyaltySettings(loyaltyPayload.data);
           } else {
             setCoupons([]);
             setOverview(null);
+            setLoyaltySettings(null);
           }
           const cloudOrders = orderPayload.data.map(mapAdminOrder);
           setOrders(cloudOrders);
@@ -575,6 +584,61 @@ export default function AdminApp({
       setCloudStatus(
         error instanceof Error ? error.message : "Customer could not be saved",
       );
+    }
+  };
+
+  const saveLoyaltySettings = async (earnRatePercent: number) => {
+    setLoyaltyBusy(true);
+    setLoyaltyError("");
+    try {
+      const response = await apiFetch<{ data: LoyaltySettings }>(
+        "/v1/admin/loyalty/settings",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ earn_rate_percent: earnRatePercent }),
+        },
+      );
+      setLoyaltySettings(response.data);
+      setCloudStatus(`Loyalty earn rate saved at ${response.data.earn_rate_percent}%`);
+    } catch (error) {
+      setLoyaltyError(error instanceof Error ? error.message : "Loyalty settings could not be saved");
+    } finally {
+      setLoyaltyBusy(false);
+    }
+  };
+
+  const adjustCustomerPoints = async (type: "CREDIT" | "DEBIT", points: number, reason: string, externalReference: string) => {
+    if (!selectedCustomer) return;
+    setCouponBusy(true);
+    setCouponError("");
+    try {
+      await apiFetch(`/v1/admin/customers/${selectedCustomer.id}/points-adjustments`, {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({
+          type,
+          points,
+          reason,
+          external_reference: externalReference.trim() || undefined,
+        }),
+      });
+      const [detail, customerPayload] = await Promise.all([
+        apiFetch<{ data: CustomerDetail }>(`/v1/admin/customers/${selectedCustomer.id}`),
+        apiFetch<{ data: AdminCustomer[] }>("/v1/admin/customers"),
+      ]);
+      const summary = customerPayload.data.find((customer) => customer.id === selectedCustomer.id);
+      setCustomers(customerPayload.data);
+      setSelectedCustomer({
+        ...detail.data,
+        order_count: summary?.order_count ?? selectedCustomer.order_count,
+        lifetime_value: summary?.lifetime_value ?? selectedCustomer.lifetime_value,
+      });
+      setCloudStatus(`${points.toLocaleString()} points ${type === "CREDIT" ? "credited to" : "debited from"} ${selectedCustomer.nickname}`);
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : "Points adjustment could not be saved");
+      throw error;
+    } finally {
+      setCouponBusy(false);
     }
   };
 
@@ -1358,6 +1422,15 @@ export default function AdminApp({
           />
         )}
 
+        {tab === "loyalty" && (
+          <LoyaltyView
+            settings={loyaltySettings}
+            saveSettings={saveLoyaltySettings}
+            busy={loyaltyBusy}
+            error={loyaltyError}
+          />
+        )}
+
         {tab === "redeem" && (
           <RedeemView
             storeFilter={storeFilter}
@@ -1425,6 +1498,8 @@ export default function AdminApp({
           canWrite={can("customers.write")}
           canSetPassword={can("customers.password_set")}
           setCustomerPassword={setCustomerPassword}
+          canAdjustPoints={can("loyalty.adjust")}
+          adjustCustomerPoints={adjustCustomerPoints}
         />
       )}
       {editingStore && can("stores.write") && (

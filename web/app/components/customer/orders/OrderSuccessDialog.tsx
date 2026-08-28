@@ -22,6 +22,7 @@ export function OrderSuccessDialog({ success, setSuccess, t, profile, go }: {
     <span className="success-pop">✓</span>
     <h2>{t.success}</h2>
     <strong className="order-number">{success.id}</strong>
+    {(success.pointsEarned ?? 0) > 0 && <p>+{success.pointsEarned} {t.points}</p>}
     {success.channel === "Pickup" ? (
       <>
         <PickupQR code={success.pickupCode} />
