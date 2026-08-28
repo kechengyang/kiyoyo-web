@@ -40,6 +40,7 @@ test("admin destinations have refresh-safe static routes", async () => {
     "overview",
     "products",
     "coupons",
+    "loyalty",
     "stores",
     "access",
   ]) {

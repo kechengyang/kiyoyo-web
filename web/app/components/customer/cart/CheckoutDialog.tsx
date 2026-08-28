@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { money } from "../../../data";
-import type { Address, CartItem, Lang, Order, Product, UserCoupon, UserProfile } from "../../../types";
+import type { Address, CartItem, Lang, LoyaltyWallet, Order, Product, UserCoupon, UserProfile } from "../../../types";
 import type { CustomerCopy } from "../core/copy";
 import { DialogBackdrop } from "../shared/DialogBackdrop";
 
@@ -13,6 +13,7 @@ export function CheckoutDialog({
   selectedCouponMatchesFulfillment, couponEligibleSubtotal, profile, openAddress,
   selectedAddressId, setSelectedAddressId, checkoutDeliveryFee, checkoutError,
   placingOrder, placeOrder, estimatedCheckoutTotal,
+  loyalty, usePoints, setUsePoints, pointsToRedeem,
 }: {
   setCheckout: Dispatch<SetStateAction<boolean>>;
   setCheckoutChannel: Dispatch<SetStateAction<Order["channel"] | null>>;
@@ -41,12 +42,21 @@ export function CheckoutDialog({
   placingOrder: boolean;
   placeOrder: (channel: Order["channel"]) => void;
   estimatedCheckoutTotal: number;
+  loyalty: LoyaltyWallet;
+  usePoints: boolean;
+  setUsePoints: Dispatch<SetStateAction<boolean>>;
+  pointsToRedeem: number;
 }) {
+  const maxPointsRedemption = Math.min(
+    loyalty.balancePoints,
+    Math.max(0, subtotal - estimatedCouponDiscount + checkoutDeliveryFee),
+  );
   return (
 <DialogBackdrop
   onClose={() => {
     setCheckout(false);
     setCheckoutChannel(null);
+    setUsePoints(false);
   }}
 >
   <div className="checkout-modal">
@@ -55,6 +65,7 @@ export function CheckoutDialog({
       onClick={() => {
         setCheckout(false);
         setCheckoutChannel(null);
+        setUsePoints(false);
       }}
     >
       ×
@@ -164,6 +175,28 @@ export function CheckoutDialog({
         )}
       </section>
     )}
+    {checkoutChannel && loyalty.balancePoints > 0 && (
+      <section className="checkout-points">
+        <label>
+          <input
+            type="checkbox"
+            checked={usePoints}
+            onChange={(event) => {
+              setUsePoints(event.target.checked);
+              setCheckoutError("");
+            }}
+          />
+          <span>
+            <strong>{lang === "zh" ? "使用积分抵扣" : "Use points"}</strong>
+            <small>
+              {lang === "zh"
+                ? `余额 ${loyalty.balancePoints.toLocaleString()} 积分 · 最多抵扣 ${money(maxPointsRedemption)}`
+                : `${loyalty.balancePoints.toLocaleString()} points available · Deduct up to ${money(maxPointsRedemption)}`}
+            </small>
+          </span>
+        </label>
+      </section>
+    )}
     {checkoutChannel && checkoutChannel !== "Pickup" && (
       <section className="checkout-address">
         <div>
@@ -223,6 +256,12 @@ export function CheckoutDialog({
             <span className="discount-row">
               {lang === "zh" ? "优惠券抵扣" : "Coupon discount"}
               <strong>−{money(estimatedCouponDiscount)}</strong>
+            </span>
+          )}
+          {usePoints && pointsToRedeem > 0 && (
+            <span className="discount-row">
+              {lang === "zh" ? "积分抵扣" : "Points deduction"}
+              <strong>−{money(pointsToRedeem)}</strong>
             </span>
           )}
           <span>

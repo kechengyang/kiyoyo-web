@@ -10,6 +10,7 @@ import type {
   Product,
   ProductTag,
   ProductTagTone,
+  LoyaltyWallet,
   Store,
   UserCoupon,
 } from "./types";
@@ -385,6 +386,10 @@ type ApiMemberOrder = {
   subtotal: number;
   discount: number;
   delivery_fee: number;
+  points_redeemed: number;
+  points_discount: number;
+  points_earned: number;
+  points_earn_rate_basis_points: number | null;
   total: number;
   created_at: string;
   fulfillments: ApiOrderFulfillment[];
@@ -454,6 +459,10 @@ export async function fetchMemberOrders(): Promise<Order[]> {
         subtotal: order.subtotal,
         discount: order.discount,
         deliveryFee: order.delivery_fee,
+        pointsRedeemed: order.points_redeemed,
+        pointsDiscount: order.points_discount,
+        pointsEarned: order.points_earned,
+        pointsEarnRateBasisPoints: order.points_earn_rate_basis_points ?? undefined,
         couponCode: order.coupon_code ?? undefined,
         total: order.total,
         items: order.fulfillments.flatMap((group) =>
@@ -566,6 +575,47 @@ export async function fetchMemberCoupons(): Promise<UserCoupon[]> {
     expiresAt: coupon.expires_at,
     redeemedAt: coupon.redeemed_at,
   }));
+}
+
+export async function fetchMemberLoyalty(): Promise<LoyaltyWallet> {
+  const payload = await apiFetch<{
+    data: {
+      balance_points: number;
+      lifetime_earned_points: number;
+      lifetime_redeemed_points: number;
+      earn_rate_percent: number;
+      point_value_kes: number;
+      transactions: Array<{
+        id: string;
+        transaction_type: LoyaltyWallet["transactions"][number]["transactionType"];
+        points: number;
+        balance_after: number;
+        order_id: string | null;
+        reason: string | null;
+        external_reference: string | null;
+        earn_rate_basis_points: number | null;
+        created_at: string;
+      }>;
+    };
+  }>("/v1/me/loyalty");
+  return {
+    balancePoints: payload.data.balance_points,
+    lifetimeEarnedPoints: payload.data.lifetime_earned_points,
+    lifetimeRedeemedPoints: payload.data.lifetime_redeemed_points,
+    earnRatePercent: payload.data.earn_rate_percent,
+    pointValueKes: payload.data.point_value_kes,
+    transactions: payload.data.transactions.map((transaction) => ({
+      id: transaction.id,
+      transactionType: transaction.transaction_type,
+      points: transaction.points,
+      balanceAfter: transaction.balance_after,
+      orderId: transaction.order_id,
+      reason: transaction.reason,
+      externalReference: transaction.external_reference,
+      earnRateBasisPoints: transaction.earn_rate_basis_points,
+      createdAt: transaction.created_at,
+    })),
+  };
 }
 
 export async function reissuePickupToken(orderNumber: string) {

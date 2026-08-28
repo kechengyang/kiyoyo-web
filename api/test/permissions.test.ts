@@ -12,6 +12,8 @@ test("Admin receives every sensitive permission", () => {
   assert.equal(roleHasPermission("ADMIN", "access.create"), true);
   assert.equal(roleHasPermission("ADMIN", "customers.password_set"), true);
   assert.equal(roleHasPermission("ADMIN", "products.write"), true);
+  assert.equal(roleHasPermission("ADMIN", "loyalty.settings.write"), true);
+  assert.equal(roleHasPermission("ADMIN", "loyalty.adjust"), true);
 });
 
 test("Operator permissions are limited to store operations and customer viewing", () => {
@@ -20,6 +22,9 @@ test("Operator permissions are limited to store operations and customer viewing"
   assert.equal(permissions.includes("redeem.execute"), true);
   assert.equal(permissions.includes("customers.read"), true);
   assert.equal(permissions.includes("stores.read"), true);
+  assert.equal(permissions.includes("loyalty.read"), true);
+  assert.equal(permissions.includes("loyalty.settings.write"), false);
+  assert.equal(permissions.includes("loyalty.adjust"), false);
   assert.equal(permissions.includes("overview.read"), false);
   assert.equal(permissions.includes("products.read"), false);
   assert.equal(permissions.includes("coupons.read"), false);

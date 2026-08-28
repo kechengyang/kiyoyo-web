@@ -199,9 +199,20 @@ export function OrderDetailDialog({
             −{money(selectedOrder.discount ?? 0)}
           </small>
         )}
+        {(selectedOrder.pointsDiscount ?? 0) > 0 && (
+          <small>
+            {lang === "zh" ? "积分抵扣" : "Points deduction"} −{money(selectedOrder.pointsDiscount ?? 0)}
+          </small>
+        )}
+        {(selectedOrder.deliveryFee ?? 0) > 0 && (
+          <small>{lang === "zh" ? "配送费" : "Delivery"} · {money(selectedOrder.deliveryFee ?? 0)}</small>
+        )}
         {t.orderTotal}
       </span>
-      <strong>{money(selectedOrder.total)}</strong>
+      <strong>
+        {money(selectedOrder.total)}
+        {(selectedOrder.pointsEarned ?? 0) > 0 && <small>+{selectedOrder.pointsEarned} {t.points}</small>}
+      </strong>
     </div>
     <button
       className="primary full order-detail-close"

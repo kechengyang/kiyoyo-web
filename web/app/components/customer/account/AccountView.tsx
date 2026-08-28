@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Dispatch, SetStateAction } from "react";
 import { money } from "../../../data";
 import type {
-  Address, AuthSession, CartItem, Lang, Order, Tab, UserCoupon, UserProfile,
+  Address, AuthSession, CartItem, Lang, LoyaltyWallet, Order, Tab, UserCoupon, UserProfile,
 } from "../../../types";
 import type { AuthErrorCode, AuthProvider } from "../../../auth/types";
 import { maskedPhoneNumber } from "../../../auth/phone";
@@ -19,7 +19,7 @@ export function AccountView({
   userCoupons, selectedCouponId, setSelectedCouponId, setCouponCodeInput,
   cart, orders, openOrderDetails, setEditingOrderId, signOut,
   authBusy, authError, linkProvider, linkPassword, unlinkProvider,
-  go, openPhoneVerification,
+  go, openPhoneVerification, loyalty,
 }: {
   t: CustomerCopy;
   lang: Lang;
@@ -47,6 +47,7 @@ export function AccountView({
   linkPassword: (email: string, password: string) => Promise<unknown>;
   unlinkProvider: (provider: AuthProvider) => Promise<unknown>;
   openPhoneVerification: () => void;
+  loyalty: LoyaltyWallet;
   go: (tab: Tab) => void;
 }) {
   return (
@@ -109,7 +110,7 @@ export function AccountView({
           <span>{session.membershipReady ? t.member : t.phoneRequired}</span>
           <h1>{profile.nickname || t.memberHello}</h1>
           <small>{session.membershipReady ? t.points : t.phoneRequiredHelp}</small>
-          <strong>{session.membershipReady ? "2,480" : "—"}</strong>
+          <strong>{session.membershipReady ? loyalty.balancePoints.toLocaleString() : "—"}</strong>
         </div>
         <Logo />
         <i>{session.membershipReady ? "VIP" : t.membershipPending}</i>
@@ -303,18 +304,29 @@ export function AccountView({
         </div>
       )}
       {accountPanel === "rewards" && (
-        <div className="rewards-panel" role="tabpanel">
-          <span>2,480</span>
-          <div>
-            <strong>{t.points}</strong>
-            <p>
-              {lang === "zh"
-                ? "再获得 520 积分即可解锁下一份会员奖励。"
-                : "Earn 520 more points to unlock your next member reward."}
-            </p>
-            <i>
-              <b style={{ width: "83%" }} />
-            </i>
+        <div role="tabpanel">
+          <div className="rewards-panel">
+            <span>{loyalty.balancePoints.toLocaleString()}</span>
+            <div>
+              <strong>{t.points}</strong>
+              <p>
+                {lang === "zh"
+                  ? `消费按 ${loyalty.earnRatePercent}% 获得积分；1 积分可抵扣 KSh ${loyalty.pointValueKes}。`
+                  : `Earn ${loyalty.earnRatePercent}% on eligible spend. 1 point deducts KSh ${loyalty.pointValueKes}.`}
+              </p>
+            </div>
+          </div>
+          <div className="record-list compact rewards-history">
+            {loyalty.transactions.length ? loyalty.transactions.map((transaction) => (
+              <article key={transaction.id}>
+                <strong>{transaction.points > 0 ? "+" : ""}{transaction.points.toLocaleString()} {lang === "zh" ? "积分" : "points"}</strong>
+                <span>{transaction.reason || transaction.transactionType.replaceAll("_", " ")}</span>
+                <small>
+                  {new Date(transaction.createdAt).toLocaleDateString(lang === "zh" ? "zh-CN" : "en-KE")} · {lang === "zh" ? "余额" : "Balance"} {transaction.balanceAfter.toLocaleString()}
+                  {transaction.earnRateBasisPoints != null ? ` · ${transaction.earnRateBasisPoints / 100}%` : ""}
+                </small>
+              </article>
+            )) : <small>{lang === "zh" ? "暂无积分记录。" : "No points activity yet."}</small>}
           </div>
         </div>
       )}

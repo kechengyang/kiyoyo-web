@@ -6,6 +6,7 @@ export type AdminTab =
   | "coupons"
   | "redeem"
   | "customers"
+  | "loyalty"
   | "stores"
   | "admin"
   | "access";
@@ -30,6 +31,9 @@ export type AdminPermission =
   | "coupons.publish"
   | "customer_coupons.issue"
   | "customer_coupons.revoke"
+  | "loyalty.read"
+  | "loyalty.settings.write"
+  | "loyalty.adjust"
   | "stores.read"
   | "stores.write"
   | "access.read"
@@ -129,9 +133,31 @@ export type AdminCustomer = {
   created_at: string;
   order_count: number;
   lifetime_value: number;
+  points_balance: number;
+};
+
+export type LoyaltySettings = {
+  earn_rate_basis_points: number;
+  earn_rate_percent: number;
+  point_value_kes: number;
+  updated_at: string;
 };
 
 export type CustomerDetail = AdminCustomer & {
+  lifetime_earned_points: number;
+  lifetime_redeemed_points: number;
+  points_transactions: Array<{
+    id: string;
+    transaction_type: "ORDER_EARN" | "ORDER_REDEEM" | "MANUAL_CREDIT" | "MANUAL_DEBIT";
+    points: number;
+    balance_after: number;
+    order_id: string | null;
+    reason: string | null;
+    external_reference: string | null;
+    earn_rate_basis_points: number | null;
+    is_test: boolean;
+    created_at: string;
+  }>;
   addresses: Array<{
     id: string;
     label: string;

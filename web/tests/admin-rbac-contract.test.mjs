@@ -22,6 +22,7 @@ test("Admin shell exposes the task home and management only through allowed tabs
   assert.doesNotMatch(home, /What do you need to do/);
   assert.doesNotMatch(home, /admin-home-intro/);
   assert.match(management, /Users & access/);
+  assert.match(management, /Loyalty points/);
 });
 
 test("Operator navigation is limited to operations and customer viewing", async () => {
@@ -40,7 +41,23 @@ test("Customer viewer surface does not receive write affordances", async () => {
   assert.match(products, /canWrite/);
   assert.match(coupons, /canWrite/);
   assert.match(customers, /canSetPassword/);
+  assert.match(customers, /canAdjustPoints/);
 });
+
+test("Loyalty settings and manual adjustments remain Admin-controlled", async () => {
+  const [app, loyalty, customer] = await Promise.all([
+    read("../app/admin/AdminApp.tsx"),
+    read("../app/admin/loyalty/LoyaltyView.tsx"),
+    read("../app/admin/customers/CustomerEditorDialog.tsx"),
+  ]);
+  assert.match(app, /can\("loyalty\.adjust"\)/);
+  assert.match(app, /\/v1\/admin\/loyalty\/settings/);
+  assert.match(app, /\/points-adjustments/);
+  assert.match(loyalty, /Save default rate/);
+  assert.match(customer, /Debit correction/);
+  assert.match(customer, /window\.confirm/);
+});
+
 
 test("Overview renders server-scoped metrics", async () => {
   const overview = await read("../app/admin/overview/OverviewView.tsx");
