@@ -150,13 +150,7 @@ export async function requireVerifiedMembership(
 }
 
 export function verifiedMembershipError(actor: AuthActor | undefined) {
-  if (!actor?.email || !actor.emailVerified) {
-    return {
-      code: "EMAIL_VERIFICATION_REQUIRED" as const,
-      message: "Verify your email before checking out",
-    };
-  }
-  if (!actor.phoneVerified || !actor.phoneNumber) {
+  if (!actor?.phoneVerified || !actor.phoneNumber) {
     return {
       code: "PHONE_VERIFICATION_REQUIRED" as const,
       message: "Verify your phone number before checking out",

@@ -217,9 +217,7 @@ app.get("/v1/me", { preHandler: requireProfile }, async (request) => {
       emailVerified: request.actor!.emailVerified,
       phoneNumber: request.actor!.phoneNumber,
       phoneVerified: request.actor!.phoneVerified,
-      membershipReady:
-        Boolean(request.actor!.email && request.actor!.emailVerified) &&
-        request.actor!.phoneVerified,
+      membershipReady: request.actor!.phoneVerified,
       providers,
     },
     permissions: { admin: request.actor!.isAdmin },
