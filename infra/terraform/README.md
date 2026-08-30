@@ -1,73 +1,49 @@
-# KIYOYO GCP infrastructure
+# KIYOYO GCP infrastructure / KIYOYO GCP 基础设施
 
-The `dev` environment uses the `kiyoyo-dev-*` prefix and runs in
-`europe-west1`. Terraform state is stored in the versioned bucket
-`gs://kiyoyo-dev-tfstate/terraform/env/dev`.
+Terraform defines environment-prefixed Google Cloud resources for KIYOYO. Repository configuration does not prove current live state; inspect a target-specific plan and cloud resources before making runtime claims. / Terraform 定义带环境前缀的 KIYOYO Google Cloud 资源；仓库配置不能证明当前线上状态，作出运行时结论前必须检查目标环境 plan 与云资源。
 
-## Apply
+## Layout / 结构
 
-```sh
-gcloud auth login
-gcloud config set project kiyoyo
-export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
-terraform init -reconfigure -backend-config=backend/dev.hcl
-terraform plan -var-file=dev.tfvars
-terraform apply -var-file=dev.tfvars
-unset GOOGLE_OAUTH_ACCESS_TOKEN
+- `dev.tfvars`: dev project, region, image, budget, Admin allowlist, and custom domains. / dev 项目、区域、镜像、预算、Admin allowlist 与自定义域名。
+- `backend/dev.hcl`: remote-state backend settings. / remote state backend 设置。
+- `cloud_run.tf`, `sql.tf`, `storage.tf`, `firebase.tf`, `tasks.tf`, `monitoring.tf`, `iam.tf`, `github_actions.tf`: service-specific resources. / 各服务资源定义。
+- `secrets.tf`: generated database password and pickup signing key plus runtime access. / 生成的数据库密码、取餐签名 key 与运行时访问。
+
+## Safe validation / 安全校验
+
+```bash
+terraform fmt -check -recursive
+terraform init -backend=false -input=false
+terraform validate
 ```
 
-Backend 配置按环境单独保存，资源变量也必须使用对应的 `{env}.tfvars`。当前只创建了
-`backend/dev.hcl` 和 `dev.tfvars`；不得用 dev backend 或 dev 镜像部署 staging/prod。
-数据库名、数据库用户、Hosting 域名、CORS 与 Maps referrer 会从统一前缀
-`kiyoyo-{env}` 自动推导。`custom_domains` 会把已连接的 Firebase Hosting 自定义域名
-同时加入 API CORS、Cloud Storage CORS、Maps browser referrer 和 Identity Platform
-authorized domains；域名必须是不含协议、端口或路径的小写 hostname。
+These commands validate configuration without reading remote state or applying changes. / 这些命令在不读取 remote state 或 apply 的情况下校验配置。
 
-CI/CD 应使用 Workload Identity Federation；上述 access token 方法仅用于已授权的本地
-运维终端，避免生成长期 service-account JSON key。
+## Plan and apply / Plan 与 apply
 
-Database and pickup-signing secrets are generated as ephemeral values. They
-are written directly to Cloud SQL and Secret Manager and never stored in the
-Terraform state. Increment `secret_version` only when intentionally rotating
-both secrets.
+Use the exact target backend and tfvars, authenticated with an approved operator identity. Review the complete plan and isolate unrelated live drift before apply. / 使用准确目标 backend 与 tfvars，并以已批准运营身份认证；apply 前审查完整 plan，并隔离无关线上 drift。
 
-The state bucket is a bootstrap resource and is deliberately not managed by
-the state it stores. It was created with uniform bucket access and object
-versioning enabled.
+```bash
+terraform init -backend-config=backend/dev.hcl
+terraform plan -var-file=dev.tfvars
+```
 
-The Google-managed default service accounts and Cloud Build staging bucket may
-retain provider-assigned names. All KIYOYO-owned runtime resources are required
-to use the `kiyoyo-{env}` prefix.
+An apply is an external mutation and requires explicit authorization and target confirmation. Never infer apply authorization from a request to validate, document, build, or deploy application code. / apply 是外部变更，需要明确授权与目标确认；不得从“校验、写文档、构建或部署应用代码”的请求中推断 apply 权限。
 
-## Runtime deployment
+## Provisioned architecture / 已配置架构
 
-- API service: `kiyoyo-dev-api`
-- Migration job: `kiyoyo-dev-migrate`
-- Seed job: `kiyoyo-dev-seed`
-- Hosting site: `kiyoyo-dev`
-- Monitoring: API readiness, API 5xx and Cloud SQL CPU policies
-- Budget: `kiyoyo-dev monthly budget`
+- Firebase project/Web app/Hosting/Identity Platform. / Firebase project/Web app/Hosting/Identity Platform。
+- Cloud Run API service plus migration and seed jobs. / Cloud Run API service 及迁移/seed jobs。
+- Cloud SQL PostgreSQL, private Cloud Storage media, Artifact Registry. / Cloud SQL PostgreSQL、私有 Cloud Storage 图片、Artifact Registry。
+- Secret Manager, service accounts/IAM, Cloud Tasks queues, Monitoring, billing budget, Maps browser key. / Secret Manager、service account/IAM、Cloud Tasks 队列、Monitoring、billing budget、Maps 浏览器 key。
+- GitHub Workload Identity Federation for keyless deployment. / GitHub WIF 无密钥部署。
 
-Run migrations before routing traffic to an API revision that requires the new
-schema. Seed is only for an empty dev catalog and must not be run as a routine
-production deploy step.
+Cloud Tasks queues are provisioned but their application workers are not implemented. Custom domains are configured but DNS/certificate/Hosting/OAuth readiness must be verified independently. / Cloud Tasks 队列已配置，但应用 worker 尚未实现；自定义域名已配置，但 DNS/证书/Hosting/OAuth 就绪状态必须独立验证。
 
-Firebase Hosting uses `web/out`. From `web/`, run `npm run build`; do not deploy
-the vinext preview directory `web/dist`.
+## Runtime deployment / 运行时部署
 
-## Customer authentication
+Application CI does not auto-apply Terraform. Web deployment publishes `web/out` to Firebase Hosting. API deployment builds an immutable image, runs the migration job, then deploys Cloud Run and checks health/readiness. / 应用 CI 不会自动 apply Terraform；Web 部署把 `web/out` 发布到 Firebase Hosting；API 部署构建不可变镜像、运行迁移 job，再部署 Cloud Run 并检查健康/就绪。
 
-Terraform enables Identity Platform email/password and phone authentication,
-restricts verification SMS to Kenya (`KE`), and owns the authorized Firebase
-domains. After apply, use `firebase_auth_handler_url` as the
-Google OAuth callback and `customer_auth_action_url` for verification
-and password-reset email templates.
+Keep Cloud Run and Cloud SQL in the same primary region. Use distinct state, data, secrets, images, domains, and Identity Platform configuration for each environment. / 保持 Cloud Run 与 Cloud SQL 位于同一主区域；每个环境使用独立 state、数据、secret、镜像、域名与 Identity Platform 配置。
 
-Google provider secrets are intentionally configured in the Firebase
-console or an approved secret-management workflow. Do not add OAuth client
-secrets to Terraform variables: the supported Identity Platform provider
-resource stores them in Terraform state. Enable email-enumeration protection
-enforce the 10-character minimum password policy, and confirm Blaze billing and
-SMS spend monitoring in each Identity Platform environment before opening
-registration. See
-`docs/11-customer-auth-module-design.md` for the complete release checklist.
+For medium or large infrastructure changes, update bilingual architecture, deployment, security, operations, and local-development docs in the same PR. / 中大型基础设施改动必须在同一 PR 更新双语架构、部署、安全、运维与本地开发文档。

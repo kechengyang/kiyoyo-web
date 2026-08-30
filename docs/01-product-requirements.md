@@ -1,126 +1,64 @@
-# 01 · 产品与 MVP 范围
+# 01 · Product and current scope / 产品与当前范围
 
-## 产品定位
+## Product position / 产品定位
 
-KIYOYO 不只是奶茶点单工具，而是连接“饮品、门店体验、IP 商品和会员”的生活方式商城。产品首发市场为内罗毕，目标是让客户在最少步骤内完成饮品下单，同时持续通过收藏、积分、优惠券和新品 Drop 复购。
+KIYOYO combines drinks, goods, store fulfilment, membership, coupons, and loyalty in one bilingual Nairobi commerce experience. / KIYOYO 将饮品、商品、门店履约、会员、优惠券与积分整合为一个面向内罗毕的双语商城体验。
 
-## 用户角色
+Web/PWA is the current delivery channel. Native apps, real payment, and automated delivery logistics remain outside the implemented scope. / Web/PWA 是当前交付渠道；原生 App、真实支付和自动配送物流仍不在已实现范围内。
 
-| 角色 | 主要任务 | 权限 |
-|---|---|---|
-| 游客 | 浏览商品、选店、收藏、加入购物车 | 不可查看个人历史；结账前登录 |
-| 会员 | 下单、积分、优惠券、收藏、订单历史 | 仅访问自己的数据 |
-| 门店员工 | 查看本店饮品单、推进制作、核销取餐码 | 仅指定门店 |
-| 客服/运营 | 查看订单和用户，处理异常，维护内容 | 多店读写但无系统配置权限 |
-| 管理员 | 门店、商品、权限和审计管理 | 全局权限 |
+## Roles / 用户角色
 
-## 客户端信息架构
+| Role / 角色 | Current capability / 当前能力 |
+|---|---|
+| Guest / 游客 | Browse, search, select a store, and maintain a device cart and saved list. / 浏览、搜索、选店，并维护本地购物车与收藏。 |
+| Member / 会员 | Verified-phone checkout, cloud favourites, addresses, coupons, loyalty, orders, and pickup-token reissue. / 手机号验证后结账、云端收藏、地址、优惠券、积分、订单和取餐码重发。 |
+| Operator / 门店运营 | Assigned-store orders/transitions and pickup redemption; global customer read; loyalty/store-context read. / 指定门店订单/状态推进与取餐核销；全局顾客只读；积分/门店上下文只读。 |
+| Admin / 管理员 | All operations plus global configuration, writes, staff access, audit, and POSPAL sync. / 所有运营操作，以及全局配置、写入、员工权限、审计与 POSPAL 同步。 |
 
-### Home
+## Customer experience / 顾客体验
 
-- 当前门店和“查找最近门店”。
-- 活动 Banner、新品、热门饮品、IP 商品 Drop。
-- 饮品点单与商品商城的清晰双入口。
-- 运营内容支持开始/结束时间和门店范围。
+- Home presents store context, campaigns, drinks, and goods. / Home 展示门店语境、活动、饮品与商品。
+- Shop separates Drink Studio from KIYOYO Goods and supports search, categories, detail, size, taste, ice, and add-ons. / Shop 区分 Drink Studio 与 KIYOYO Goods，支持搜索、分类、详情、杯型、甜度、冰量和加料。
+- Cart is the single checkout surface and includes a horizontal saved-products shelf. / Cart 是唯一结账入口，并包含横向收藏商品区。
+- Account contains profile, membership state, addresses, coupon wallet, loyalty history, orders, and provider controls. / Account 包含资料、会员状态、地址、优惠券钱包、积分记录、订单和登录方式管理。
+- `/`, `/shop`, `/cart`, and `/account` are refresh-safe static routes. / `/`、`/shop`、`/cart` 与 `/account` 均为刷新安全的静态路由。
 
-### Shop
+The interface preserves English/Chinese copy and language choice locally. Final price, discount, availability, points, and fulfilment legality are always recalculated by the API. / 界面保留中英文文案并在本地保存语言选择；最终价格、折扣、可用性、积分和履约合法性始终由 API 重新计算。
 
-- 饮品：品类、详情、杯型、甜度、冰量、加料、门店价格/库存。
-- 商品：品类、详情、SKU/规格、售价、库存、收藏。
-- 搜索、过滤、推荐；价格统一显示 KSh。
+## Membership and authentication / 会员与身份认证
 
-### Collection
+- Supported customer providers are email/password and Google. Facebook is not part of the current trusted provider type. / 当前顾客登录支持邮箱密码与 Google；Facebook 不在当前可信 provider 类型中。
+- A signed-in account may remain incomplete; checkout requires a Firebase-verified phone. / 已登录账号可以处于资料未完成状态；结账必须拥有 Firebase 已验证手机号。
+- Email verification is metadata, not a membership or checkout gate. / 邮箱验证是身份元数据，不是会员或结账门禁。
+- One E.164 phone can belong to only one member. Delivery/profile phone fields are not authentication evidence. / 一个 E.164 手机号只能属于一个会员；配送/资料手机号不是认证证据。
+- Password reset and provider linking use Firebase; the application database never stores customer passwords. / 密码重置与 provider 绑定使用 Firebase；应用数据库不保存顾客密码。
 
-- 登录用户云端收藏；游客可先存在设备，登录后合并。
-- 支持移除、加入购物车和缺货状态。
+## Commerce / 商城
 
-### Cart 与 Checkout
+- Products are `DRINK` or `GOODS`, with bilingual content, categories, prices, discounts, tags, active state, images, sizes, and POSPAL attributes. / 商品分为 `DRINK` 与 `GOODS`，支持双语内容、分类、价格、折扣、标签、上下架、图片、杯型与 POSPAL 属性。
+- Checkout supports `PICKUP`, `DELIVERY`, and `SHIPPING`; the current request creates one fulfilment group. / 结账支持 `PICKUP`、`DELIVERY` 与 `SHIPPING`；当前请求创建一个履约组。
+- Payment is `MOCK` with `test_ok`, `test_declined`, and `test_timeout`. / 支付为 `MOCK`，支持 `test_ok`、`test_declined` 与 `test_timeout`。
+- Checkout requires `Idempotency-Key`; orders and payments persist transactionally. / 结账必须提供 `Idempotency-Key`；订单与支付在事务中持久化。
+- Fulfilment states are `PLACED → CONFIRMED/PREPARING → READY → COMPLETED`, with legal cancellation branches. / 履约状态为 `PLACED → CONFIRMED/PREPARING → READY → COMPLETED`，并包含合法取消分支。
+- Pickup tokens are signed, hashed at rest, store-scoped, expiring, single-use, and owner-reissuable. / 取餐 token 经过签名、静态只存哈希、限定门店、具有过期时间、只能使用一次且订单所有者可重发。
 
-- 一个购物车入口，按“即时饮品”和“普通商品”分组。
-- 饮品支持到店自取或内罗毕外送；商品 MVP 支持创建订单和配送信息。
-- 当购物车同时存在饮品和商品时，后端生成一笔 checkout 和多个 fulfillment group，状态互不干扰。
-- MVP 支付为测试支付，页面显著提示“不真实扣款”。
+## Coupons and loyalty / 优惠券与积分
 
-### Account
+- Coupon lifecycle is `DRAFT`, `SCHEDULED`, `ACTIVE`, `PAUSED`, `ENDED`, `ARCHIVED`; issuance and redemption switches are independent. / 优惠券生命周期为 `DRAFT`、`SCHEDULED`、`ACTIVE`、`PAUSED`、`ENDED`、`ARCHIVED`；发放与核销开关相互独立。
+- Coupon pricing is server-side and supports percent, fixed, and free-size-upgrade rules with scope, time, fulfilment, and limit checks. / 优惠券由服务端计价，支持百分比、固定额和免费升杯，并校验范围、时间、履约与次数限制。
+- Loyalty uses whole points. Default earn rate is 1%, rounded down; one point deducts KSh 1. / 积分使用整数；默认获得比例为 1% 并向下取整；1 积分抵扣 KSh 1。
+- Points mutate only for immediate `PAID` checkout; manual Admin adjustment requires reason, idempotency, audit, and sufficient balance. / 积分只在结账立即为 `PAID` 时变动；Admin 手工调整必须提供原因、幂等、审计且余额充足。
+- Loyalty ledger rows are immutable except explicit deletion of marked test data. / 积分账本不可修改，只有明确标记的测试数据允许删除。
 
-- 注册与登录：邮箱+密码，并支持 Google OAuth；正式会员必须通过 SMS 绑定唯一肯尼亚手机号。
-- 首次注册必须完成昵称、性别、年龄和手机号验证；邮箱与认证手机号来自 Firebase 身份，不把个人资料或配送联系电话当作可信认证凭据。
-- 基本资料、积分余额、等级。
-- 地址簿支持多个内罗毕配送地址、默认地址、新增和编辑。
-- 可用/已用/过期优惠券和 Rewards。
-- 全部订单历史和每个履约组状态。
+## Admin experience / 管理端体验
 
-### 登录与地址规则
+- Admin opens on a task-oriented Home; every section has a direct URL. / Admin 登录后进入任务导向 Home；每个模块都有直接 URL。
+- Orders update through authenticated, server-store-scoped SSE with reconnect/refresh state and optional audio alerts. / 订单通过已认证、服务端门店限定的 SSE 更新，并提供重连/刷新状态和可选声音提醒。
+- Products, coupons, customers, loyalty, stores, access accounts, and audit records have server-authorized operations. / 商品、优惠券、顾客、积分、门店、权限账号与审计记录均由服务端授权。
+- POSPAL-linked products take catalogue fields from POSPAL unless an Admin enables manual override. / POSPAL 已关联商品默认从 POSPAL 获取目录字段，除非 Admin 开启手工覆盖。
 
-- 游客可以浏览和加购；结账、云端收藏、积分与订单历史要求登录。
-- 未完成手机号验证的账号显示为待认证会员，不展示正式 VIP/积分状态且不能提交结账。
-- 邮箱密码必须由 Identity Platform 处理，应用数据库不保存明文或自建密码哈希。
-- Google 登录首次成功后创建同一套 KIYOYO 用户资料；相同已验证邮箱的账号合并需要明确的安全流程，不能只按客户端邮箱自动合并。
-- 年龄 MVP 使用整数并要求至少 13 岁；上线前由法务确认肯尼亚市场的年龄、同意和隐私文案。
-- 配送/商品订单必须保存地址快照。订单仍处于 `PLACED` 且尚未派送时，用户可选择地址簿中的其他地址或新增地址；修改写入订单审计事件，不应静默修改历史快照。
+## Acceptance boundary / 验收边界
 
-## 门店与定位
+Source and automated tests prove repository behaviour only. They do not prove current DNS, provider-console configuration, deployed revision, migration state, or authenticated live UX. / 源码与自动化测试只证明仓库行为，不能证明当前 DNS、provider 控制台配置、已部署 revision、迁移状态或登录后的线上 UX。
 
-1. 首次进入使用默认店或最近一次选择。
-2. 用户主动点击“使用我的定位”才请求系统权限。
-3. 取得经纬度后，对门店固定坐标在客户端计算直线距离；默认选择最近且营业中的店。
-4. 定位拒绝、超时或不精确时，显示手动门店列表，不阻断购买。
-5. Google Maps 只用于地图展示、路线和地址补全，避免每次启动产生地图调用费用。
-6. 选择门店后必须重新校验饮品售价、营业时间、库存和可用履约方式。
-
-## 商城体验层级
-
-- Home Banner 每次只讲一个活动，以活动封面图为主，支持自动轮播、手动切换和明确 CTA；避免多个促销同时争夺注意力。
-- 移动端底部导航将 Drink 作为中央主入口，视觉优先级高于收藏、购物车和账户；点击后默认进入饮品点单，而不是混合商品列表。
-- Shop 第一层明确分成 `Drink Studio` 与 `KIYOYO Goods`，两者不共用同一套浏览逻辑。
-- Drink Studio 先显示当前门店、预计出杯时间和自取/外送语境，再提供口味心情入口、饮品分类与搜索；商品卡主操作是“定制”，进入杯型、甜度、冰量和加料流程。
-- Goods 保持典型 IP 商城体验，以图片浏览、分类、收藏和商品详情为主，不显示饮品制作步骤。
-- Drink 的核心转化漏斗为：`选择心情/分类 → 选择饮品 → 定制 → 选择履约 → 测试支付`，每一步单一主操作。
-
-## 饮品订单状态
-
-`DRAFT → PLACED → ACCEPTED → PREPARING → READY → COMPLETED`
-
-异常分支：`CANCELLED`、`REJECTED`。员工只能按合法状态转移；`COMPLETED` 后不可回退，管理员更正必须写审计日志。
-
-## 普通商品订单状态
-
-`PLACED → CONFIRMED → PACKING → SHIPPED → DELIVERED`
-
-MVP 可先停在 `PLACED/CONFIRMED`，但数据字段和事件名保留后续物流扩展。
-
-## 会员与促销 MVP
-
-- 订单完成后累积积分；建议 KSh 100 = 1 point，具体比例运营可配置。
-- 优惠券规则包括范围、最低消费、门店、使用次数、有效期和是否可叠加。
-- 结账时由服务端计算折扣，前端不可决定最终价格。
-- 测试支付订单也可产生测试积分，但需标记 `is_test=true`，生产报表默认排除。
-
-## 商品运营管理
-
-- Admin 可按饮品/普通商品搜索和筛选目录，维护中英文名称、基础售价、折扣比例、上架状态和主图。
-- 商品标签由 Admin 在标签库中创建和定义，包括显示文字与颜色风格；商品编辑页只负责关联已有标签，前端不得写死 `NEW`、`HOT`、`DROP 01` 等营销标签。
-- MVP 每个商品最多关联一个主展示标签；折扣标签优先显示。删除/归档标签时解除商品关联，并记录审计日志。
-- `active=false` 的商品不出现在 Home、Shop、搜索和推荐；若用户已加入购物车，必须显示“已下架”并阻止结账，不能静默按旧状态成交。
-- 折扣由 Admin 输入百分比，服务端生成折后价；客户前端显示折扣标签、折后价和划线原价。结账仍由服务端按当前规则重新报价。
-- 图片更新先上传对象存储，再提交新的 media object key；只有图片处理成功后才能发布产品版本。
-- 每次售价、折扣、图片和上下架修改都记录操作者、前后值和时间，支持审计与回滚。
-
-## MVP 验收标准
-
-- 中英文可切换，选择结果持久化。
-- 可用邮箱密码注册/登录，并有 Google 登录入口；首次登录能完成会员资料和 SMS 手机验证，同一号码不能激活两个会员。
-- 可新增、编辑、设为默认配送地址，并在结账及未履约订单中更换地址。
-- 能定位并选择最近的有效门店；定位失败可手选。
-- 饮品可选择规格并下单；商品可加入同一购物车。
-- 下单返回唯一订单号；自取订单返回一次性二维码/取餐码。
-- Admin 可按门店查看订单、更新状态、核销二维码、查看用户和门店。
-- 同一个取餐码第二次核销必须失败并提示已使用。
-- 所有金额由服务端以整数 minor unit/KES 整数处理，不使用浮点数。
-
-## 非 MVP
-
-- 真实支付、退款自动化、骑手派单、实时配送地图。
-- 多仓库复杂库存、采购和供应链。
-- 盲盒概率与防作弊引擎、社交社区、广告平台。
-- iOS/Android 原生应用商店版本；Web/PWA 验证后再进入。
+Not implemented: real payment/refund automation, courier dispatch/live tracking, POSPAL paid-order push/callback, production-grade inventory reservation, native apps, and multi-warehouse supply chain. / 尚未实现：真实支付/自动退款、骑手派单/实时追踪、POSPAL 已支付订单推送/回调、生产级库存预留、原生 App 与多仓供应链。

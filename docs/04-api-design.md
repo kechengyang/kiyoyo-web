@@ -1,142 +1,58 @@
-# 04 · API 设计
+# 04 · API design and endpoint inventory / API 设计与端点清单
 
-基础路径：`/v1`；JSON；UTF-8。认证使用 Identity Platform JWT，Admin API 同时校验角色和门店范围。
+The Fastify service exposes JSON under `/v1`, plus health/readiness and SSE. Authentication uses `Authorization: Bearer <Firebase ID token>`. Errors use `{ "error": { "code", "message" } }`. / Fastify 服务在 `/v1` 下提供 JSON，并提供健康、就绪与 SSE；认证使用 `Authorization: Bearer <Firebase ID token>`；错误格式为 `{ "error": { "code", "message" } }`。
 
-## 约定
+## Conventions / 约定
 
-- 请求头：`Authorization: Bearer …`、`X-Request-Id`、`Accept-Language: en|zh`。
-- 创建订单、支付、核销使用 `Idempotency-Key`。
-- 分页：cursor，不用易漂移的 offset；返回 `next_cursor`。
-- 错误格式：`{ "error": { "code", "message", "request_id", "details" } }`。
-- 常见状态：400 参数、401 未登录、403 越权、404 不存在、409 状态冲突/重复核销、422 业务规则、429 限流。
+- `Idempotency-Key` is mandatory for checkout and manual point adjustment. / 结账与手工积分调整必须提供 `Idempotency-Key`。
+- Current amounts are integer KES. / 当前金额为整数 KES。
+- Pagination is not uniform; current Admin lists use bounded results. / 分页尚未统一；当前 Admin 列表使用有上限的结果。
+- No OpenAPI file is published; route schemas and contract tests are authoritative. / 尚未发布 OpenAPI 文件；路由 schema 与契约测试具有权威性。
 
-## Public / Customer API
+## Public catalogue / 公开目录
 
-### 配置与门店
+| Method / 方法 | Path / 路径 | Purpose / 用途 |
+|---|---|---|
+| `GET` | `/healthz`, `/health`, `/readyz` | Health and database readiness / 健康与数据库就绪 |
+| `GET` | `/v1/app-config` | Client-safe config / 客户端安全配置 |
+| `GET` | `/v1/stores`, `/v1/stores/:id` | Stores / 门店 |
+| `GET` | `/v1/products`, `/v1/products/:slug`, `/v1/search` | Active catalogue and search / 已上架目录与搜索 |
+| `GET` | `/v1/media/:encodedKey` | Proxy approved private media / 代理已批准私有图片 |
 
-- `GET /v1/app-config?locale=en`
-- `GET /v1/stores?lat=-1.28&lng=36.81` — 可选服务端排序；浏览器也可本地排序。
-- `GET /v1/stores/{storeId}`
-- `GET /v1/stores/{storeId}/menu?kind=DRINK&category=milk-tea`
+## Customer / 顾客
 
-### 商品
+| Method / 方法 | Path / 路径 | Purpose / 用途 |
+|---|---|---|
+| `POST` | `/v1/auth/bootstrap` | Project trusted Firebase identity into KIYOYO / 映射可信 Firebase 身份 |
+| `GET`, `PATCH` | `/v1/me` | Profile and membership / 资料与会员状态 |
+| `GET` | `/v1/me/loyalty` | Wallet, rate, ledger / 钱包、比例、账本 |
+| `GET`, `POST` | `/v1/me/addresses` | List/create addresses / 列表/创建地址 |
+| `PATCH`, `DELETE`, `PUT` | `/v1/me/addresses/:id`, `/:id/default` | Update/delete/default / 更新/删除/默认地址 |
+| `GET`, `PUT`, `DELETE` | `/v1/me/favorites`, `/:productId` | Cloud favourites / 云端收藏 |
+| `GET` | `/v1/me/coupons` | Coupon wallet / 优惠券钱包 |
+| `POST` | `/v1/checkouts` | Pricing, coupon, points, MOCK payment, order / 计价、优惠券、积分、MOCK 支付、订单 |
+| `GET` | `/v1/me/orders` | Order history / 订单历史 |
+| `POST` | `/v1/me/orders/:orderNumber/pickup-token` | Owner token rotation / 所有者重发 token |
 
-- `GET /v1/products?kind=GOODS&category=fashion&cursor=...`
-- `GET /v1/products/{slug}`
-- `GET /v1/search?q=matcha&store_id=...`
+All `/v1/me*` routes require a profile; checkout additionally requires verified phone membership. / 所有 `/v1/me*` 路由需要有效资料；结账还需要已验证手机号会员资格。
 
-### 收藏与账户
+## Admin operations / Admin 操作
 
-- `POST /v1/auth/bootstrap` — 客户端完成 Identity Platform 登录后，用 ID token 创建/加载 KIYOYO 用户。
-- `GET /v1/me`、`PATCH /v1/me`
-- `GET /v1/me/addresses`
-- `POST /v1/me/addresses`
-- `PATCH /v1/me/addresses/{addressId}`
-- `DELETE /v1/me/addresses/{addressId}`
-- `PUT /v1/me/addresses/{addressId}/default`
-- `GET /v1/me/favorites`
-- `PUT /v1/me/favorites/{productId}`、`DELETE /v1/me/favorites/{productId}`
-- `GET /v1/me/loyalty`
-- `GET /v1/me/coupons`
-- `GET /v1/me/orders` — 返回订单金额、履约状态、商品快照、门店、地址快照与取餐码状态；
-  登录后用于跨设备同步 History。
-- `POST /v1/me/orders/{orderNumber}/pickup-token` — 仅订单本人可重新签发自取二维码。
-  服务端只持有 token hash；重新签发会原子替换 hash，旧二维码立即失效。已核销、已完成
-  或已取消订单不能重新签发。
+| Area / 领域 | Endpoints / 端点 |
+|---|---|
+| Session / 会话 | `GET /v1/admin/session`, `/context/stores`, `/overview` |
+| Orders / 订单 | `GET /order-alerts`, SSE `/order-events`, `GET /orders`, fulfilment transition / 履约推进 |
+| Pickup / 取餐 | `POST /pickups/verify`, `/pickups/redeem` |
+| Products / 商品 | list/create/update, media upload/confirm, tag CRUD / 列表/创建/更新、图片上传/确认、标签 CRUD |
+| Coupons / 优惠券 | list/create/update, publish, stop distribution, disable, archive / 列表/创建/更新、发布、停止发放、禁用、归档 |
+| Customers / 顾客 | list/detail/update, issue/revoke coupon / 列表/详情/更新、发放/撤销优惠券 |
+| Loyalty / 积分 | settings read/update, customer adjustment / 设置读取/更新、顾客调整 |
+| Stores / 门店 | Admin list/update, including POSPAL mapping / Admin 列表/更新，包括 POSPAL 映射 |
+| Access / 权限 | staff list/create/update/remove/restore/password, audit logs / 员工列表/创建/更新/移除/恢复/密码、审计日志 |
+| POSPAL / 银豹 | `POST /pospal/product-sync`, `GET /pospal/product-sync/status` |
 
-### Cart 与报价
+Every write is permission-gated. Store operations are scoped server-side; high-risk staff access/password operations require recent Admin auth. / 每项写操作都有权限门禁；门店操作由服务端限定范围；高风险员工权限/密码操作要求近期 Admin 认证。
 
-- `POST /v1/carts` — 建立 guest/member cart。
-- `PUT /v1/carts/{cartId}/store` — 切换店并返回不可售项。
-- `POST /v1/carts/{cartId}/items`
-- `PATCH /v1/carts/{cartId}/items/{itemId}`
-- `DELETE /v1/carts/{cartId}/items/{itemId}`
-- `POST /v1/carts/{cartId}/quote` — 服务端重算价格、优惠、配送费和过期时间。
+SSE emits `created` and `status-changed` after server-side filtering. Clients reconnect and refresh authoritative lists after reconnect. / SSE 在服务端过滤后发送 `created` 与 `status-changed`；客户端重连后刷新权威列表。
 
-### Checkout
-
-`POST /v1/checkouts`
-
-```json
-{
-  "cart_id": "uuid",
-  "quote_id": "uuid",
-  "fulfillment": {
-    "drink": { "type": "PICKUP", "store_id": "uuid" },
-    "goods": { "type": "SHIPPING", "address_id": "uuid" }
-  },
-  "coupon_code": "HAPPY20",
-  "payment_method": { "provider": "MOCK", "token": "test_ok" }
-}
-```
-
-响应返回订单、支付状态、分组履约状态。只有自取组返回 `pickup_qr_payload`；二维码不暴露数据库 ID。
-首次下单的原始 token 只返回一次。若换设备后需要再次展示，必须调用上述本人授权的
-重新签发接口，不能把明文取餐 token 长期保存在数据库。
-
-- `GET /v1/orders/{orderNumber}`
-- `POST /v1/orders/{orderNumber}/cancel`
-- `PATCH /v1/orders/{orderNumber}/delivery-address` — 仅允许可编辑状态，服务端重新校验配送范围并写地址变更事件。
-
-地址请求不接受 `is_default` 作为无条件覆盖；设置默认地址要在事务中确保每个用户最多一个默认项。订单使用独立地址快照，修改地址簿不会改写已有订单。
-
-## Admin API
-
-- `GET /v1/admin/orders?store_id=...&status=READY&cursor=...`
-- `GET /v1/admin/orders/{orderNumber}`
-- `POST /v1/admin/fulfillments/{id}/transition` body `{ "to": "PREPARING" }`
-- `POST /v1/admin/pickups/verify` — 只验证，不改变状态；可选。
-- `POST /v1/admin/pickups/redeem` — 原子核销。
-- `GET /v1/admin/customers?query=...`
-- `GET /v1/admin/customers/{id}`
-- `GET /v1/admin/coupons`、`POST /v1/admin/coupons`、`PATCH /v1/admin/coupons/{id}` — 草稿列表、创建和规则编辑；已产生核销的规则不可直接修改。
-- `POST /v1/admin/coupons/{id}/publish` — 根据开始时间进入 `SCHEDULED` 或 `ACTIVE`，同时开启发放和使用。
-- `POST /v1/admin/coupons/{id}/stop-distribution` — 只停止新发放，保留已发券的使用权。
-- `POST /v1/admin/coupons/{id}/disable` — 紧急停止所有使用，body 必须包含 `reason`。
-- `POST /v1/admin/coupons/{id}/archive` — 归档并关闭发放、使用。
-- `POST /v1/admin/customers/{id}/coupons` — 向单个有效客户发放已发布的 `ASSIGNED` Coupon。
-- `POST /v1/admin/user-coupons/{id}/revoke` — 撤销未使用用户券，body 必须包含 `reason`。
-- `POST /v1/admin/loyalty/adjustments` — 管理员，强制 reason。
-- `GET /v1/admin/stores`、`PATCH /v1/admin/stores/{id}`
-- `GET /v1/admin/products?kind=DRINK&status=ACTIVE&query=...`
-- `POST /v1/admin/products` — 创建不可见商品草稿；上传并确认 GCS 图片后才能发布。
-- `PATCH /v1/admin/products/{id}` — 名称、基础价、折扣和上架状态；要求 `If-Match`/version 防止覆盖他人修改。
-- `GET /v1/admin/product-tags`、`POST /v1/admin/product-tags` — 查询或创建可复用商品标签。
-- `PATCH /v1/admin/product-tags/{id}`、`DELETE /v1/admin/product-tags/{id}` — 修改或归档标签；归档时事务性解除商品关联。
-- `PATCH /v1/admin/products/{id}` 可提交 `tag_id`；服务端验证标签仍为 active，客户端不能提交任意标签文字或颜色。
-- `POST /v1/admin/products/{id}/media-upload` — 返回 Cloud Storage 短期 signed upload URL。
-- `POST /v1/admin/products/{id}/media-confirm` — 确认上传并启动校验/缩略图处理。
-- `GET /v1/admin/audit-logs?...` — 管理员只读。
-
-商品更新响应返回新的 `catalog_version`、`effective_price` 和媒体状态。前端目录接口返回 `ETag`；客户端版本过期时重新获取。`active=false` 或媒体仍在 PROCESSING 的产品不可进入新订单。
-
-核销请求：
-
-```json
-{
-  "token": "opaque-one-time-token",
-  "store_id": "uuid",
-  "device_time": "2026-08-04T14:03:22+03:00"
-}
-```
-
-服务端以数据库时间和员工 token 内的门店权限为准，不信任 `device_time` 或客户端状态。
-
-## Payment Provider Interface
-
-```ts
-interface PaymentProvider {
-  authorize(input: AuthorizeInput): Promise<PaymentResult>;
-  capture(input: CaptureInput): Promise<PaymentResult>;
-  refund(input: RefundInput): Promise<PaymentResult>;
-  verifyWebhook(headers: Headers, rawBody: Buffer): ProviderEvent;
-}
-```
-
-`MockPaymentProvider` 接受明确测试 token：`test_ok`、`test_declined`、`test_timeout`，让 QA 覆盖成功、拒绝和超时。真实 M-Pesa/银行卡适配器只替换 provider，不改变订单服务。
-
-## OpenAPI 与契约
-
-- 后端生成 `/openapi.json`，前端通过 CI 生成 typed client。
-- CI 检测 breaking change；兼容变更只能新增可选字段。
-- 对 Checkout、状态机、核销和权限做 consumer contract tests。
+There is no implemented POSPAL order-push, callback, polling, or internal task endpoint. / 当前没有已实现的 POSPAL 订单推送、回调、轮询或内部 task 端点。

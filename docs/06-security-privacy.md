@@ -1,78 +1,51 @@
-# 06 · 安全、隐私与二维码核销
+# 06 · Security and privacy / 安全与隐私
 
-## 权限模型
+## Trust boundaries / 信任边界
 
-- 客户只能读取/修改自己的账户、收藏、地址和订单。
-- 门店员工只访问 JWT custom claims 中授权的 `store_ids`。
-- 运营可跨店看订单/用户；积分人工调整和权限管理只给管理员。
-- Admin 强制 MFA、短 session、空闲超时和敏感操作重新认证。
-- 每个管理写操作记录 actor、请求 ID、实体、前后状态、门店和时间。
+- Firebase/Identity Platform proves identity; the Fastify API enforces business authorization. / Firebase/Identity Platform 证明身份；Fastify API 执行业务授权。
+- The browser is untrusted for price, discount, inventory, membership, role, store scope, points, order state, and pickup validity. / 浏览器在价格、折扣、库存、会员、角色、门店范围、积分、订单状态与取餐有效性方面均不可信。
+- PostgreSQL is the transactional source of truth; private media is accessed through signed upload and constrained API proxy paths. / PostgreSQL 是交易事实来源；私有图片通过签名上传与受限 API 代理路径访问。
 
-## 客户认证
+## Customer identity / 顾客身份
 
-- Identity Platform 负责邮箱密码与 Google OAuth；KIYOYO 服务绝不接收或保存用户密码。
-- 邮箱注册保留找回密码、弱密码策略与登录限流；顾客会员激活与结账不要求邮箱验证。
-- Google token 只在官方 SDK/后端验证流程中使用，不写日志或 localStorage。
-- OAuth state、nonce、PKCE 和 redirect URI 必须由官方 SDK/配置管理；不同环境使用不同 OAuth 应用或严格的回调域名列表。
-- 客户资料中的昵称、性别、年龄和地址均为个人信息；编辑、导出、删除和保留期限纳入隐私流程。
-- Google 登录上线前需要配置 OAuth consent screen 和正式域名。
+- API verifies Firebase ID tokens and uses the Firebase `uid` as stable external identity. / API 校验 Firebase ID token，并使用 Firebase `uid` 作为稳定外部身份。
+- Trusted provider, email verification, and phone number come from decoded claims, never request-body/profile/address fields. / 可信 provider、邮箱验证与手机号来自解码后的 claim，绝不来自 request body、资料或地址字段。
+- Checkout requires verified phone membership; email verification is not an authorization gate. / 结账要求已验证手机号会员资格；邮箱验证不是授权门禁。
+- Unique E.164 phone and provider-subject constraints prevent duplicate active ownership. / 唯一 E.164 手机号与 provider-subject 约束防止重复有效归属。
+- Passwords are held by Identity Platform. Password reset and provider linking must avoid email enumeration and identity transfer. / 密码由 Identity Platform 保存；密码重置与 provider 绑定必须避免邮箱枚举与身份转移。
 
-## 取餐二维码
+## Staff authorization / 员工授权
 
-二维码内容使用高熵不透明 token 或签名 payload，不直接放订单号、用户 ID、手机号或可预测序列。数据库只保存 token 的 SHA-256 hash。
+- Fixed roles are `ADMIN` and `OPERATOR`; permission middleware is required for every sensitive route. / 固定角色为 `ADMIN` 与 `OPERATOR`；每个敏感路由都必须使用权限 middleware。
+- Operator order, transition, and redemption access is filtered against assigned store IDs on the server. Unauthorized targets return not-found semantics where appropriate. / Operator 的订单、状态推进与核销访问在服务端按指定门店 ID 过滤；不允许的目标在适当场景返回 not-found 语义。
+- Staff token verification checks revocation. High-risk access/password changes require recent authentication. / 员工 token 校验检查撤销状态；高风险权限/密码变更要求近期认证。
+- Self-removal/demotion and removal of the last active Admin are blocked. Access removal revokes Firebase refresh tokens. / 禁止自我移除/降级以及移除最后一个有效 Admin；移除权限会撤销 Firebase refresh token。
+- Staff usernames map to internal alias emails; the UI uses username/password rather than exposing the alias. / 员工用户名映射到内部 alias email；UI 使用用户名/密码，不暴露 alias。
 
-核销必须满足：
+## Checkout, points, and pickup / 结账、积分与取餐
 
-1. 员工已登录且有订单门店权限。
-2. token 存在、未过期、未核销。
-3. 履约类型为 PICKUP，状态通常为 READY。
-4. 在数据库事务中 `SELECT ... FOR UPDATE`，原子写入 `redeemed_at/redeemed_by` 并把履约改成 COMPLETED。
-5. 重复请求返回第一次结果或 409，不可再次放行。
+- Checkout and manual point adjustments require idempotency keys and transaction locks. / 结账与手工积分调整要求幂等键与事务锁。
+- Server reloads active products and computes price, coupon, fee, points, and total. / 服务端重新加载已上架商品并计算价格、优惠券、费用、积分与总额。
+- Points cannot be used with a pending payment outcome; wallet mutations are locked and audited. / 等待中的支付结果不能使用积分；钱包变动会加锁并审计。
+- Pickup token payloads are signed; only hashes are stored. Verify store, expiry, redemption state, and signature under a row lock before completion. / 取餐 token payload 经过签名；数据库只保存哈希；完成前在行锁下校验门店、过期、核销状态与签名。
+- Token reissue is owner-only and atomically invalidates the old token. / token 重发仅限订单所有者，并原子化使旧 token 失效。
 
-为网络不稳定门店设计时，MVP 不做离线核销。无法连接服务器就不改变取餐状态，员工可用订单号走有审计的人工流程。离线可核销方案会显著增加双花风险。
+## API and browser protections / API 与浏览器保护
 
-## API 安全
+- Helmet headers, explicit CORS origins/methods, Zod input schemas, body/field limits, and generic errors reduce attack surface. / Helmet headers、明确 CORS origin/method、Zod 输入 schema、body/字段限制与通用错误降低攻击面。
+- SSE requires authentication and server-side scope; secrets never appear in event payloads. / SSE 要求认证与服务端范围过滤；事件 payload 不包含 secret。
+- Signed media upload is short-lived and object-key constrained; confirmation checks metadata before binding. / 图片签名上传短期有效且限制 object key；确认时检查元数据后再绑定。
+- Secrets belong in Secret Manager or protected runtime configuration, never source, logs, browser bundles, or PR text. / secret 应位于 Secret Manager 或受保护运行时配置，绝不能进入源码、日志、浏览器 bundle 或 PR 文本。
 
-- HTTPS only，HSTS，安全 Cookie（若使用）设置 HttpOnly/Secure/SameSite。
-- CORS 只允许正式域名；CSRF 防护用于 Cookie 会话。
-- 输入 schema 校验，数据库参数化查询，输出编码。
-- 登录、搜索用户、结账和核销分别限流；核销失败达到阈值告警。
-- Webhook 使用原始 body 验签、时间窗口和 provider event 去重。
-- 错误响应不泄露 SQL、堆栈、token 或客户详情。
+## Privacy and retention / 隐私与保留
 
-## 数据保护
+- Collect only data required for identity, fulfilment, support, fraud prevention, and audit. / 只收集身份、履约、客服、反欺诈与审计所需数据。
+- Log request IDs and redacted metadata, not tokens, raw passwords, payment secrets, full pickup tokens, or unnecessary PII. / 日志记录 request ID 与脱敏元数据，不记录 token、原始密码、支付 secret、完整取餐 token 或不必要 PII。
+- Order, payment, coupon, loyalty, access-period, and audit history may require retention; define production retention/deletion policy with legal review. / 订单、支付、优惠券、积分、访问周期与审计历史可能需要保留；生产保留/删除政策需经法务确认。
+- Backup, export, support access, data-subject requests, and incident response need production runbooks before launch. / 备份、导出、客服访问、数据主体请求与事件响应在正式上线前需要生产 runbook。
 
-- 最小化收集：配送需要的姓名、电话、地址；定位默认只用于本地算最近店，不必上传。
-- 用户同意后才保存精确地址/坐标；拒绝定位不影响手动点单。
-- Secret Manager 保存 secrets，Cloud KMS/Google-managed encryption at rest。
-- 日志屏蔽 Authorization、支付 token、完整电话、地址和 pickup token。
-- 定义保留策略：订单按法务/财务要求；精确定位不入日志；失效 guest cart 定期删除。
-- 提供账户导出、更正、删除/匿名化流程；涉及交易记录时按肯尼亚适用规则保留必要财务信息。
+## Known security gaps / 已知安全缺口
 
-## 支付 MVP 安全边界
-
-- 测试页面和订单必须显著标记 `TEST` / `is_test=true`。
-- Mock provider 只能在非生产或显式 feature flag 下启用；生产启动时若没有真实 provider 必须 fail closed。
-- 即使模拟支付，也不在前端信任总价；后端重新报价并记录支付状态。
-- 绝不存银行卡原始信息；未来接入 M-Pesa/卡支付时使用 provider tokenization/hosted flow。
-
-## 威胁检查清单
-
-- 重放同一 checkout 或 QR。
-- 门店员工跨店核销。
-- 修改前端价格、积分、优惠券和状态请求。
-- 枚举订单号、手机号或用户 ID。
-- 图片上传恶意文件或超大文件。
-- 库存竞争导致超卖。
-- 管理员账号被盗和批量导出客户。
-- 地图 API key 被其他域名滥用。
-
-上线前进行依赖扫描、SAST、关键 API 渗透测试和权限矩阵测试，并用 OWASP ASVS 作为验收基线。
-
-## 商品图片与价格安全
-
-- 上传使用短期、单对象 signed URL，限制 content length；服务端以实际文件内容检测类型，不信任扩展名或客户端 MIME。
-- 拒绝 SVG/HTML 作为商品主图；对 JPEG/PNG/WebP 解码重编码，移除 EXIF/GPS，并限制像素尺寸防止解压炸弹。
-- 原始上传桶不公开；只有处理完成的派生图可通过 CDN 读取。
-- 商品价格、折扣和上架状态只允许有 Catalog 权限的 Admin 修改，并写不可变审计日志。
-- 客户端显示价仅供展示；购物车报价、优惠和订单金额全部由服务端计算并带版本/幂等控制。
+- Payment is MOCK and must not be presented as a real processor. / 支付为 MOCK，不得描述成真实支付处理方。
+- Cloud Tasks workers and POSPAL order push/callback security are designs, not implemented controls. / Cloud Tasks worker 与 POSPAL 订单推送/回调安全仍是设计，不是已实现控制。
+- Repository configuration cannot prove current IAM, DNS, provider-console, key restrictions, or runtime secret state. / 仓库配置不能证明当前 IAM、DNS、provider 控制台、key 限制或运行时 secret 状态。
