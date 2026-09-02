@@ -1,97 +1,89 @@
-# 08 · 本地开发与生产迁移
+# 08 · Local development / 本地开发
 
-## 运行环境
+## Requirements / 环境要求
 
-- Node.js 22+
-- npm
-- 现代浏览器；定位测试需要 localhost 或 HTTPS
+- Node.js 22 and npm. / Node.js 22 与 npm。
+- PostgreSQL compatible with the migrations. / 与迁移兼容的 PostgreSQL。
+- Terraform 1.15.x for infrastructure validation. / 用于基础设施校验的 Terraform 1.15.x。
+- Firebase project/client config for real authentication flows. / 用于真实认证流程的 Firebase project/client 配置。
+- Optional Google Cloud CLI, Cloud SQL Auth Proxy, Firebase CLI, and POSPAL credentials for scoped integration work. / 针对集成工作可选 Google Cloud CLI、Cloud SQL Auth Proxy、Firebase CLI 与 POSPAL 凭据。
+
+Use `npm ci` for reproducible installs. Never commit `.env`, tokens, service-account JSON, database passwords, pickup signing keys, POSPAL keys, or generated cloud credentials. / 使用 `npm ci` 保证可复现安装；不得提交 `.env`、token、service-account JSON、数据库密码、取餐签名 key、POSPAL key 或生成的云凭据。
+
+## Web development / Web 开发
 
 ```bash
 cd web
-npm install
+npm ci
 npm run dev
 ```
 
-访问：
+Default routes: customer `http://localhost:3000`, Admin `http://localhost:3000/admin`. / 默认路由：顾客端 `http://localhost:3000`，Admin `http://localhost:3000/admin`。
 
-- 客户商城 `http://localhost:3000/`
-- Admin `http://localhost:3000/admin`
+Relevant public variables include Firebase client values, API base URL, and optional custom auth domain. The build is static, so `NEXT_PUBLIC_*` values are embedded at build time. / 相关公开变量包括 Firebase 客户端值、API base URL 与可选自定义 auth domain；构建是静态的，因此 `NEXT_PUBLIC_*` 会在构建时嵌入。
 
-## 当前本地原型如何工作
-
-- `kiyoyo-lang`：中英文偏好。
-- `kiyoyo-store`：当前门店。
-- `kiyoyo-saved`：收藏。
-- `kiyoyo-cart`：购物车。
-- `kiyoyo-orders`：本地下单记录，Admin 会读取。
-- `kiyoyo-session`：本地模拟登录 session，不是真实安全认证。
-- `kiyoyo-profile`：昵称、性别、年龄和本地地址簿。
-- `kiyoyo-catalog`：API 商品目录的只读浏览器缓存；PostgreSQL 与 GCS 是 dev 商品和图片的权威来源。
-- 订单和 QR 是浏览器模拟，不可用于真实营业。
-- Admin 自带示例订单；Ready 示例码 `P7LW9X3A` 可演示首次成功、再次失败。
-
-清空浏览器站点数据即可重置演示状态。
-
-## 代码结构
-
-```text
-web/
-  app/
-    components/KiyoyoApp.tsx  # 客户体验和本地状态
-    admin/                     # Admin 管理原型
-    data.ts                    # 产品、门店演示数据
-    types.ts                   # 共享类型
-    globals.css                # 响应式品牌 UI
-  public/images/               # 已压缩网页素材
+```bash
+npm run lint
+npm run check
+npm test
+npm run build -- --webpack
 ```
 
-## 从原型迁移到真实前后端
+`npm test` includes a vinext preview build; the final command verifies the Firebase Hosting production artifact. / `npm test` 包含 vinext preview build；最后一条命令验证 Firebase Hosting 生产产物。
 
-1. 在仓库增加 `api/`（NestJS/Fastify）和 PostgreSQL migration。
-2. 按 `04-api-design.md` 生成 OpenAPI typed client。
-3. 把 `useStoredState` 替换为 API query/mutation；保留本地 UI state。
-4. 接 Identity Platform，登录后合并游客 cart/favorites。
-5. Checkout 改为后端报价和幂等下单；二维码由后端签发。
-6. Admin 所有列表和状态操作改用授权 API；移除 sample data。
-7. 图片上传 Cloud Storage，数据库只保存 object key/metadata。
-8. 用 Terraform 创建 dev/staging/prod，接 CI/CD。
+## API development / API 开发
 
-当前 Google 按钮只建立清晰标记的本地演示 session，不访问第三方网站、不取得真实 token。生产启用顺序：创建 OAuth 应用 → 配置 Identity Platform provider → 限制授权域名/回调 → API 验证 ID token → 手机号验证和邮箱找回密码 → staging E2E → 生产开关。
-
-商品图片在 localhost 和 Hosting 使用同一条 GCS 链路：Admin 先创建不可见草稿，向 API 申请短期 signed upload URL，浏览器直接上传不超过 8MB 的 JPG/PNG/WebP，API 校验对象后把 `gcs://<bucket>/products/...` 保存到 PostgreSQL。Data URL 只用于提交前的本地预览，不会写入数据库或商品目录缓存；没有有效 bucket path 的商品不能发布。
-
-推荐 monorepo：
-
-```text
-apps/
-  storefront/     # Next.js
-  admin/          # Next.js（可先与 storefront 共仓）
-  api/            # NestJS/Fastify on Cloud Run
-packages/
-  contracts/      # OpenAPI generated types
-  domain/         # 无框架领域类型与校验
-  ui/             # 品牌组件
-infra/
-  terraform/
+```bash
+cd api
+npm ci
+npm run check
+npm test
+npm run build
 ```
 
-## 环境变量（未来）
+Required runtime variables include `DB_PASSWORD` and `PICKUP_SIGNING_KEY`; non-dev environments also require explicit database host details. Firebase Admin uses Application Default Credentials or an approved runtime identity. / 必需运行时变量包括 `DB_PASSWORD` 与 `PICKUP_SIGNING_KEY`；非 dev 环境还需要明确数据库 host；Firebase Admin 使用 ADC 或已批准运行时身份。
 
-创建 `.env.example`，只列变量名和非敏感示例：
+Common variables: / 常用变量：
 
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_MEDIA_BUCKET`（仅用于构建时的离线商品图片回退；API 返回的 `image_key` 仍是权威值）
-- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`（限制域名/API/配额）
-- `GCP_PROJECT_ID`
-- `DATABASE_URL`（只在 API runtime）
-- `PAYMENT_PROVIDER=mock|mpesa|...`
-- `PICKUP_TOKEN_SIGNING_KEY`（Secret Manager，不放 `.env.example` 值）
+```dotenv
+APP_ENV=dev
+GOOGLE_CLOUD_PROJECT=kiyoyo
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_NAME=kiyoyo_dev
+DB_USER=kiyoyo_dev_api
+DB_PASSWORD=replace-locally
+MEDIA_BUCKET=kiyoyo-dev-media
+PICKUP_SIGNING_KEY=replace-locally
+ALLOWED_ORIGINS=http://localhost:3000
+```
 
-## 门店数据待办
+Optional POSPAL variables are `POSPAL_APP_ID`, `POSPAL_APP_KEY`, `POSPAL_BASE_URL`, `POSPAL_HQ_ACCOUNT`, and `POSPAL_TIMEOUT_MS`. Missing POSPAL config disables only its Admin sync endpoints; API startup and migrations continue. / 可选 POSPAL 变量为 `POSPAL_APP_ID`、`POSPAL_APP_KEY`、`POSPAL_BASE_URL`、`POSPAL_HQ_ACCOUNT` 与 `POSPAL_TIMEOUT_MS`；缺少 POSPAL 配置只会禁用其 Admin 同步端点，不影响 API 启动与迁移。
 
-公开页面可核实：Kilimani、Westlands、CBD、Parklands。原型中的 Kilimani、Westlands、CBD 坐标来自公开 Google Maps 跳转；Parklands 使用近似区域坐标，仅供 UI 演示。Eastleigh 和 Store 06 精确资料待运营提供。生产前必须用门店负责人确认的 Google Place/坐标替换全部近似值。
+Run migrations before seed: / 先运行迁移，再运行 seed：
 
-参考公开资料：
+```bash
+npm run build
+npm run migrate
+npm run seed
+npm run dev
+```
 
-- KIYOYO Stores: https://kiyoyo.africa/stores
-- KIYOYO Homepage: https://kiyoyo.africa/
+For direct dev Cloud SQL work, use the project skill `.codex/skills/kiyoyo-cloudsql`; reads are default and writes/migrations require explicit target confirmation. Database-only work must not deploy Cloud Run. / 直接操作 dev Cloud SQL 时使用项目 skill `.codex/skills/kiyoyo-cloudsql`；默认只读，写入/迁移要求明确确认目标；仅数据库工作不得部署 Cloud Run。
+
+## Terraform validation / Terraform 校验
+
+```bash
+cd infra/terraform
+terraform fmt -check -recursive
+terraform init -backend=false -input=false
+terraform validate
+```
+
+Validation does not authorize `plan` against live credentials or `apply`. Use the correct backend/tfvars and review a targeted plan before any apply. / validate 不授权使用线上凭据执行 `plan` 或 `apply`；任何 apply 前必须使用正确 backend/tfvars 并审查 targeted plan。
+
+## Change workflow / 改动工作流
+
+- Use `.codex/skills/manage-feature-workflow` to classify and isolate repository changes. / 使用 `.codex/skills/manage-feature-workflow` 分类并隔离仓库改动。
+- For medium/large changes, also use `.codex/skills/maintain-project-docs`; update bilingual docs in the same branch/PR. / 中大型改动还必须使用 `.codex/skills/maintain-project-docs`，并在同一分支/PR 更新双语文档。
+- Preserve unrelated dirty files and never work directly on protected base branches. / 保留无关未提交文件，绝不直接在受保护基线分支工作。

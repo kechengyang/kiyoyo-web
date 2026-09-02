@@ -1,84 +1,47 @@
-# 11 · GitHub CI 与 GCP dev 持续部署
+# 11 · Continuous integration and deployment / 持续集成与部署
 
-## 合并前检查
+## Pull-request and branch CI / PR 与分支 CI
 
-所有面向 `main` 的 Pull Request 都运行 `.github/workflows/ci.yml`：
+`.github/workflows/ci.yml` runs on pull requests to `main`, pushes to non-main branches, and manual dispatch. Concurrency cancels obsolete runs for the same ref. / `.github/workflows/ci.yml` 在指向 `main` 的 PR、非 main 分支 push 与手工 dispatch 时运行；concurrency 会取消同一 ref 的过时运行。
 
-- Web ESLint 与 TypeScript 检查。
-- Web 关键页面回归测试与静态生产构建。
-- API TypeScript 检查、优惠券/取餐码回归测试与生产构建。
-- 部署路径分类回归测试，防止 Web/API 改动部署到错误组件。
-- Web 与 API production dependencies 的 high/critical 漏洞审计。
-- Terraform 格式、provider 初始化和配置校验。
-
-Dependabot 每周检查 Web、API 与 GitHub Actions 依赖更新。
-
-建议在 GitHub `main` branch protection 中要求以下 checks：
-
-- `Repository regression`
-- `Web lint and typecheck`
-- `Web regression tests`
-- `Web production build`
-- `API typecheck, regression, and build`
-- `Production dependency audit (web)`
-- `Production dependency audit (api)`
-- `Terraform format and validate`
-
-同时启用：至少一个 approval、dismiss stale approvals、require conversation resolution、
-禁止 force push，并要求分支在合并前保持最新。
-
-## 合并后 dev 部署
-
-`.github/workflows/deploy-dev.yml` 只在提交进入 `main` 后运行，并按 Git diff 选择组件：
-
-| 变更路径 | dev 动作 |
+| Job / Job | Checks / 检查 |
 |---|---|
-| `web/**`、`firebase.json` | 构建静态站，部署 Firebase Hosting，检查 `/` 与 `/admin` |
-| `api/**` | 构建不可变 SHA 镜像，推送 Artifact Registry，执行 migration job，部署 Cloud Run，检查 `/health` 与 `/readyz` |
-| `infra/terraform/**` | 合并前校验；不会从应用部署 workflow 自动 apply |
-| 仅文档或其他文件 | 不重新部署应用 |
+| Repository regression / 仓库回归 | `scripts/ci/*.test.mjs` |
+| Web quality / Web 质量 | `npm ci`, lint, typecheck |
+| Web regression / Web 回归 | vinext preview build and Node tests / vinext preview build 与 Node 测试 |
+| Web build / Web 构建 | Next.js Webpack production build / Next.js Webpack 生产构建 |
+| API quality / API 质量 | typecheck, tests, build / 类型检查、测试、构建 |
+| Dependency audit / 依赖审计 | production dependencies, high severity threshold / 生产依赖，高严重度门槛 |
+| Terraform / Terraform | format, backend-free init, validate / 格式、无 backend init、validate |
 
-Terraform 不在 merge 后自动 apply，避免未经人工检查就删除或替换 Cloud SQL、Secret、IAM
-等有状态资源。基础设施改动必须先审查 plan，再由维护者显式 apply。
+## Dev deployment / dev 部署
 
-部署使用 GitHub Environment `dev` 和并发锁：同一时间只允许一个 dev 发布，后续发布不会
-取消正在执行的 migration 或 Cloud Run 更新。需要重试时可手动运行 workflow，并选择
-`all`、`web` 或 `api`。
+`.github/workflows/deploy-dev.yml` runs on `main` push or manual `all|web|api` dispatch. `deploy-dev-v2` serializes deployments without canceling an active release. / `.github/workflows/deploy-dev.yml` 在 `main` push 或手工 `all|web|api` dispatch 时运行；`deploy-dev-v2` 串行部署且不取消正在进行的发布。
 
-## 一次性启用步骤
+`scripts/ci/changed-components.mjs` maps changes: / `scripts/ci/changed-components.mjs` 映射变化：
 
-1. 由现有 GCP 管理员在本地应用本次 Terraform 变更，创建 GitHub OIDC provider 和最小化
-   deployer 权限：
+- Web paths and `firebase.json` deploy Web. / Web 路径与 `firebase.json` 部署 Web。
+- API paths deploy API. / API 路径部署 API。
+- Terraform paths flag infrastructure but do not auto-apply it. / Terraform 路径标记基础设施，但不自动 apply。
+- Documentation and project-skill changes alone deploy neither application. / 只有文档与项目 skill 改动时，两项应用都不部署。
 
-   ```sh
-   cd infra/terraform
-   terraform init -reconfigure -backend-config=backend/dev.hcl
-   terraform plan -var-file=dev.tfvars
-   terraform apply -var-file=dev.tfvars
-   ```
+Web deployment builds `web/out`, authenticates through GitHub OIDC/WIF, deploys Firebase Hosting, and smokes `/` plus `/admin`. / Web 部署构建 `web/out`，通过 GitHub OIDC/WIF 认证，部署 Firebase Hosting，并冒烟检查 `/` 与 `/admin`。
 
-2. 读取 Terraform 输出：
+API deployment builds an immutable SHA-tagged image, pushes Artifact Registry, updates/runs the migration job and waits, deploys Cloud Run, then smokes `/health` and `/readyz`. / API 部署构建不可变 SHA-tag 镜像、推送 Artifact Registry、更新/运行并等待迁移 job、部署 Cloud Run，再冒烟检查 `/health` 与 `/readyz`。
 
-   ```sh
-   terraform output -raw github_workload_identity_provider
-   terraform output -raw deployer_service_account
-   ```
+## Credentials and permissions / 凭据与权限
 
-3. 在 GitHub repository 创建 Environment `dev`，限制 deployment branch 为 `main`；如需人工
-   放行 dev 发布，可配置 required reviewer。
+Deploy uses Workload Identity Federation variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT`; do not add long-lived service-account JSON keys. GitHub environments control dev deployment access. / 部署使用 WIF 变量 `GCP_WORKLOAD_IDENTITY_PROVIDER` 与 `GCP_DEPLOY_SERVICE_ACCOUNT`；不得添加长期 service-account JSON key；GitHub environment 控制 dev 部署权限。
 
-4. 在该 Environment 或 repository 添加两个 Actions Variables：
+## Failure handling / 失败处理
 
-   - `GCP_WORKLOAD_IDENTITY_PROVIDER`：第一条 Terraform 输出。
-   - `GCP_DEPLOY_SERVICE_ACCOUNT`：第二条 Terraform 输出。
+- A successful image build is not a successful migration or deployment. / 镜像构建成功不等于迁移或部署成功。
+- Never deploy new API traffic after a failed migration. / 迁移失败后绝不能部署新 API traffic。
+- A docs-only merge should have no Web/API deploy jobs; this is expected. / 仅文档合并不应有 Web/API deploy job，这是预期行为。
+- Terraform validation success is not apply evidence. / Terraform validate 成功不是 apply 证据。
+- If a GitHub run is queued with zero jobs, inspect run/jobs/check-suite state before cancellation or concurrency changes. / GitHub run 排队且零 job 时，取消或修改 concurrency 前先检查 run/jobs/check-suite 状态。
+- Sandboxed `gh auth status` failure can be DNS/keychain isolation; recheck with approved host access before asking for login. / sandbox 内 `gh auth status` 失败可能是 DNS/keychain 隔离；要求重新登录前应使用已批准 host access 复核。
 
-不创建或上传 service-account JSON key。OIDC provider 同时限制 GitHub repository 和
-`refs/heads/main`，Pull Request 代码不能取得 dev 部署身份。
+## Documentation gate / 文档门禁
 
-## 发布顺序与失败处理
-
-- API migration 必须成功后才部署新的 Cloud Run revision。
-- 任一 smoke test 失败都会使 deployment workflow 失败。
-- Web 使用 Firebase Hosting release history 回滚。
-- API 使用 Cloud Run revision traffic 回滚；migration 必须保持向后兼容。
-- 合并前 CI 成功不代表线上 smoke 成功，两者都必须保留为可见检查记录。
+For medium or large changes, load `.codex/skills/maintain-project-docs`, update affected bilingual docs in the same branch/PR, and distinguish implemented, provisioned, planned, and live-verified facts. / 中大型改动必须加载 `.codex/skills/maintain-project-docs`，在同一分支/PR 更新受影响双语文档，并区分已实现、已配置、规划中与线上已验证事实。

@@ -1,53 +1,40 @@
-# KIYOYO Commerce Web
+# KIYOYO Web / KIYOYO Web 前端
 
-KIYOYO 的顾客商城与 Admin 前端。它是一个 Next.js 静态导出应用，部署到
-Firebase Hosting；订单、商品、用户、地址、门店、图片和核销数据全部通过独立的
-Cloud Run API 访问。
+One Next.js App Router project provides the bilingual customer Web/PWA and Admin console as a static export for Firebase Hosting. / 一个 Next.js App Router 项目以 Firebase Hosting 静态导出形式提供双语顾客 Web/PWA 与 Admin 后台。
 
-## 本地开发
+## Routes / 路由
 
-要求 Node.js `>=22.13.0`：
+- Customer: `/`, `/shop`, `/cart`, `/account`. / 顾客端：`/`、`/shop`、`/cart`、`/account`。
+- Admin: `/admin`, `/admin/orders`, `/admin/redeem`, `/admin/customers`, `/admin/loyalty`, `/admin/management`, `/admin/overview`, `/admin/products`, `/admin/coupons`, `/admin/stores`, `/admin/access`. / Admin：上述可直接访问并刷新安全的路由。
 
-```sh
-npm install
+Saved products render as a shelf inside Cart. Role-based Admin navigation is derived from the authenticated server session. / 收藏商品在 Cart 内以 shelf 展示；基于角色的 Admin 导航由已认证服务端 session 派生。
+
+## Local development / 本地开发
+
+```bash
+npm ci
 npm run dev
 ```
 
-未设置环境变量时只允许使用已部署的 `kiyoyo-dev` 默认配置。可复制
-`.env.example` 为 `.env.local` 覆盖本地值；`.env.local` 不应提交。
+The vinext dev server is for local development. The Firebase Hosting artifact is produced by the Next.js Webpack build. / vinext dev server 用于本地开发；Firebase Hosting 产物由 Next.js Webpack 构建生成。
 
-## 环境配置
+## Public configuration / 公开配置
 
-每个静态构建都必须绑定一个明确环境：
+Set the approved `NEXT_PUBLIC_*` Firebase client values and API base URL for the target environment. Custom auth-domain selection supports the connected `kiyoyo.africa` hostname while retaining the Firebase default domain for localhost/pre-cutover use. / 为目标环境设置已批准的 `NEXT_PUBLIC_*` Firebase 客户端值与 API base URL；自定义 auth-domain 选择支持已连接的 `kiyoyo.africa` hostname，同时为 localhost/切换前保留 Firebase 默认域名。
 
-- `NEXT_PUBLIC_KIYOYO_ENV`
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_MAPS_BROWSER_KEY`
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-- `NEXT_PUBLIC_FIREBASE_APP_ID`
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `NEXT_PUBLIC_FIREBASE_API_KEY`
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `NEXT_PUBLIC_FIREBASE_CUSTOM_AUTH_DOMAIN`（可选；仅当页面实际运行在该域名或其 `www` 域名时使用）
-- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+Public browser configuration is embedded at static build time and must never contain Admin secrets, service-account keys, database credentials, POSPAL keys, or pickup signing keys. / 公开浏览器配置会在静态构建时嵌入，绝不能包含 Admin secret、service-account key、数据库凭据、POSPAL key 或取餐签名 key。
 
-`dev` 可使用代码中的受限公开 Web 配置作为本地默认值。`staging` 和 `prod` 缺少任一
-值时构建会失败，避免正式页面误连 `kiyoyo-dev`。Firebase Web API key 和 Maps
-browser key 会公开给浏览器，安全边界分别是 Firebase authorized domains 与 Maps
-referrer/API restrictions；服务端 Secret 不得放在 `NEXT_PUBLIC_*` 中。
+## Verification / 验证
 
-## 检查与构建
-
-```sh
+```bash
 npm run lint
+npm run check
 npm test
-npm run build
+npm run build -- --webpack
 ```
 
-- `npm run build`：生成 Firebase Hosting 静态产物 `out/`。
-- `npm run build:preview`：生成 vinext 本地预览产物 `dist/`，不能部署到 Firebase。
-- `npm test`：构建预览并检查顾客端与 Admin 的服务端渲染骨架。
+`npm test` builds the vinext preview and runs route/contract tests. The final command verifies the production static export in `web/out`. / `npm test` 构建 vinext preview 并运行路由/契约测试；最后一条命令验证 `web/out` 中的生产静态导出。
 
-根目录 `firebase.json` 当前把 `web/out` 发布到 Hosting site `kiyoyo-dev`。
-`public/runtime-config.json` 是便于部署核对的非敏感环境元数据，并不替代构建时的
-`NEXT_PUBLIC_*` 配置。
+For UI changes, also follow `.codex/skills/kiyoyo-uiux` and verify affected responsive widths, keyboard/focus behaviour, accessible labels/live regions, and absence of page-level horizontal overflow. / UI 改动还必须遵循 `.codex/skills/kiyoyo-uiux`，验证受影响响应式宽度、键盘/焦点行为、可访问 label/live region，以及页面级无横向溢出。
+
+For medium or large changes, update affected bilingual docs through `.codex/skills/maintain-project-docs` in the same branch/PR. / 中大型改动必须通过 `.codex/skills/maintain-project-docs` 在同一分支/PR 更新受影响双语文档。

@@ -1,35 +1,41 @@
-# KIYOYO 技术设计文档索引
+# KIYOYO documentation / KIYOYO 文档索引
 
-版本：MVP v1 · 2026-08-12
-市场：Kenya / Nairobi · 币种 KES · 时区 Africa/Nairobi  
-架构原则：前后端分离、模块化单体、托管优先、按量付费、可逐步演进。
+Baseline: `origin/main` at `9d298c6`, reviewed 2026-08-30. / 基线：`origin/main` 的 `9d298c6`，复核日期 2026-08-30。
 
-## 文档
+All maintained documentation is bilingual. Each statement pairs English and Chinese, while identifiers, schemas, commands, and diagrams remain language-neutral. / 所有维护中的文档均为中英双语；每条说明同时提供英文和中文，标识符、Schema、命令与图表保持语言无关。
 
-1. [产品与范围](./01-product-requirements.md)
-2. [系统架构](./02-system-architecture.md)
-3. [数据模型](./03-data-model.md)
-4. [API 设计](./04-api-design.md)
-5. [GCP 部署与成本](./05-gcp-deployment.md)
-6. [安全、隐私与二维码核销](./06-security-privacy.md)
-7. [测试、监控与运营](./07-testing-operations.md)
-8. [本地开发与迁移](./08-local-development.md)
-9. [重构路线图与持续记忆](./09-refactor-roadmap.md)
-10. [Admin 门店角色与权限管理系统设计（Review 已通过）](./10-admin-rbac-system-design.md)
-11. [GitHub CI 与 GCP dev 持续部署](./11-ci-cd.md)
-12. [顾客登录模块设计与实施说明](./11-customer-auth-module-design.md)
-13. [银豹 POSPAL 集成设计（Review 待通过）](./12-pospal-integration.md)
+## Status vocabulary / 状态词汇
 
-## 关键决策摘要
+| Status / 状态 | Meaning / 含义 |
+|---|---|
+| Implemented / 已实现 | Present in the reviewed repository and covered by code or tests. / 已存在于复核过的仓库中，并有代码或测试依据。 |
+| Provisioned / 已配置 | Terraform or deployment workflow exists; current live state still needs verification. / Terraform 或部署工作流已存在；当前线上状态仍需验证。 |
+| Planned / 规划中 | Design direction only; do not describe it as shipped. / 仅为设计方向，不得描述为已上线。 |
+| Live-verified / 线上已验证 | Requires dated runtime evidence; this audit does not infer it from source. / 需要带日期的运行时证据；本次审计不会从源码推断线上状态。 |
 
-- 客户端、Admin 与后端 API 分离；MVP 后端先做一个 Cloud Run 模块化单体，不拆微服务。
-- Web/PWA 先行，可覆盖网页、Android 和 iPhone；业务验证后再用 Expo React Native 做原生壳。
-- 饮品与普通商品共用购物车和结账入口，但订单内拆成独立履约组。
-- 支付 MVP 使用 `MockPaymentProvider`，保留真实支付适配器、幂等键和支付状态机。
-- 浏览器定位后在前端对 6 家门店坐标执行 Haversine 计算；Google Maps 只在用户打开地图或路线时调用。
-- 生产数据库采用 Cloud SQL PostgreSQL；图片采用 Cloud Storage；异步任务采用 Cloud Tasks。
-- 公开资料目前只能完整核实 Kilimani、Westlands、CBD、Parklands 四店。Eastleigh 与第六店的精确地址/电话/坐标必须由运营确认。
+## Documents / 文档
 
-## 当前状态
+1. [Product and current scope / 产品与当前范围](./01-product-requirements.md)
+2. [System architecture / 系统架构](./02-system-architecture.md)
+3. [Data model and migrations / 数据模型与迁移](./03-data-model.md)
+4. [API design and endpoint inventory / API 设计与端点清单](./04-api-design.md)
+5. [GCP deployment and environments / GCP 部署与环境](./05-gcp-deployment.md)
+6. [Security and privacy / 安全与隐私](./06-security-privacy.md)
+7. [Testing and operations / 测试与运维](./07-testing-operations.md)
+8. [Local development / 本地开发](./08-local-development.md)
+9. [Refactor status and boundaries / 重构状态与边界](./09-refactor-roadmap.md)
+10. [Admin RBAC design / Admin RBAC 设计](./10-admin-rbac-system-design.md)
+11. [CI/CD / 持续集成与部署](./11-ci-cd.md)
+12. [Customer authentication / 顾客身份认证](./11-customer-auth-module-design.md)
+13. [POSPAL integration / POSPAL 集成](./12-pospal-integration.md)
 
-`kiyoyo-dev` 的 Web、Cloud Run API、Cloud SQL、Cloud Storage 与 Firebase Authentication 已部署。支付仍为明确标记的 MOCK 测试通道；Google provider 仍需 KIYOYO 自有 OAuth 凭据。重构工作以提交 `57a555e` 为回滚基线，进度和行为契约记录在第 9 份文档中。
+## Architecture summary / 架构摘要
+
+- Firebase Hosting serves one static Next.js build with customer and Admin routes. / Firebase Hosting 提供一个同时包含顾客端与 Admin 路由的 Next.js 静态构建。
+- Cloud Run hosts one Fastify modular monolith; PostgreSQL is the transactional source of truth. / Cloud Run 承载一个 Fastify 模块化单体；PostgreSQL 是交易数据的事实来源。
+- Identity Platform proves identity; trusted membership phone comes only from the verified token claim. / Identity Platform 证明用户身份；可信会员手机号只来自已验证 token claim。
+- POSPAL is implemented as an Admin-triggered product catalogue source, not yet as an order sink. / POSPAL 已作为 Admin 触发的商品目录来源实现，尚未作为订单接收端实现。
+- Cloud Tasks queues are provisioned, but task workers/outbox delivery are planned. / Cloud Tasks 队列已配置，但 task worker 与 outbox 投递仍在规划中。
+- Documentation-only changes do not deploy Web or API. Terraform changes validate in CI but are never auto-applied. / 仅文档改动不会部署 Web 或 API；Terraform 改动会在 CI 校验，但不会自动 apply。
+
+For every medium or large repository change, use `.codex/skills/maintain-project-docs` and update affected documents in the same branch and PR. / 每次中大型仓库改动都必须使用 `.codex/skills/maintain-project-docs`，并在同一分支和 PR 中更新受影响文档。

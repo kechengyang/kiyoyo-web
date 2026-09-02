@@ -1,120 +1,105 @@
-# 02 · 系统架构
+# 02 · System architecture / 系统架构
 
-## 总体设计
-
-正式系统是前后端分离架构。前端不直接访问数据库，不持有高权限密钥；所有价格、库存、积分和订单状态由后端 API 决定。
+## Context / 系统上下文
 
 ```mermaid
 flowchart LR
-  C["Customer Web / PWA"] --> LB["HTTPS / Firebase Hosting"]
-  A["Admin Web"] --> LB
-  LB --> API["Cloud Run · Commerce API"]
-  API --> SQL["Cloud SQL · PostgreSQL"]
-  API --> GCS["Cloud Storage · Product Media"]
-  API --> TASKS["Cloud Tasks"]
-  TASKS --> API
-  API --> IDP["Identity Platform"]
-  C -. "on-demand only" .-> MAPS["Google Maps Platform"]
-  API --> LOG["Cloud Logging / Monitoring"]
+  U["Customer / 顾客"] --> H["Firebase Hosting\nNext.js static Web"]
+  S["Admin or Operator / 管理员或运营"] --> H
+  H --> A["Cloud Run\nFastify Commerce API"]
+  H --> I["Identity Platform / Firebase Auth"]
+  A --> I
+  A --> P["Cloud SQL PostgreSQL"]
+  A --> G["Private Cloud Storage media"]
+  A --> X["POSPAL Open API\nproduct catalogue only"]
+  A --> L["Cloud Logging / Monitoring"]
+  Q["Cloud Tasks queues\nprovisioned, workers planned"] -.-> A
 ```
 
-## 前端
+The frontend never connects directly to PostgreSQL or holds privileged credentials. The API is authoritative for identity projection, authorization, price, coupon, points, order state, and pickup redemption. / 前端不直接连接 PostgreSQL，也不持有高权限凭据；API 对身份映射、授权、价格、优惠券、积分、订单状态和取餐核销拥有最终决定权。
 
-- 技术：Next.js + TypeScript，响应式 Web/PWA。
-- 两个业务入口：客户商城 `/` 和 Admin `/admin`。生产可在同一代码仓内分别构建，也可按安全和发布节奏拆成两个前端项目。
-- 客户端负责交互、缓存和乐观 UI；不负责最终价格、优惠合法性、库存扣减或二维码核销判断。
-- API Client 统一携带身份令牌、`X-Request-Id`、`Idempotency-Key` 和 locale。
-- 原生路线：产品验证后，复用 API 与领域类型，用 Expo React Native 开发 iOS/Android；不把核心业务写进 Web-only 组件。
+## Frontend / 前端
 
-## 后端：模块化单体
+- One Next.js App Router project produces a static export for Firebase Hosting. / 一个 Next.js App Router 项目生成 Firebase Hosting 静态导出。
+- Customer and Admin share platform, API, auth, and primitive layers but remain separated by business-domain directories. / 顾客端与 Admin 共用平台、API、认证和基础组件层，同时按业务域目录隔离。
+- `KiyoyoApp.tsx` orchestrates customer state; `AdminApp.tsx` orchestrates Admin data and permissions. / `KiyoyoApp.tsx` 编排顾客状态；`AdminApp.tsx` 编排 Admin 数据与权限。
+- Static route wrappers make all destinations independently loadable and refresh-safe. / 静态路由包装使所有目的页可独立加载并支持刷新。
+- Browser state holds language, guest cart/saved data, and UX continuity; authenticated member data comes from the API. / 浏览器状态保存语言、游客购物车/收藏与体验连续性；已认证会员数据来自 API。
 
-MVP 不建议一开始拆微服务。一个 Cloud Run 服务内按领域隔离模块：
+## API modular monolith / API 模块化单体
 
-- Identity & Customer
-- Catalog & Store Menu
-- Cart & Pricing
-- Checkout & Payment Adapter
-- Order & Fulfillment
-- Loyalty & Coupon
-- Pickup Redemption
-- Admin & Audit
-- Notification
+The TypeScript Fastify API runs as one Cloud Run service. `server.ts` still owns several commerce routes; auth, Admin access/session, loyalty helpers, order events, and POSPAL product sync have dedicated modules. / TypeScript Fastify API 运行于单个 Cloud Run 服务；`server.ts` 仍承载部分商城路由，认证、Admin 权限/会话、积分 helper、订单事件和 POSPAL 商品同步已有独立模块。
 
-模块只能通过公开 service interface 或领域事件协作，不跨模块随意修改表。业务量或团队扩大后可将 Notification、Catalog、Loyalty 等独立拆出。
-
-建议实现：NestJS/Fastify + TypeScript；数据库访问可使用 Drizzle/Prisma。API 版本前缀 `/v1`。
-
-## 关键业务流
-
-### 注册与登录
-
-客户前端使用 Identity Platform Web SDK 完成邮箱密码、Google 和 Facebook 登录，取得 ID token 后调用 Commerce API。API 验证 token 的签名、issuer、audience 和过期时间，以 `sub` 作为稳定外部身份键，再加载 `users`、`profiles`、`addresses` 与授权。前端传来的 email/provider 只用于展示，不用于授权判断。
-
-OAuth redirect URI、Facebook App ID/Secret 和允许域名按 dev/staging/prod 隔离。当前 localhost 版本只模拟 UI 与本地 session，不连接真实身份提供商。
-
-### 创建订单
-
-```mermaid
-sequenceDiagram
-  participant U as Customer
-  participant API as Commerce API
-  participant DB as PostgreSQL
-  participant P as Mock Payment
-  U->>API: POST /v1/checkouts (Idempotency-Key)
-  API->>DB: lock inventory + recalculate price
-  API->>DB: create checkout/order/fulfillment
-  API->>P: authorize test payment
-  P-->>API: AUTHORIZED (test=true)
-  API->>DB: confirm order + append outbox event
-  API-->>U: order number + fulfillment + pickup token
-```
-
-### 自取核销
-
-```mermaid
-sequenceDiagram
-  participant S as Store Staff
-  participant API as Redemption API
-  participant DB as PostgreSQL
-  S->>API: POST /v1/admin/pickups/redeem token
-  API->>DB: SELECT token FOR UPDATE
-  alt valid, READY and same store
-    API->>DB: mark redeemed + COMPLETED + audit
-    API-->>S: success + order summary
-  else used/expired/wrong store
-    API->>DB: append failed audit
-    API-->>S: conflict / forbidden
-  end
-```
-
-## 异步和可靠性
-
-- Cloud Tasks：订单超时、通知重试、积分发放、图片处理。队列按任务类型拆分并限制速率。
-- Transactional Outbox：订单与事件在同一数据库事务写入，worker 再投递，避免订单成功但通知/积分事件丢失。
-- 幂等：结账、支付回调、核销、退款都必须有唯一幂等键或 provider event ID。
-- 超时：外部调用必须设置短超时、有限重试和死信/人工处理队列。
-
-### 商品发布与前端同步
-
-Admin 调用 Catalog API 写入 PostgreSQL，并递增 `catalog_version`。图片通过签名上传直接进入 Cloud Storage 临时区，后台校验 MIME、大小和内容后生成 WebP/AVIF 多尺寸版本，再把 object key 绑定到产品。成功事务写出 `PRODUCT_UPDATED` 事件；前端使用短 TTL/CDN revalidation 或版本号重新获取目录。下单 API 永远按数据库当前价格、折扣、上架状态和门店库存重新校验，不信任前端缓存。
-
-## 环境
-
-- `local`：前端 localStorage + mock 数据。
-- `dev`：Cloud Run API + 小型 dev 数据库，测试身份。
-- `staging`：接近生产配置，使用测试支付、隔离数据。
-- `prod`：真实客户数据；变更通过 CI/CD，禁止个人机器直接改库。
-
-每个环境使用独立 GCP project 最清晰；极致省钱阶段可先 dev/staging 共用非生产项目，但数据库和凭据必须隔离。
-
-## 架构决策记录
-
-| 决策 | 选择 | 原因 |
+| Module / 模块 | Responsibility / 职责 | Status / 状态 |
 |---|---|---|
-| 服务形态 | Cloud Run 模块化单体 | 低闲置成本、少运维、易回滚 |
-| 主数据库 | PostgreSQL | 订单事务、约束、报表与生态成熟 |
-| 实时数据库 | 暂不选 Firestore 作订单主库 | 复杂订单、库存与核销更适合关系事务 |
-| 地图 | 定位后本地算最近店 | 省 Google Maps 调用；无地图也能选店 |
-| 支付 | Provider interface + Mock | MVP 快速验证且保留真实接入路径 |
-| 应用渠道 | Web/PWA 先行 | 一套代码覆盖三端，最快验证需求 |
-| 服务拆分 | 不做早期微服务 | 6 店规模不值得增加网络、数据和运维复杂度 |
+| Auth / 认证 | Firebase token verification, bootstrap, profile and phone gates / Firebase token 校验、bootstrap、资料与手机号门禁 | Implemented / 已实现 |
+| Catalogue / 目录 | Products, tags, media, POSPAL fields / 商品、标签、图片、POSPAL 字段 | Implemented / 已实现 |
+| Checkout / 结账 | Pricing, coupon, points, MOCK payment, orders / 计价、优惠券、积分、MOCK 支付、订单 | Implemented / 已实现 |
+| Admin RBAC / 管理权限 | Roles, permissions, store scope, access history, audit / 角色、权限、门店范围、访问历史、审计 | Implemented / 已实现 |
+| Live orders / 实时订单 | PostgreSQL `LISTEN/NOTIFY` to authenticated SSE / PostgreSQL `LISTEN/NOTIFY` 到已认证 SSE | Implemented / 已实现 |
+| POSPAL / 银豹 | Signed client and product catalogue sync / 签名客户端与商品目录同步 | Product sync implemented / 商品同步已实现 |
+| Async / 异步 | Queues, outbox workers, notifications / 队列、outbox worker、通知 | Queues provisioned; workers planned / 队列已配置，worker 规划中 |
+
+## Authentication flow / 认证流程
+
+```mermaid
+sequenceDiagram
+  participant W as Web
+  participant F as Firebase Auth
+  participant A as API
+  participant D as PostgreSQL
+  W->>F: Sign in or link verified phone / 登录或绑定已验证手机号
+  F-->>W: ID token with trusted claims
+  W->>A: POST /v1/auth/bootstrap
+  A->>F: Verify token
+  A->>D: Upsert trusted user identities and phone
+  A-->>W: profile + membershipReady
+```
+
+Firebase `uid` is the stable external key. Only decoded claims are trusted for provider/email/phone identity; delivery/profile fields never grant membership. / Firebase `uid` 是稳定外部键；provider/邮箱/手机号身份只信任解码后的 claim，配送/资料字段不能授予会员资格。
+
+## Checkout transaction / 结账事务
+
+```mermaid
+sequenceDiagram
+  participant W as Web
+  participant A as API
+  participant D as PostgreSQL
+  W->>A: POST /v1/checkouts + Idempotency-Key
+  A->>D: advisory lock + current catalogue/coupon/wallet
+  A->>A: price items, fees, coupon, points, MOCK outcome
+  A->>D: order + fulfilment + items + payment + ledgers + pickup token
+  A->>D: pg_notify new order
+  A-->>W: order snapshot
+```
+
+Only an immediate `PAID` result mutates loyalty. A pending MOCK result cannot reserve points. / 只有立即得到 `PAID` 的结果才会修改积分；等待中的 MOCK 结果不能预留积分。
+
+## Live orders / 实时订单
+
+Checkout and legal status transitions publish `kiyoyo_new_orders` notifications. Each API instance reconnects its listener and forwards events to authorized SSE clients after server-side store filtering. / 结账与合法状态变更发布 `kiyoyo_new_orders` 通知；每个 API 实例会重连 listener，并在服务端门店过滤后把事件转发给已授权 SSE 客户端。
+
+This is true push, not polling. Reconnect and manual refresh compensate for disconnects and direct database edits that do not emit events. / 这是真实推送而非轮询；重连与手工刷新用于补偿断线，以及不会发事件的直接数据库修改。
+
+## Deployment topology / 部署拓扑
+
+- Firebase Hosting: static customer/Admin Web. / Firebase Hosting：静态顾客端/Admin Web。
+- Cloud Run service: public HTTPS API with application auth. / Cloud Run service：公开 HTTPS API，使用应用层认证。
+- Cloud Run jobs: migrations and seed. / Cloud Run jobs：迁移与 seed。
+- Cloud SQL: PostgreSQL source of truth. / Cloud SQL：PostgreSQL 事实来源。
+- Cloud Storage: private media; signed upload and API proxy read. / Cloud Storage：私有图片；签名上传与 API 代理读取。
+- Artifact Registry, Secret Manager, Identity Platform, Cloud Tasks, Monitoring, Maps key, and GitHub WIF. / Artifact Registry、Secret Manager、Identity Platform、Cloud Tasks、Monitoring、Maps key 与 GitHub WIF。
+
+`kiyoyo-{env}` supports `dev`, `staging`, and `prod` naming in code, but only cloud evidence establishes which environments currently exist. / 代码以 `kiyoyo-{env}` 支持 `dev`、`staging` 与 `prod` 命名，但只有云端证据能确认当前实际存在的环境。
+
+## Decisions / 架构决策
+
+| Decision / 决策 | Choice / 选择 | Reason / 原因 |
+|---|---|---|
+| Service / 服务 | Modular monolith / 模块化单体 | Transactional flows and simpler operations / 事务流程与更简单运维 |
+| Database / 数据库 | PostgreSQL | Constraints, locks, reporting / 约束、锁与报表 |
+| Web / Web | Static Next.js + Firebase Hosting / 静态 Next.js + Firebase Hosting | Fast delivery and refresh-safe routes / 快速分发与刷新安全路由 |
+| Identity / 身份 | Firebase/Identity Platform | Hosted flows and verified claims / 托管流程与可信 claim |
+| Live updates / 实时更新 | PostgreSQL notify + SSE | True push with server store scope / 服务端门店范围内的真实推送 |
+| POSPAL / 银豹 | Catalogue source only / 仅目录来源 | Order push/callback is not implemented / 订单推送/回调尚未实现 |
+| Payment / 支付 | MOCK adapter / MOCK 适配器 | Product validation without real charges / 不真实扣款的产品验证 |

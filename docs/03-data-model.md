@@ -1,95 +1,67 @@
-# 03 · 数据模型
+# 03 · Data model and migrations / 数据模型与迁移
 
-数据库：PostgreSQL 16+。主键建议 UUIDv7；时间使用 `timestamptz` 存 UTC，展示时转换 `Africa/Nairobi`。金额用 `integer/bigint` 表示 KES 整数或 minor unit，禁止浮点。
+PostgreSQL is the transactional source of truth. Times use `timestamptz`; current money fields use non-negative integer KES; internal entity IDs are UUIDs. / PostgreSQL 是交易事实来源；时间使用 `timestamptz`；当前金额字段使用非负整数 KES；内部实体 ID 使用 UUID。
 
-## 核心关系
+## Domain map / 领域关系
 
 ```mermaid
 erDiagram
-  users ||--o{ addresses : has
-  users ||--o{ orders : places
+  users ||--o{ user_identities : owns
+  users ||--o{ addresses : owns
   users ||--o{ favorites : saves
-  users ||--o{ loyalty_ledger : earns
-  stores ||--o{ store_products : offers
-  product_tags ||--o{ products : labels
-  products ||--o{ product_variants : has
-  products ||--o{ store_products : listed
-  orders ||--|{ fulfillment_groups : splits
+  users ||--o{ orders : places
+  users ||--|| loyalty_wallets : has
+  users ||--o{ loyalty_transactions : records
+  users ||--o| staff_accounts : may_be
+  staff_accounts ||--o{ staff_store_access : receives
+  products ||--o{ order_items : snapshots
+  products ||--o{ pospal_product_mappings : maps
+  orders ||--|{ fulfillment_groups : contains
   orders ||--|{ order_items : contains
   fulfillment_groups ||--o| pickup_tokens : secures
-  fulfillment_groups ||--o{ status_events : records
-  coupons ||--o{ coupon_redemptions : redeemed
-  users ||--o{ coupon_redemptions : uses
+  coupons ||--o{ user_coupons : issues
+  coupons ||--o{ coupon_redemptions : redeems
 ```
 
-## 表定义摘要
+## Identity and staff / 身份与员工
 
-### 用户与权限
+- `users` stores the business profile and trusted Firebase projection, including unique verified phone. / `users` 保存业务资料与可信 Firebase 映射，包括唯一已验证手机号。
+- `user_identities` tracks active `PASSWORD`/`GOOGLE` provider subjects; an active identity cannot move between users. / `user_identities` 记录有效 `PASSWORD`/`GOOGLE` provider subject；有效身份不能在用户间转移。
+- `addresses` belong to users; a partial unique index allows one default address per user. / `addresses` 归属于用户；部分唯一索引保证每位用户最多一个默认地址。
+- `roles` is fixed to `ADMIN` and `OPERATOR`; `staff_accounts`, `staff_store_access`, and `staff_access_periods` model role, scope, state, and history. / `roles` 固定为 `ADMIN` 与 `OPERATOR`；`staff_accounts`、`staff_store_access` 与 `staff_access_periods` 表达角色、范围、状态与历史。
+- `audit_logs` records actor, action, entity, store, request ID, and redacted metadata. / `audit_logs` 记录操作者、动作、实体、门店、request ID 与脱敏元数据。
 
-- `users(id, external_auth_id, auth_provider, phone_e164, email, nickname, gender, birth_year nullable, locale, status, created_at)`
-- `user_identities(id, user_id, provider, provider_subject, verified_email nullable, linked_at)`；唯一 `(provider, provider_subject)`。
-- `addresses(id, user_id, label, contact_name, phone_e164, line1, area, city, lat, lng, delivery_instructions, is_default)`
-- `roles(id, code)`、`user_roles(user_id, role_id, store_id nullable)`
-- 门店员工角色必须带 `store_id`，总部角色可为空。
+## Catalogue and POSPAL / 目录与 POSPAL
 
-### 门店与目录
+- `stores` includes commerce flags, verified location, opening hours, and optional POSPAL account/enabled state. / `stores` 包含商城开关、位置验证、营业时间及可选 POSPAL 账号/启用状态。
+- `products` includes bilingual Web fields, price/discount/active/version, media, size prices, POSPAL UID/barcode/category/tastes/images/no-stock, and manual override. / `products` 包含双语 Web 字段、价格/折扣/上下架/版本、图片、杯型价格，以及 POSPAL UID/条码/分类/口味/图片/不记库存与手工覆盖。
+- `product_tags` supplies reusable display labels; `favorites` joins users and products. / `product_tags` 提供可复用展示标签；`favorites` 关联用户与商品。
+- POSPAL categories, tastes, mappings, and sync state retain source dictionaries, matching, and cursors. / POSPAL 分类、口味、映射与同步状态保存来源字典、匹配与游标。
+- Barcode suffix `-1` is merged as the main product's large-size price. / 条码后缀 `-1` 合并为主商品的大杯价格。
 
-- `stores(id, code, name, address, phone, lat, lng, timezone, status, pickup_enabled, delivery_enabled, opening_hours_json)`
-- `categories(id, kind, slug, name_en, name_zh, sort_order, active)`
-- `products(id, kind DRINK|GOODS, slug, name_en, name_zh, description_en, description_zh, image_key, tag_id nullable, base_price, discount_percent, active, catalog_version, updated_at, updated_by)`
-- `product_tags(id, label, tone RED|YELLOW|BLACK|GREEN, active, created_at, created_by, updated_at)`；`label` 大小写不敏感唯一，生产环境优先归档而非硬删除。
-- `product_media(id, product_id, object_key, content_type, width, height, bytes, status PROCESSING|READY|REJECTED, created_at)`
-- `product_change_logs(id, product_id, actor_id, before_json, after_json, created_at)`
-- `product_variants(id, product_id, sku, option_json, base_price, stock_tracked, active)`
-- `store_products(store_id, variant_id, price, available, stock_on_hand, stock_reserved, updated_at)`
-- 商品快照必须复制到 `order_items`，避免改名/改价影响历史订单。
+## Orders, coupons, and loyalty / 订单、优惠券与积分
 
-### 购物车、价格与促销
+- `orders` snapshots subtotal, coupon discount, delivery fee, point fields, total, payment status, and test flag. / `orders` 快照保存小计、优惠券折扣、配送费、积分字段、总额、支付状态和测试标记。
+- `fulfillment_groups` stores type, store/address snapshot and state; `order_items` stores product/customization price snapshots. / `fulfillment_groups` 保存类型、门店/地址快照与状态；`order_items` 保存商品/定制价格快照。
+- `payments.idempotency_key` is unique. `pickup_tokens` store token hashes and redemption metadata; `status_events` append history. / `payments.idempotency_key` 唯一；`pickup_tokens` 保存 token 哈希与核销元数据；`status_events` 追加历史。
+- `coupons`, `user_coupons`, and `coupon_redemptions` separate campaign rules, member issuance, and order redemption. / `coupons`、`user_coupons` 与 `coupon_redemptions` 分别表达活动规则、会员发放与订单核销。
+- `loyalty_settings` stores the singleton rate; `loyalty_wallets` stores aggregates; `loyalty_transactions` is the idempotent auditable ledger. / `loyalty_settings` 保存单例比例；`loyalty_wallets` 保存汇总；`loyalty_transactions` 是幂等、可审计账本。
+- A trigger rejects ledger update/delete except deletion of `is_test=true` rows during explicit test-data cleanup. / trigger 拒绝账本 update/delete，只有明确清理测试数据时允许删除 `is_test=true` 行。
 
-- `carts(id, user_id nullable, guest_token, store_id, currency, expires_at)`
-- `cart_items(id, cart_id, variant_id, quantity, customization_json)`
-- `coupons(id, code, name_en, name_zh, description_en, description_zh, discount_type PERCENT|FIXED|FREE_SIZE_UPGRADE, discount_value, max_discount, min_spend, scope_type, scope_value, fulfillment_scope, issuance_mode PUBLIC_CODE|ASSIGNED, starts_at, ends_at, issuance_limit, usage_limit, per_user_limit, status DRAFT|SCHEDULED|ACTIVE|PAUSED|ENDED|ARCHIVED, issuance_enabled, redemption_enabled, stackable, version, published_at, created_by, updated_by, created_at, updated_at)`
-- `user_coupons(id, coupon_id, user_id, source, status ISSUED|RESERVED|REDEEMED|REVOKED, issued_at, expires_at, reserved_at, redeemed_at, revoked_at, revoked_by, revoke_reason, created_by)`；用户券到期时间不得晚于活动结束时间。
-- `coupon_redemptions(id, coupon_id, user_coupon_id nullable, user_id, order_id, discount_amount, rule_snapshot_json, status RESERVED|REDEEMED|RELEASED|REFUNDED, idempotency_key, reserved_at, redeemed_at, released_at, refunded_at)`
-- `issuance_enabled=false` 只停止新发券，已发用户券仍可使用；`redemption_enabled=false` 是紧急停用，必须记录原因和管理员审计。
-- 券的“已过期”由 `ends_at` 与 `user_coupons.expires_at` 计算，不允许管理员手动伪造过期状态。
-- `pricing_snapshots(id, cart_id, subtotal, discount, delivery_fee, total, rule_version, expires_at)`
+## Migration order / 迁移顺序
 
-### 订单与履约
+| Migration / 迁移 | Purpose / 用途 |
+|---|---|
+| `0001_initial.sql` | Core commerce, fulfilment, payment, pickup, audit / 核心商城、履约、支付、取餐与审计 |
+| `0002_menu_size_prices.sql` | Per-size pricing / 分杯型价格 |
+| `0003_coupon_management.sql` | Coupon campaigns, wallet, redemption / 优惠券活动、钱包与核销 |
+| `0004_admin_rbac.sql` | Staff roles, store scope, access periods / 员工角色、门店范围与访问周期 |
+| `0004_customer_auth.sql` | Provider identities and auth timestamps / provider 身份与认证时间 |
+| `0005`–`0010` | POSPAL mapping, catalogue fields, resync, override, variant dedupe / POSPAL 映射、目录字段、重同步、覆盖与变体去重 |
+| `0009_verified_phone_membership.sql` | Unique verified E.164 phone / 唯一已验证 E.164 手机号 |
+| `0011_loyalty_points.sql` | Settings, wallet, ledger, order snapshots / 设置、钱包、账本与订单快照 |
+| `0012_loyalty_ledger_immutability.sql` | Ledger immutability / 账本不可变 |
 
-- `orders(id, order_number unique, user_id, currency, subtotal, discount, delivery_fee, total, payment_status, is_test, created_at)`
-- `order_items(id, order_id, fulfillment_group_id, product_id, variant_id, kind, name_snapshot, sku_snapshot, unit_price, quantity, customization_json, line_total)`
-- `fulfillment_groups(id, order_id, type PICKUP|DELIVERY|SHIPPING, store_id nullable, address_id nullable, address_snapshot_json nullable, status, promised_at)`
-- `status_events(id, fulfillment_group_id, from_status, to_status, actor_id, reason, created_at)`
-- `fulfillment_address_events(id, fulfillment_group_id, old_address_snapshot_json, new_address_snapshot_json, actor_id, reason, created_at)`
-- `pickup_tokens(id, fulfillment_group_id unique, token_hash unique, expires_at, redeemed_at, redeemed_by, redeemed_store_id)`
+Duplicate numeric prefixes exist for independent historical migrations. The runner uses filename lexical order; never renumber applied files. / 因历史独立开发存在重复数字前缀；runner 按文件名字典序执行，不得重编号已执行文件。
 
-### 支付、积分和审计
-
-- `payments(id, order_id, provider, provider_ref, idempotency_key unique, amount, status, is_test, payload_redacted_json, created_at)`
-- `loyalty_accounts(user_id unique, balance, tier, version)`
-- `loyalty_ledger(id, user_id, order_id nullable, type EARN|SPEND|ADJUST|EXPIRE, points, balance_after, idempotency_key unique, created_at)`
-- `audit_logs(id, actor_id, action, entity_type, entity_id, store_id, request_id, metadata_redacted_json, created_at)`
-- `outbox_events(id, aggregate_type, aggregate_id, event_type, payload_json, created_at, published_at, attempts)`
-
-## 约束与索引
-
-- `orders.order_number`、`pickup_tokens.token_hash`、`payments.idempotency_key` 唯一。
-- `store_products` 唯一 `(store_id, variant_id)`。
-- `discount_percent BETWEEN 0 AND 90`；折后价由定价模块计算，不单独接受前端写入。
-- `order_items.quantity > 0`；所有金额 `>= 0`。
-- `pickup_tokens.redeemed_at` 通过单事务原子设置。
-- Coupon 校验、用量检查、订单折扣和核销记录必须在同一数据库事务完成；已使用规则写入 `rule_snapshot_json`，不得被后续编辑覆盖。
-- 常用索引：
-  - `orders(user_id, created_at desc)`
-  - `fulfillment_groups(store_id, status, promised_at)`
-  - `status_events(fulfillment_group_id, created_at)`
-  - `audit_logs(entity_type, entity_id, created_at)`
-  - `outbox_events(published_at) WHERE published_at IS NULL`
-
-## 迁移与种子数据
-
-- 使用版本化 SQL migration；启动服务时不自动执行生产 migration。
-- CI 先做向后兼容 schema 扩展，再发布代码，最后清理旧列。
-- 门店、角色、基础品类和测试支付配置由 seed 管理；生产种子必须可重复执行。
-- 每个测试订单带 `is_test=true`，经营报表默认排除。
+Schema truth is the ordered SQL in `api/migrations/`; this document is a map, not a replacement for migration review. / Schema 最终事实是 `api/migrations/` 中按顺序执行的 SQL；本文是地图，不能替代迁移审查。
