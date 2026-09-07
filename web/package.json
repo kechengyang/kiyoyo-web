@@ -20,29 +20,29 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "firebase": "^12.18.0",
-    "next": "16.3.3",
+    "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-qr-code": "^2.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.54.1",
+    "@cloudflare/vite-plugin": "1.54.4",
     "@tailwindcss/postcss": "4.3.3",
-    "@types/google.maps": "^3.66.0",
-    "@types/node": "26.4.0",
+    "@types/google.maps": "^3.66.2",
+    "@types/node": "26.4.1",
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
-    "@vitejs/plugin-react": "6.1.0",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
     "@vitejs/plugin-rsc": "0.5.34",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.3.4",
     "react-server-dom-webpack": "19.2.8",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "vinext": "0.2.1",
     "vite": "8.2.2",
-    "wrangler": "4.127.0"
+    "wrangler": "4.129.0"
   },
   "type": "module"
 }
